@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" preserveAspectRatio="xMidYMid meet">
+
+  <defs>
+
+    <!-- Subtle metallic background glow -->
+    <radialGradient id="ambientGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#BFC7D1" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- Metallic specular lighting -->
+    <filter id="metallic" x="-50%" y="-50%" width="200%" height="200%">
+      <feSpecularLighting result="spec" specularConstant="1.3" specularExponent="35" lighting-color="#ffffff" surfaceScale="4">
+
+        <fePointLight x="-150" y="-300" z="300"/>
+      </feSpecularLighting>
+
+      <feComposite in="spec" in2="SourceAlpha" operator="in" result="specMask"/>
+
+      <feBlend in="SourceGraphic" in2="specMask" mode="screen"/>
+    </filter>
+
+    <!-- Bronze -->
+    <linearGradient id="gradBronzeLeft" x1="0.8" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#F0E7D8"/>
+      <stop offset="20%" stop-color="#C8B299"/>
+      <stop offset="60%" stop-color="#8B6F54"/>
+      <stop offset="100%" stop-color="#3B2C21"/>
+    </linearGradient>
+
+    <linearGradient id="gradBronzeRight" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#F5ECE0"/>
+      <stop offset="20%" stop-color="#D0BEA9"/>
+      <stop offset="60%" stop-color="#96785D"/>
+      <stop offset="100%" stop-color="#3F3026"/>
+    </linearGradient>
+
+    <!-- Steel -->
+    <linearGradient id="gradSteelLeft" x1="0.8" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#D8E0E8"/>
+      <stop offset="25%" stop-color="#9DA8B4"/>
+      <stop offset="65%" stop-color="#59616B"/>
+      <stop offset="100%" stop-color="#161A1F"/>
+    </linearGradient>
+
+    <linearGradient id="gradSteelRight" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#E4EBF2"/>
+      <stop offset="25%" stop-color="#AAB6C4"/>
+      <stop offset="65%" stop-color="#626D79"/>
+      <stop offset="100%" stop-color="#1A2028"/>
+    </linearGradient>
+
+    <!-- Titanium -->
+    <linearGradient id="gradTitanium" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#D9DCE3"/>
+      <stop offset="30%" stop-color="#959AA6"/>
+      <stop offset="70%" stop-color="#4A4F59"/>
+      <stop offset="100%" stop-color="#14161A"/>
+    </linearGradient>
+
+    <!-- Dark Chrome -->
+    <linearGradient id="gradChromeDarkLeft" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#747A83"/>
+      <stop offset="50%" stop-color="#34383F"/>
+      <stop offset="100%" stop-color="#050607"/>
+    </linearGradient>
+
+    <linearGradient id="gradChromeDarkRight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#858C97"/>
+      <stop offset="50%" stop-color="#3A3F47"/>
+      <stop offset="100%" stop-color="#050607"/>
+    </linearGradient>
+
+  </defs>
+
+  
+  
+
+  
+  <g transform="translate(250,494) scale(1.52969,1.28816)" filter="url(#shadow)">
+
+    <!-- Outer bronze wings -->
+    <polygon points="-120,-120 -80,-180 -160,-220" fill="url(#gradBronzeLeft)"/>
+
+    <polygon points="120,-120 80,-180 160,-220" fill="url(#gradBronzeRight)"/>
+
+    <!-- Upper side facets -->
+    <polygon points="-60,-170 -120,-120 -100,-280" fill="url(#gradTitanium)"/>
+
+    <polygon points="-60,-170 -30,-220 -100,-280" fill="url(#gradSteelLeft)"/>
+
+    <polygon points="60,-170 120,-120 100,-280" fill="url(#gradTitanium)"/>
+
+    <polygon points="60,-170 30,-220 100,-280" fill="url(#gradSteelRight)"/>
+
+    <!-- Lower wings -->
+    <polygon points="0,0 -60,-170 -120,-120" fill="url(#gradSteelLeft)"/>
+
+    
+
+    <polygon points="0,0 60,-170 120,-120" fill="url(#gradSteelRight)"/>
+
+    
+
+    <!-- Main center crystal -->
+    <polygon points="0,0 -60,-170 0,-380" fill="url(#gradBronzeLeft)"/>
+
+    <polygon points="0,0 60,-170 0,-380" fill="url(#gradBronzeRight)"/>
+
+    <!-- Upper dark chrome -->
+    <polygon points="0,-120 -60,-170 0,-380" fill="url(#gradChromeDarkLeft)"/>
+
+    <polygon points="0,-120 60,-170 0,-380" fill="url(#gradChromeDarkRight)"/>
+
+    <!-- Lower dark chrome -->
+    
+
+    
+
+    
+    
+
+    
+
+    <line x1="0" y1="-380" x2="0" y2="0" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+
+    <!-- Specular reflection overlay -->
+    <g filter="url(#metallic)">
+      <polygon points="-120,-120 -80,-180 -160,-220" fill="#ffffff" fill-opacity="0.02"/>
+      <polygon points="120,-120 80,-180 160,-220" fill="#ffffff" fill-opacity="0.02"/>
+      <polygon points="0,0 -60,-170 0,-380" fill="#ffffff" fill-opacity="0.02"/>
+      
+    </g>
+
+  </g>
+
+</svg>
