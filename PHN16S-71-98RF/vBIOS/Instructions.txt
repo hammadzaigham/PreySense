@@ -1,0 +1,4 @@
+Download nvflashk: https://github.com/notfromstatefarm/nvflashk
+Open a terminal in the current directory as administrator and run:
+nvflashk.exe --protectoff
+nvflashk.exe -6 140W.rom
