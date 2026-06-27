@@ -20,6 +20,7 @@ public partial class ColorForm
     private RNumericUpDown _gammaValue = null!;
     private RNumericUpDown _saturationValue = null!;
     private RNumericUpDown _hueValue = null!;
+    private RCheckBox _blueLightCheck = null!;
     private System.Windows.Forms.Timer _applyTimer = null!;
     private bool _pendingApply;
 
@@ -31,7 +32,7 @@ public partial class ColorForm
         SuspendLayout();
         Controls.Clear();
 
-        UiTheme.ApplyFixedDialog(this, "Color Profile");
+        UiTheme.ApplyFixedDialog(this, "Display Profile");
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         ShowIcon = false;
@@ -54,7 +55,7 @@ public partial class ColorForm
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _title = _ui.Text("Color Profile", UiTheme.Font(scale, 9f, FontStyle.Bold), UiTheme.TextPrimary);
+        _title = _ui.Text("Display Profile", UiTheme.Font(scale, 9f, FontStyle.Bold), UiTheme.TextPrimary);
         _title.Margin = Padding.Empty;
         header.Controls.Add(_title, 0, 0);
 
@@ -83,6 +84,7 @@ public partial class ColorForm
         AddRangeRow("Gamma", 0, 500, 100, 2, out _gammaSlider, out _gammaValue);
         AddRangeRow("Saturation", 0, 100, 50, 0, out _saturationSlider, out _saturationValue);
         AddRangeRow("Hue", -180, 180, 0, 0, out _hueSlider, out _hueValue);
+        AddCheckBoxRow("Blue Light", out _blueLightCheck);
 
         _brightnessSlider.ValueChanged += SliderChanged;
         _contrastSlider.ValueChanged += SliderChanged;
@@ -172,6 +174,29 @@ public partial class ColorForm
         row.Controls.Add(numeric, 2, 0);
 
         _body.Controls.Add(row, 0, _body.RowCount++);
+        _body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    }
+
+    private void AddCheckBoxRow(string labelText, out RCheckBox checkBox)
+    {
+        checkBox = new RCheckBox
+        {
+            Text = labelText,
+            AutoSize = false,
+            BackColor = UiTheme.ElevatedCardBackground,
+            ForeColor = UiTheme.TextPrimary,
+            Font = UiTheme.Font(_ui.Scale, 9f),
+            Padding = new Padding(_ui.S(16), 0, _ui.S(16), 0),
+            Margin = new Padding(0, 0, 0, _ui.S(UiTheme.RowGap)),
+            Height = _ui.S(30),
+            Width = _ui.FormWidth - _ui.S(UiTheme.DialogPadding) * 2 - _ui.S(UiTheme.CardPadding) * 2,
+            Cursor = Cursors.Hand,
+            TextAlign = ContentAlignment.MiddleLeft,
+            CheckAlign = ContentAlignment.MiddleLeft,
+            UseVisualStyleBackColor = false
+        };
+
+        _body.Controls.Add(checkBox, 0, _body.RowCount++);
         _body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 }

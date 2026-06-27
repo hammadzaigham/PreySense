@@ -380,7 +380,13 @@ namespace PreySense.Helpers
             }
 
             if (!EnsureAcerService()) return;
-            bool ok = _serviceClient.SetLighting(mode, _lastR, _lastG, _lastB, _brightness, _speed, _direction);
+
+            float factor = _brightness / 5.0f;
+            byte r = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastR * factor)));
+            byte g = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastG * factor)));
+            byte b = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastB * factor)));
+
+            bool ok = _serviceClient.SetLighting(mode, r, g, b, _brightness, _speed, _direction);
             if (!ok) AppLogger.Log($"ApplyLightingMode: AcerService SetLighting failed (mode={mode}).");
         }
 

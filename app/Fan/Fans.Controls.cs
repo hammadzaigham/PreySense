@@ -288,7 +288,52 @@ namespace PreySense.Fan
             panelApplyFans.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             panelApplyFans.Padding = new Padding(0);
             panelApplyFans.BackColor = formBack;
-            checkApplyFanCurves.BackColor = formBack;
+            checkApplyFanCurves.BackColor = buttonSecond;
+
+            var container = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                BackColor = formBack
+            };
+
+            labelFanRampUp = new Label
+            {
+                Text = "Ramp Up Time:",
+                ForeColor = foreMain,
+                Font = new Font("Segoe UI", 9f),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Height = S(28),
+                AutoSize = true,
+                Margin = new Padding(0, S(6), 0, 0)
+            };
+
+            numFanRampUp = new RNumericUpDown
+            {
+                Minimum = 0,
+                Maximum = 60,
+                Value = 0,
+                Width = S(75),
+                Height = S(28),
+                TextAlign = HorizontalAlignment.Center,
+                Margin = new Padding(S(4), S(4), 0, 0),
+                TabStop = false
+            };
+            numFanRampUp.ApplyTheme(true);
+
+            panelApplyFans.Controls.Clear();
+            container.Controls.Add(labelFanRampUp);
+            container.Controls.Add(numFanRampUp);
+            
+            // Adjust margin of the checkbox since it is now on the right
+            checkApplyFanCurves.Margin = new Padding(S(12), S(2), 0, 0);
+            
+            container.Controls.Add(checkApplyFanCurves);
+            panelApplyFans.Controls.Add(container);
+            panelApplyFans.Controls.Add(labelFansResult);
 
             if (_curveHost != null)
             {

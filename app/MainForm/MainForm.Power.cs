@@ -71,21 +71,40 @@ namespace PreySense
 
         private void LoadPersistedRgbState(RegistryKey key)
         {
-            int modeVersion = GetRegistryInt(key, "RGB_ModeVersion", 1);
-            int rgbMode = RgbProfile.NormalizeSavedMode(GetRegistryInt(key, "RGB_Mode", 0), modeVersion);
-            comboRgbLightingMode.SelectedIndex = MapModeToDropdownIndex(rgbMode);
-            buttonRgbProfiles.Enabled = (rgbMode == 0);
+            _isApplyingSavedRgbState = true;
+            try
+            {
+                int modeVersion = GetRegistryInt(key, "RGB_ModeVersion", 1);
+                int rgbMode = RgbProfile.NormalizeSavedMode(GetRegistryInt(key, "RGB_Mode", 0), modeVersion);
+                comboRgbLightingMode.SelectedIndex = MapModeToDropdownIndex(rgbMode);
+                buttonRgbProfiles.Enabled = (rgbMode == 0);
 
-            int rgbSpeed = RgbProfile.NormalizeStepLevel(GetRegistryInt(key, "RGB_Speed", 3));
-            int rgbDirection = GetRegistryInt(key, "RGB_Direction", 1);
-            byte direction = rgbDirection == 2 ? (byte)2 : (byte)1;
-            int r = GetRegistryInt(key, "RGB_Zone0_R", 0);
-            int g = GetRegistryInt(key, "RGB_Zone0_G", 150);
-            int b = GetRegistryInt(key, "RGB_Zone0_B", 255);
-            Color keyColor = Color.FromArgb(r, g, b);
-            pictureBacklightSwatch.BackColor = keyColor;
-            Color[] colors = new Color[4] { keyColor, keyColor, keyColor, keyColor };
-            _wmi.SetCachedRgbState(rgbMode, (byte)r, (byte)g, (byte)b, GetBrightnessSliderValue(), (byte)rgbSpeed, direction, colors);
+                int rgbSpeed = RgbProfile.NormalizeStepLevel(GetRegistryInt(key, "RGB_Speed", 3));
+                int rgbDirection = GetRegistryInt(key, "RGB_Direction", 1);
+                byte direction = rgbDirection == 2 ? (byte)2 : (byte)1;
+
+                int r = GetRegistryInt(key, "RGB_Zone0_R", 0);
+                int g = GetRegistryInt(key, "RGB_Zone0_G", 150);
+                int b = GetRegistryInt(key, "RGB_Zone0_B", 255);
+
+                Color[] colors = new Color[4];
+                for (int i = 0; i < 4; i++)
+                {
+                    int zR = GetRegistryInt(key, $"RGB_Zone{i}_R", r);
+                    int zG = GetRegistryInt(key, $"RGB_Zone{i}_G", g);
+                    int zB = GetRegistryInt(key, $"RGB_Zone{i}_B", b);
+                    colors[i] = Color.FromArgb(zR, zG, zB);
+                }
+
+                pictureBacklightSwatch.BackColor = colors[0];
+
+                byte brightness = GetBrightnessSliderValue();
+                _wmi.SetCachedRgbState(rgbMode, (byte)r, (byte)g, (byte)b, brightness, (byte)rgbSpeed, direction, colors);
+            }
+            finally
+            {
+                _isApplyingSavedRgbState = false;
+            }
         }
 
         private void LoadPersistedFanState(RegistryKey key)
@@ -112,6 +131,7 @@ namespace PreySense
             }
 
             _applyCustomFans = profile.ApplyFanCurve;
+            _fanRampUp = _applyCustomFans ? profile.FanRampUp : 0;
             _maxFanEnabled = GetRegistryInt(key, "Fan_MaxSpeed", 0) == 1;
             buttonTurboFanModePower.Activated = _applyCustomFans;
         }
@@ -245,7 +265,12 @@ namespace PreySense
 
         private void CheckPowerSourceTransition()
         {
-            bool currentPluggedIn = !IsOnBatteryPower();
+            CheckPowerSourceTransition(null);
+        }
+
+        private void CheckPowerSourceTransition(bool? onBatteryOverride)
+        {
+            bool currentPluggedIn = onBatteryOverride.HasValue ? !onBatteryOverride.Value : !IsOnBatteryPower();
             if (_isPluggedIn != currentPluggedIn)
             {
                 _isPluggedIn = currentPluggedIn;

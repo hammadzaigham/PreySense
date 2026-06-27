@@ -85,6 +85,18 @@ namespace PreySense.Fan
                 if (_editingMode == _activeMode)
                     _mainForm.ApplyFanCurvesForMode(_activeMode);
             };
+
+            numFanRampUp.ValueChanged += (_, _) =>
+            {
+                if (_isUpdatingUi) return;
+                if (_currentProfile != null)
+                {
+                    _currentProfile.FanRampUp = (int)numFanRampUp.Value;
+                    ProfileManager.SaveProfile(_currentProfile);
+                }
+                if (_editingMode == _activeMode)
+                    _mainForm.ApplyFanCurvesForMode(_activeMode);
+            };
         }
 
         private void ShowCurveForMode(bool gpuMode)
@@ -205,6 +217,7 @@ namespace PreySense.Fan
             _curveCpu.Points = _cpuCurve;
             _curveGpu.Points = _gpuCurve;
             checkApplyFanCurves.Checked = _currentProfile.ApplyFanCurve;
+            numFanRampUp.Value = Math.Clamp(_currentProfile.FanRampUp, numFanRampUp.Minimum, numFanRampUp.Maximum);
             EnforcePowerLimitOrder(pl1IsDriver: false);
             _isUpdatingUi = false;
             UpdateGpuOverclockAvailability();
@@ -255,6 +268,7 @@ namespace PreySense.Fan
             comboWindowsPowerMode.SelectedIndex = Math.Clamp(_currentProfile.WindowsPowerMode, 0, 2);
             checkApplyCpuLimits.Checked = _currentProfile.ApplyCpuLimits;
             checkApplyFanCurves.Checked = _currentProfile.ApplyFanCurve;
+            numFanRampUp.Value = Math.Clamp(_currentProfile.FanRampUp, numFanRampUp.Minimum, numFanRampUp.Maximum);
             trackGpuCoreOffset.Value = Math.Clamp(_currentProfile.GpuCoreOffset, trackGpuCoreOffset.Minimum, trackGpuCoreOffset.Maximum);
             trackGpuMemoryOffset.Value = Math.Clamp(_currentProfile.GpuMemoryOffset, trackGpuMemoryOffset.Minimum, trackGpuMemoryOffset.Maximum);
             numGpuCoreOffset.Value = trackGpuCoreOffset.Value;

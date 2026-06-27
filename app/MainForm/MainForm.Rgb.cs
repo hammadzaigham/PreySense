@@ -8,48 +8,10 @@ namespace PreySense
 {
     public partial class MainForm
     {
-        private void ApplySavedRgbLighting()
-        {
-            ApplySavedRgbLightingRetry(0);
-        }
-
-        private void ApplySavedRgbLightingRetry(int attempt)
-        {
-            try
-            {
-                _wmi.RefreshAcerService();
-                if (!_wmi.IsAcerServiceAvailable)
-                {
-                    if (attempt < 3)
-                    {
-                        _ = Task.Delay(2000).ContinueWith(_ =>
-                        {
-                            if (!IsDisposed)
-                                BeginInvoke(new Action(() => ApplySavedRgbLightingRetry(attempt + 1)));
-                        });
-                    }
-                    else
-                    {
-                        AppLogger.Log("ApplySavedRgbLighting: AcerService not reachable on port 46933 after startup retries.");
-                    }
-                    return;
-                }
-
-                byte brightness = GetBrightnessSliderValue();
-                if (_wmi.LastRgbMode == 0)
-                    _wmi.SetZoneColors(_wmi.ZoneColors, brightness);
-                else
-                    _wmi.SetRgbMode(_wmi.LastRgbMode, _wmi.LastR, _wmi.LastG, _wmi.LastB, brightness, _wmi.Speed, _wmi.Direction);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"ApplySavedRgbLighting failed: {ex.Message}");
-            }
-        }
 
         private void ApplyRgbModeFromDropdown(int idx)
         {
-            if (!_isLoaded) return;
+            if (!_isLoaded || _isApplyingSavedRgbState) return;
             int mode = MapDropdownIndexToMode(idx);
             _wmi.SetRgbMode(mode, _wmi.LastR, _wmi.LastG, _wmi.LastB, GetBrightnessSliderValue(), _wmi.Speed, _wmi.Direction);
             SaveState("RGB_Mode", mode);

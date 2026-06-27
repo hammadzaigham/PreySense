@@ -19,7 +19,7 @@ Use that file instead of scattering raw WMI class names or AcerService command s
 | `AcerQAAgentSvis` | Keep enabled | Backs Quick Access mode-key/current-mode state on `wss://localhost:5141`. |
 | `AcerCCAgentSvis` | Disable | Not used by PreySense. |
 | `AcerDIAgentSvis` | Disable | Not used by PreySense. |
-| `ASMSvc` | Disable | Not used by PreySense. |
+| `ASMSvc` | Keep enabled | Used for battery charge limit control. |
 | `AcerDeviceEnablingServiceV2` | Disable | Not called by PreySense. GPU mode code uses local device/WMI paths. |
 | `PredatorService` | Disable | Belongs to Predator Sense and can compete with PreySense for settings ownership. |
 | `PredatorSenseLauncher` scheduled task | Disable | Prevents Predator Sense from relaunching while PreySense is running. |

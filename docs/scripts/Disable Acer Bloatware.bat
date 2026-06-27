@@ -7,7 +7,7 @@ rem and Quick Access mode-key state used by the app.
 sc config "AcerCCAgentSvis" start= disabled
 sc config "AcerDeviceEnablingServiceV2" start= disabled
 sc config "AcerDIAgentSvis" start= disabled
-sc config "ASMSvc" start= disabled
+rem sc config "ASMSvc" start= disabled
 sc config "PredatorService" start= disabled
 schtasks /Change /TN "PredatorSenseLauncher" /Disable
 taskkill /IM PredatorSense.exe /F >nul 2>&1

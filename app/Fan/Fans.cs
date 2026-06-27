@@ -41,6 +41,8 @@ namespace PreySense.Fan
         private NumericUpDown numGpuMemoryOffset = null!;
         private int _pl1MaxW = 140;
         private int _pl2MaxW = 140;
+        private RNumericUpDown numFanRampUp = null!;
+        private Label labelFanRampUp = null!;
 
         private static readonly byte[] PerfModes = { 0x06, 0x00, 0x01, 0x04, 0x05 };
         private static readonly string[] PerfModeNames = { "Eco", "Silent", "Balanced", "Performance", "Turbo" };

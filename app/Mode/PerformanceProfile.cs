@@ -22,6 +22,7 @@ namespace PreySense.Mode
         public bool ApplyCpuLimits { get; set; } = false;
         public bool ApplyGpuLimits { get; set; } = false;
         public bool ApplyFanCurve { get; set; } = false;
+        public int FanRampUp { get; set; } = 0;
 
         /// <summary>
         /// Creates the default profile for a given power mode code.

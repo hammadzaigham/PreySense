@@ -2,6 +2,7 @@ namespace PreySense
 {
     internal static class Program
     {
+        public const string VersionString = "1.0.1";
         public static MainForm? settingsForm;
         public static Overlay.HardwareOverlay? hardwareOverlay;
         private static CancellationTokenSource? _overlayUnloadCts;

@@ -16,3 +16,5 @@ debug.log
 *.log
 *.tmp
 *.cache
+
+publish.ps1

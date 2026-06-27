@@ -48,7 +48,7 @@ namespace PreySense.Rgb
             _ui = new UiBuilder(_dpiScale, _formW);
 
             UiTheme.ApplyFixedDialog(this, "Keyboard Lighting");
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleMode = AutoScaleMode.None;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             ShowIcon = false;
@@ -161,6 +161,10 @@ namespace PreySense.Rgb
             {
                 if (_loadingState) return;
                 _wmi.SetBrightness((byte)val);
+                if (_effectDropdown.SelectedIndex == 0)
+                {
+                    _wmi.SetZoneColors(_wmi.ZoneColors, (byte)val);
+                }
                 SaveRgbState();
             });
 

@@ -58,7 +58,7 @@ namespace PreySense.Rgb
             UpdateDirectionVisibility(mode);
             bool isStatic = mode == 0;
             _speedSettingRow.Parent!.Visible = !isStatic;
-            _brightnessSettingRow.Parent!.Visible = !isStatic;
+            _brightnessSettingRow.Parent!.Visible = true;
             _zoneRow.Visible = isStatic;
             _presetRow.Visible = isStatic;
             _wmi.SetRgbMode(mode, _wmi.LastR, _wmi.LastG, _wmi.LastB, brightness, speed, direction);
@@ -202,7 +202,7 @@ namespace PreySense.Rgb
                 UpdateDirectionVisibility(rgbMode);
                 bool isStatic = rgbMode == 0;
                 _speedSettingRow.Parent!.Visible = !isStatic;
-                _brightnessSettingRow.Parent!.Visible = !isStatic;
+                _brightnessSettingRow.Parent!.Visible = true;
                 _zoneRow.Visible = isStatic;
                 _presetRow.Visible = isStatic;
             }
@@ -210,7 +210,6 @@ namespace PreySense.Rgb
             finally
             {
                 _loadingState = false;
-                ApplyMode();
             }
         }
 
