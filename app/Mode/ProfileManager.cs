@@ -54,6 +54,7 @@ namespace PreySense.Mode
                 profile.ApplyCpuLimits = (int)key.GetValue("ApplyCpuLimits", 0) == 1;
                 profile.ApplyGpuLimits = (int)key.GetValue("ApplyGpuLimits", 0) == 1;
                 profile.ApplyFanCurve = (int)key.GetValue("ApplyFanCurve", 0) == 1;
+                profile.FanRampUp = (int)key.GetValue("FanRampUp", 0);
             }
             catch { }
 
@@ -89,6 +90,7 @@ namespace PreySense.Mode
                 key.SetValue("ApplyCpuLimits", profile.ApplyCpuLimits ? 1 : 0);
                 key.SetValue("ApplyGpuLimits", profile.ApplyGpuLimits ? 1 : 0);
                 key.SetValue("ApplyFanCurve", profile.ApplyFanCurve ? 1 : 0);
+                key.SetValue("FanRampUp", profile.FanRampUp);
                 return true;
             }
             catch (Exception ex)
@@ -147,7 +149,8 @@ namespace PreySense.Mode
                     "GpuMemoryOffset",
                     "ApplyCpuLimits",
                     "ApplyGpuLimits",
-                    "ApplyFanCurve"
+                    "ApplyFanCurve",
+                    "FanRampUp"
                 })
                 {
                     TryDeleteValue(key, valueName);

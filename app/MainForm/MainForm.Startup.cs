@@ -53,7 +53,7 @@ namespace PreySense
             buttonAutoRefreshRate.BorderColor = colorGray;
             buttonRgbLighting.BorderColor = colorGray;
 
-            buttonColorProfiles.Text = "Color";
+            buttonColorProfiles.Text = "Display";
             buttonColorProfiles.TabStop = false;
             buttonColorProfiles.Borderless = false;
             buttonColorProfiles.Secondary = true;
@@ -183,6 +183,63 @@ namespace PreySense
                     LoadCurrentHardwarePowerMode();
                 }));
             });
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("PreySense-Updater");
+                string json = await client.GetStringAsync("https://api.github.com/repos/hammadzaigham/PreySense/releases/latest");
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("tag_name", out var tagProperty))
+                {
+                    string? latestTag = tagProperty.GetString();
+                    if (!string.IsNullOrEmpty(latestTag))
+                    {
+                        string latestVersionStr = latestTag.TrimStart('v', 'V');
+                        string currentVersionStr = Program.VersionString;
+
+                        if (Version.TryParse(latestVersionStr, out Version? latestVersion) &&
+                            Version.TryParse(currentVersionStr, out Version? currentVersion))
+                        {
+                            if (latestVersion > currentVersion)
+                            {
+                                BeginInvoke(new Action(() =>
+                                {
+                                    DialogResult result = MessageBox.Show(
+                                        $"A new version ({latestTag}) of Prey Sense is available.\n\n" +
+                                        "Would you like to open the GitHub repository to download it?",
+                                        "Prey Sense - Update Available",
+                                        MessageBoxButtons.YesNo,
+                                        MessageBoxIcon.Information);
+
+                                    if (result == DialogResult.Yes)
+                                    {
+                                        try
+                                        {
+                                            Process.Start(new ProcessStartInfo
+                                            {
+                                                FileName = "https://github.com/hammadzaigham/PreySense/releases",
+                                                UseShellExecute = true
+                                            });
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            AppLogger.Log($"Failed to open update link: {ex.Message}");
+                                        }
+                                    }
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Update check failed: {ex.Message}");
+            }
         }
     }
 }

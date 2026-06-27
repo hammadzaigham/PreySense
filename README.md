@@ -9,10 +9,10 @@ This project is experimental and hardware-specific. It has been developed and te
 - Performance modes: Eco, Silent, Balanced, Performance, and Turbo.
 - Profile-based settings saved per performance mode.
 - CPU power limit controls.
-- Fan controls for auto, max, and custom fan modes.
+- NVIDIA GPU overclock.
+- Custom Fan speed control.
 - Per-mode fan curves and saved fan settings.
-- NVIDIA GPU overclock offsets through NVAPI.
-- GPU mode controls for Endurance, Standard, and Ultimate where supported. Auto GPU behavior on battery.
+- GPU mode controls for Endurance, Standard, and Ultimate. Auto GPU behavior on battery.
 - Battery charge limit control.
 - Auto display refresh-rate switching + LCD overdrive.
 - Color profile handling for display refresh modes.
@@ -25,7 +25,7 @@ This project is experimental and hardware-specific. It has been developed and te
 - Windows 10 or Windows 11 x64.
 - Acer Predator laptop with compatible Acer WMI and AcerService interfaces.
 - Microsoft .NET 10 Windows Desktop Runtime x64.
-- PawnIO driver installed for CPU power limit access: https://pawnio.eu/
+- Either XTU or [PawnIO](https://pawnio.eu/) driver installed for CPU power limit access.
 - Predator Sense installed for Acer Services.
 
 ## Download
@@ -40,18 +40,10 @@ Install the .NET 10 SDK, then run:
 dotnet build app\PreySense.csproj
 ```
 
-Or publish a release build:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\publish.ps1
-```
-
 ## Acer Documentation
+
 - `docs/acer_wmi_documentation.md`
 - `docs/acer_service_rgb.md`
-- `docs/scripts/Disable Acer Bloatware.bat`
-- `docs/scripts/Enable Acer Bloatware.bat`
-
 
 ## Registry State
 

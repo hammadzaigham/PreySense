@@ -19,6 +19,7 @@ public partial class ColorForm : RForm
 
         InitializeComponent();
         InitTheme(true);
+        _blueLightCheck.CheckedChanged += (s, e) => { if (!_isLoading) RequestApply(); };
         LoadProfile();
     }
 
@@ -34,6 +35,7 @@ public partial class ColorForm : RForm
             _gammaSlider.Value = ToUiGamma(profile.GammaR);
             _saturationSlider.Value = profile.Saturation;
             _hueSlider.Value = profile.Hue;
+            _blueLightCheck.Checked = profile.BlueLight;
 
             _brightnessValue.Value = ToUiPercent(profile.BrightnessR);
             _contrastValue.Value = ToUiPercent(profile.ContrastR);
@@ -55,6 +57,7 @@ public partial class ColorForm : RForm
         _gammaSlider.Value = 100;
         _saturationSlider.Value = 50;
         _hueSlider.Value = 0;
+        _blueLightCheck.Checked = false;
 
         _brightnessValue.Value = 50;
         _contrastValue.Value = 50;
@@ -81,7 +84,8 @@ public partial class ColorForm : RForm
             GammaG = (double)_gammaValue.Value,
             GammaB = (double)_gammaValue.Value,
             Saturation = _saturationSlider.Value,
-            Hue = _hueSlider.Value
+            Hue = _hueSlider.Value,
+            BlueLight = _blueLightCheck.Checked
         };
 
         DisplayManager.SaveProfile(_refreshRate, profile);

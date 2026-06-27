@@ -18,6 +18,7 @@ namespace PreySense.Helpers
         public double GammaB { get; set; } = 1.0;
         public int Saturation { get; set; } = 50;
         public int Hue { get; set; } = 0;
+        public bool BlueLight { get; set; } = false;
     }
 
     public static class DisplayManager
@@ -62,6 +63,7 @@ namespace PreySense.Helpers
                     profile.GammaB = Convert.ToDouble(key.GetValue("GammaB", "1.0"));
                     profile.Saturation = (int)key.GetValue("Saturation", 50);
                     profile.Hue = (int)key.GetValue("Hue", 0);
+                    profile.BlueLight = (int)key.GetValue("BlueLight", 0) == 1;
                 }
             }
             catch (Exception ex)
@@ -90,6 +92,7 @@ namespace PreySense.Helpers
                     key.SetValue("GammaB", profile.GammaB.ToString("0.00"));
                     key.SetValue("Saturation", profile.Saturation);
                     key.SetValue("Hue", profile.Hue);
+                    key.SetValue("BlueLight", profile.BlueLight ? 1 : 0);
                 }
             }
             catch (Exception ex)
@@ -143,6 +146,9 @@ namespace PreySense.Helpers
                 double sG = 0.715 + 0.285 * sat;
                 double sB = 0.072 + 0.928 * sat;
 
+                double blueScale = profile.BlueLight ? 0.6 : 1.0;
+                double greenScale = profile.BlueLight ? 0.9 : 1.0;
+
                 for (int i = 0; i < 256; i++)
                 {
                     double v = i / 255.0;
@@ -156,8 +162,8 @@ namespace PreySense.Helpers
                     vB = (vB - 0.5) * cB + 0.5;
 
                     vR = vR * bR * hR * sR;
-                    vG = vG * bG * hG * sG;
-                    vB = vB * bB * hB * sB;
+                    vG = vG * bG * hG * sG * greenScale;
+                    vB = vB * bB * hB * sB * blueScale;
 
                     ramp.Red[i] = (ushort)Math.Clamp(vR * 65535.0, 0.0, 65535.0);
                     ramp.Green[i] = (ushort)Math.Clamp(vG * 65535.0, 0.0, 65535.0);

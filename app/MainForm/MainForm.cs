@@ -41,6 +41,20 @@ namespace PreySense
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+
         private const int SW_RESTORE = 9;
         private const int HWND_BROADCAST = 0xffff;
         private static readonly uint WM_SHOWME = RegisterWindowMessage("PREY_SENSE_SHOW_INSTANCE");
@@ -72,7 +86,10 @@ namespace PreySense
         private bool? _isPluggedIn = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online;
         private bool _isLoaded = false;
         private bool _isApplyingSavedBatteryLimit = false;
-        private bool _batteryLimitPendingApply = false;
+        private bool _isTelemetryUpdating = false;
+        private int _fanRampUp = 0;
+        private System.Windows.Forms.Timer _batteryThrottleTimer = null!;
+        private int _targetBatteryMode = -1;
         private int _maxHz = 60;
         private int _lastRefreshRate = -1;
         private int _lastAppliedGammaRefreshRate = -1;
@@ -134,12 +151,20 @@ namespace PreySense
                 QueueStartupWork();
                 StartDeferredStartupInitialization();
                 BeginStartupFadeIn();
+                _ = Task.Run(CheckForUpdatesAsync);
             };
 
             _isLoaded = true;
         }
 
         protected override bool ShowWindowIcon => true;
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int val = 1;
+            DwmSetWindowAttribute(this.Handle, DWMWA_TRANSITIONS_FORCEDISABLED, ref val, sizeof(int));
+        }
 
         private void BeginStartupFadeIn()
         {
@@ -289,6 +314,16 @@ namespace PreySense
             buttonRgbLighting.Click += (s, e) => OpenRgbProfilesForm();
 
             // Battery Limit Slider
+            _batteryThrottleTimer = new System.Windows.Forms.Timer { Interval = 33 };
+            _batteryThrottleTimer.Tick += (s, e) => {
+                _batteryThrottleTimer.Stop();
+                if (_targetBatteryMode != -1)
+                {
+                    ApplyBatteryMode(_targetBatteryMode);
+                    _targetBatteryMode = -1;
+                }
+            };
+
             sliderBatteryChargeLimit.Min = 40;
             sliderBatteryChargeLimit.Max = 100;
             sliderBatteryChargeLimit.Step = 5;
@@ -296,25 +331,33 @@ namespace PreySense
             sliderBatteryChargeLimit.Value = 100;
             sliderBatteryChargeLimit.ValueChanged += (s, e) => {
                 int val = sliderBatteryChargeLimit.Value >= 90 ? 100 : 80;
-                if (sliderBatteryChargeLimit.Value != val) sliderBatteryChargeLimit.Value = val;
+                if (sliderBatteryChargeLimit.Value != val)
+                {
+                    sliderBatteryChargeLimit.Value = val;
+                    return;
+                }
                 labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%";
                 UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
-                _batteryLimitPendingApply = _isLoaded && !_isApplyingSavedBatteryLimit;
+                if (_isLoaded && !_isApplyingSavedBatteryLimit)
+                {
+                    int mode = (val == 80) ? 1 : 0;
+                    _targetBatteryMode = mode;
+                    if (!_batteryThrottleTimer.Enabled)
+                    {
+                        _batteryThrottleTimer.Start();
+                    }
+                }
             };
             labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%"; // Show value at launch
             UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
-            sliderBatteryChargeLimit.MouseUp += (s, e) => {
-                if (_batteryLimitPendingApply)
-                {
-                    _batteryLimitPendingApply = false;
-                    int mode = (sliderBatteryChargeLimit.Value == 80) ? 1 : 0;
-                    ApplyBatteryMode(mode);
-                }
-            };
             buttonBatteryFull.Click += (s, e) => {
                 int nextMode = sliderBatteryChargeLimit.Value == 80 ? 0 : 1;
                 sliderBatteryChargeLimit.Value = nextMode == 1 ? 80 : 100;
-                ApplyBatteryMode(nextMode);
+                _targetBatteryMode = nextMode;
+                if (!_batteryThrottleTimer.Enabled)
+                {
+                    _batteryThrottleTimer.Start();
+                }
             };
 
             buttonColorProfiles.Click += (s, e) => OpenColorForm();
@@ -329,42 +372,70 @@ namespace PreySense
 
         private void UpdateTelemetry(object? sender, EventArgs e)
         {
-            CheckPowerSourceTransition();
+            if (_isTelemetryUpdating) return;
+            _isTelemetryUpdating = true;
 
-            _cpuTemp = _wmi.CpuTemp;
-            _gpuTemp = _wmi.GpuTemp;
-            _cpuRpm = _wmi.CpuFanRpm;
-            _gpuRpm = _wmi.GpuFanRpm;
-
-            ApplyActiveFanControl();
-
-            bool dgpuDisabled = _gpuMode == 0;
-
-            // Render temperatures in the card headers
-            labelCpuFanStatus.Text = _cpuTemp > 0 ? $"CPU: {_cpuTemp}°C  {_cpuRpm} RPM" : $"CPU: --°C  {_cpuRpm} RPM";
-            if (dgpuDisabled)
+            Task.Run(() =>
             {
-                labelGpuModeFan.Text = "";
-            }
-            else
-            {
-                labelGpuModeFan.Text = _gpuTemp > 0 ? $"GPU: {_gpuTemp}°C  {_gpuRpm} RPM" : $"GPU: 0°C  {_gpuRpm} RPM";
-            }
-            if (Visible && WindowState != FormWindowState.Minimized)
-            {
-                _currentRefreshRate = GetCurrentRefreshRate();
-            }
+                try
+                {
+                    _wmi.RefreshAcerService();
+                    int cpuTemp = _wmi.CpuTemp;
+                    int gpuTemp = _wmi.GpuTemp;
+                    int cpuRpm = _wmi.CpuFanRpm;
+                    int gpuRpm = _wmi.GpuFanRpm;
+                    bool onBattery = IsOnBatteryPower();
 
-            if (_showBatteryTelemetry && Visible && WindowState != FormWindowState.Minimized)
-                RefreshBatteryRateLabel();
+                    _cpuTemp = cpuTemp;
+                    _gpuTemp = gpuTemp;
+                    _cpuRpm = cpuRpm;
+                    _gpuRpm = gpuRpm;
 
-            int currentHz = _currentRefreshRate;
-            if (_lastRefreshRate != currentHz)
-            {
-                _lastRefreshRate = currentHz;
-                ApplyGammaForRefreshRate(currentHz);
-                SyncRefreshRateButtons(currentHz, buttonAutoRefreshRate.Activated);
-            }
+                    ApplyActiveFanControl();
+
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (IsDisposed) return;
+
+                        bool dgpuDisabled = _gpuMode == 0;
+                        labelCpuFanStatus.Text = _cpuTemp > 0 ? $"CPU: {_cpuTemp}°C  {_cpuRpm} RPM" : $"CPU: --°C  {_cpuRpm} RPM";
+                        if (dgpuDisabled)
+                        {
+                            labelGpuModeFan.Text = "";
+                        }
+                        else
+                        {
+                            labelGpuModeFan.Text = _gpuTemp > 0 ? $"GPU: {_gpuTemp}°C  {_gpuRpm} RPM" : $"GPU: 0°C  {_gpuRpm} RPM";
+                        }
+
+                        if (Visible && WindowState != FormWindowState.Minimized)
+                        {
+                            _currentRefreshRate = GetCurrentRefreshRate();
+                        }
+
+                        if (_showBatteryTelemetry && Visible && WindowState != FormWindowState.Minimized)
+                            RefreshBatteryRateLabel();
+
+                        int currentHz = _currentRefreshRate;
+                        if (_lastRefreshRate != currentHz)
+                        {
+                            _lastRefreshRate = currentHz;
+                            ApplyGammaForRefreshRate(currentHz);
+                            SyncRefreshRateButtons(currentHz, buttonAutoRefreshRate.Activated);
+                        }
+
+                        CheckPowerSourceTransition(onBattery);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"Telemetry background update failed: {ex.Message}");
+                }
+                finally
+                {
+                    _isTelemetryUpdating = false;
+                }
+            });
         }
 
         public void ToggleCustomFans(bool enable)
@@ -436,6 +507,21 @@ namespace PreySense
             float gpuTemp = _gpuTemp > 0 ? _gpuTemp : 40f;
             int targetCpu = GetSpeedFromCurve(_cpuCurve, cpuTemp);
             int targetGpu = GetSpeedFromCurve(_gpuCurve, gpuTemp);
+
+            int rampUp = _fanRampUp;
+            if (rampUp > 0)
+            {
+                float maxIncrease = 100f / rampUp;
+                if (targetCpu > _lastFanCpuPercent)
+                {
+                    targetCpu = (int)Math.Min(targetCpu, _lastFanCpuPercent + maxIncrease);
+                }
+                if (targetGpu > _lastFanGpuPercent)
+                {
+                    targetGpu = (int)Math.Min(targetGpu, _lastFanGpuPercent + maxIncrease);
+                }
+            }
+
             _lastFanCpuPercent = targetCpu;
             _lastFanGpuPercent = targetGpu;
             _wmi.SetFanControl(2, targetCpu, targetGpu);
@@ -459,6 +545,7 @@ namespace PreySense
                 _applyCustomFans = true;
                 buttonTurboFanModePower.Activated = true;
                 SaveState("Fan_CurveEnabled", 1);
+                _fanRampUp = profile.FanRampUp;
                 ApplyActiveFanControl();
             }
             else if (_applyCustomFans)
@@ -466,6 +553,7 @@ namespace PreySense
                 _applyCustomFans = false;
                 buttonTurboFanModePower.Activated = false;
                 SaveState("Fan_CurveEnabled", 0);
+                _fanRampUp = 0;
                 RestoreAutoFanControl();
             }
         }
@@ -535,8 +623,19 @@ namespace PreySense
                 BeginInvoke(new Action(ToggleAppVisibility));
                 return;
             }
-            if (this.Visible) HideApp();
-            else ShowApp();
+
+            IntPtr fgWindow = GetForegroundWindow();
+            GetWindowThreadProcessId(fgWindow, out uint fgProcessId);
+            bool isOurProcessActive = (fgProcessId == (uint)Environment.ProcessId);
+
+            if (this.Visible && isOurProcessActive)
+            {
+                HideApp();
+            }
+            else
+            {
+                ShowApp();
+            }
         }
 
         public void ShowApp()
@@ -546,15 +645,25 @@ namespace PreySense
                 BeginInvoke(new Action(ShowApp));
                 return;
             }
-            this.Show();
-            this.WindowState = FormWindowState.Normal;
-            // Use Win32 to forcibly bring the window to the foreground.
-            // Activate() alone is blocked by Windows focus-stealing rules when
-            // another app is in the foreground, which causes the taskbar to flash
-            // instead of the window appearing.
+            if (this.Visible)
+            {
+                // Toggling ShowInTaskbar forces window handle recreation on the active virtual desktop
+                // without playing the Windows minimize/restore transition animations.
+                bool original = this.ShowInTaskbar;
+                this.ShowInTaskbar = !original;
+                this.ShowInTaskbar = original;
+            }
+            else
+            {
+                this.Show();
+            }
             ShowWindow(this.Handle, SW_RESTORE);
             SetForegroundWindow(this.Handle);
+            SetActiveWindow(this.Handle);
             this.Activate();
+            this.Focus();
+            this.TopMost = true;
+            this.TopMost = false;
         }
 
         public void HideApp()

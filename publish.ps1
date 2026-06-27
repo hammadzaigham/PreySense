@@ -9,15 +9,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
-$publishRoot = Join-Path $root "publish"
 $outputPath = if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path $root $Output }
 
-if (Test-Path -LiteralPath $publishRoot) {
+if (Test-Path -LiteralPath $outputPath) {
     try {
-        Get-ChildItem -LiteralPath $publishRoot -Force | Remove-Item -Recurse -Force
+        Get-ChildItem -LiteralPath $outputPath -Force | Remove-Item -Recurse -Force
     }
     catch {
-        throw "Could not clear '$publishRoot'. Close any running PreySense.exe from that folder, or pass a different -Output path."
+        throw "Could not clear '$outputPath'. Close any running PreySense.exe from that folder, or pass a different -Output path."
     }
 }
 

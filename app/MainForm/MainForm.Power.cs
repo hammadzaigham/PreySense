@@ -112,6 +112,7 @@ namespace PreySense
             }
 
             _applyCustomFans = profile.ApplyFanCurve;
+            _fanRampUp = _applyCustomFans ? profile.FanRampUp : 0;
             _maxFanEnabled = GetRegistryInt(key, "Fan_MaxSpeed", 0) == 1;
             buttonTurboFanModePower.Activated = _applyCustomFans;
         }
@@ -245,7 +246,12 @@ namespace PreySense
 
         private void CheckPowerSourceTransition()
         {
-            bool currentPluggedIn = !IsOnBatteryPower();
+            CheckPowerSourceTransition(null);
+        }
+
+        private void CheckPowerSourceTransition(bool? onBatteryOverride)
+        {
+            bool currentPluggedIn = onBatteryOverride.HasValue ? !onBatteryOverride.Value : !IsOnBatteryPower();
             if (_isPluggedIn != currentPluggedIn)
             {
                 _isPluggedIn = currentPluggedIn;

@@ -1007,7 +1007,7 @@ namespace PreySense
             buttonColorProfiles.Secondary = true;
             buttonColorProfiles.Size = new Size(112, 40);
             buttonColorProfiles.TabIndex = 4;
-            buttonColorProfiles.Text = "Color Profile";
+            buttonColorProfiles.Text = "Display";
             buttonColorProfiles.UseVisualStyleBackColor = false;
             // 
             // labelMiddleFanStatus
