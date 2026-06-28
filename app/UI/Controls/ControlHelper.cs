@@ -90,7 +90,16 @@ public static class ControlHelper
 
                 button.FlatStyle = FlatStyle.Flat;
                 if (!button.Borderless)
-                    button.FlatAppearance.BorderColor = button.Secondary ? RForm.borderSecond : RForm.borderMain;
+                {
+                    if (button.Name == "buttonTurboFanModePower")
+                    {
+                        button.FlatAppearance.BorderColor = RForm.colorCustom;
+                    }
+                    else
+                    {
+                        button.FlatAppearance.BorderColor = button.Secondary ? RForm.borderSecond : RForm.borderMain;
+                    }
+                }
 
                 if (button.Image is not null && _invert)
                     button.Image = AdjustImage(button.Image);
