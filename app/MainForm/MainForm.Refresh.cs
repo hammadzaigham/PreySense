@@ -252,11 +252,10 @@ namespace PreySense
 
             if (currentHz != hz)
                 SetRefreshRate(hz);
-            SyncRefreshRateButtons(hz, false);
+            SyncRefreshRateButtons(hz, buttonAutoRefreshRate.Activated);
 
             SaveState("RefreshRate", hz);
             UpdateScreenCardTitle();
-            ApplyGammaForRefreshRate(hz);
         }
 
         private void RestoreDisplayModeOnLaunch(int hz)
@@ -273,5 +272,6 @@ namespace PreySense
             UpdateScreenCardTitle();
             ApplyGammaForRefreshRate(currentHz);
         }
+
     }
 }

@@ -69,13 +69,13 @@ namespace PreySense.Rgb
 
         private void ApplyMode()
         {
-            if (!CanApplyHardware()) return;
             int idx = _effectDropdown.SelectedIndex;
             int mode = idx >= 0 && idx < RgbProfile.ModeCount ? idx : 0;
+            UpdateModeLayout(mode);
+            if (!CanApplyHardware()) return;
             byte brightness = GetRgbBrightness();
             byte speed = (byte)_speedSettingRow.Value;
             byte direction = GetSelectedDirection();
-            UpdateModeLayout(mode);
             _wmi.SetRgbMode(mode, _wmi.LastR, _wmi.LastG, _wmi.LastB, brightness, speed, direction);
             SaveRgbState(mode);
         }

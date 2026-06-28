@@ -64,7 +64,9 @@ namespace PreySense
         private WmiController _wmi => _wmiInstance ??= new WmiController();
         public WmiController Wmi => _wmi;
         private KeyboardHook? _keyboardHook;
+        private WmiHotkeyWatcher? _wmiHotkeyWatcher;
         private QuickAccessModeWatcher? _quickAccessModeWatcher;
+        private Overlay.ModeToastNotification? _modeToast;
         private System.Windows.Forms.Timer _timer = new();
         private System.Windows.Forms.Timer _startupFadeTimer = new();
         private bool _isFadingIn;
@@ -86,7 +88,7 @@ namespace PreySense
         private bool _isApplyingSavedBatteryLimit = false;
         private bool _isApplyingSavedRgbState = false;
         private bool _isTelemetryUpdating = false;
-        private int _fanRampUp = 0;
+        private int _fanRampUp = 1;
         private int _pendingBatteryMode = -1;
         private int _maxHz = 60;
         private int _lastRefreshRate = -1;
@@ -96,7 +98,11 @@ namespace PreySense
         private bool _showBatteryTelemetry = true;
         private byte _prevPowerMode = 0x01; // Balanced
         private DateTime _lastModeChangeTime = DateTime.MinValue;
+        private DateTime _lastDirectModeShortcutTime = DateTime.MinValue;
+        private DateTime _lastModeToastTime = DateTime.MinValue;
         private bool _allowExit = false;
+        private const int DirectShortcutEchoSuppressMs = 5000;
+        private const int ModeToastDebounceMs = 1000;
 
         private static readonly string[] RgbModeNames = RgbProfile.UiModeNames;
 
@@ -104,7 +110,7 @@ namespace PreySense
         private static readonly Color SeparatorColor = Color.FromArgb(55, 55, 55);
         private static readonly Color AccentColor = Color.FromArgb(58, 174, 239);
         private static readonly Color PerformanceModeColor = Color.FromArgb(147, 51, 234);
-        private static readonly Color TurboModeColor = Color.FromArgb(88, 28, 135);
+        private static readonly Color TurboModeColor = Color.FromArgb(255, 32, 32);
 
         // Sub-forms active references
         public Fans? fansForm;
@@ -236,10 +242,21 @@ namespace PreySense
             tableButtons.ResumeLayout();
         }
 
+        private const uint WM_DISPLAYCHANGE = 0x007E;
+
         protected override void WndProc(ref Message m)
         {
             if (WM_SHOWME != 0 && (uint)m.Msg == WM_SHOWME) ShowApp();
             base.WndProc(ref m);
+
+            if ((uint)m.Msg == WM_DISPLAYCHANGE)
+            {
+                // Give the display driver and OS a moment to finish resetting the LUT
+                System.Threading.Thread.Sleep(250);
+                int hz = GetCurrentRefreshRate();
+                _currentRefreshRate = hz;
+                ApplyGammaForRefreshRate(hz, force: true);
+            }
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -266,15 +283,15 @@ namespace PreySense
         private void WireUpEvents()
         {
             // Performance modes
-            buttonEcoMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyPowerMode(SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline ? (byte)0x06 : (byte)0x00); };
-            buttonBalancedMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyPowerMode(0x01); };
-            buttonPerformanceMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyPowerMode(0x04); };
-            buttonTurboFanMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyPowerMode(0x05); };
+            buttonEcoMode.Click += (s, e) => ApplyPowerMode(SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline ? (byte)0x06 : (byte)0x00);
+            buttonBalancedMode.Click += (s, e) => ApplyPowerMode(0x01);
+            buttonPerformanceMode.Click += (s, e) => ApplyPowerMode(0x04);
+            buttonTurboFanMode.Click += (s, e) => ApplyPowerMode(0x05);
 
             // GPU modes
-            buttonEnduranceMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyGpuMode(0); };
-            buttonGpuStandardMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyGpuMode(1); };
-            buttonGpuUltimateMode.Click += (s, e) => { if (IsLockoutActive()) return; ApplyGpuMode(2); };
+            buttonEnduranceMode.Click += (s, e) => ApplyGpuMode(0);
+            buttonGpuStandardMode.Click += (s, e) => ApplyGpuMode(1);
+            buttonGpuUltimateMode.Click += (s, e) => ApplyGpuMode(2);
 
             // Screen refresh
             buttonAutoRefreshRate.Click += (s, e) => ToggleAutoRefreshRate();
@@ -552,7 +569,7 @@ namespace PreySense
                 _applyCustomFans = false;
                 buttonTurboFanModePower.Activated = false;
                 SaveState("Fan_CurveEnabled", 0);
-                _fanRampUp = 0;
+                _fanRampUp = 1;
                 RestoreAutoFanControl();
             }
         }
@@ -725,7 +742,9 @@ namespace PreySense
             Program.hardwareOverlay?.Dispose();
             Program.hardwareOverlay = null;
             _keyboardHook?.Dispose();
+            _wmiHotkeyWatcher?.Dispose();
             _quickAccessModeWatcher?.Dispose();
+            _modeToast?.Dispose();
             _trayIcon?.Dispose();
             _trayMenu?.Dispose();
             _wmiInstance?.Dispose();
@@ -744,7 +763,6 @@ namespace PreySense
         public void SyncRgbControls(int mode) {}
         public void CyclePowerProfile(bool ignoreLockout = false)
         {
-            if (!ignoreLockout && IsLockoutActive()) return;
             byte currentMode = IsKnownPowerMode(_lastKnownProfile) ? _lastKnownProfile : (byte)0x01;
             bool onBattery = IsOnBatteryPower();
             byte nextMode;
@@ -782,6 +800,11 @@ namespace PreySense
             if (InvokeRequired)
             {
                 BeginInvoke(new Action(HandleModeKeyPressed));
+                return;
+            }
+
+            if ((DateTime.Now - _lastDirectModeShortcutTime).TotalMilliseconds < DirectShortcutEchoSuppressMs)
+            {
                 return;
             }
 
@@ -843,8 +866,6 @@ namespace PreySense
         /// </summary>
         public void HandleModeNumberKey(int number)
         {
-            if (IsLockoutActive()) return;
-
             byte mode = number switch
             {
                 1 => 0x06, // Eco
@@ -856,7 +877,7 @@ namespace PreySense
             };
             if (mode == 0xFF) return;
 
-            AppLogger.Log($"HandleModeNumberKey: Predator + {number} -> mode 0x{mode:X2}");
+            _lastDirectModeShortcutTime = DateTime.Now;
 
             void Apply() => ApplyPowerMode(mode);
             if (InvokeRequired)
@@ -879,6 +900,7 @@ namespace PreySense
 
         private void UpdatePowerUIForBatteryState(bool onBattery)
         {
+            UpdatePowerButtonAccentForPowerSource(onBattery);
             if (onBattery)
             {
                 if (buttonEcoMode.Text != "Eco")
@@ -909,15 +931,17 @@ namespace PreySense
         {
             AppLogger.Log($"OnHotkeyEvent: EventDetail={detail}");
             if (detail == 5)
+            {
+                if ((DateTime.Now - _lastDirectModeShortcutTime).TotalMilliseconds < DirectShortcutEchoSuppressMs)
+                {
+                    return;
+                }
+
                 HandleModeKeyPressed();
+            }
         }
 
         #endregion
-
-        private bool IsLockoutActive()
-        {
-            return (DateTime.Now - _lastModeChangeTime).TotalMilliseconds < 2000;
-        }
 
         private void ApplyAppIcon()
         {

@@ -162,21 +162,21 @@ namespace PreySense
 
         private void OpenMetricsOverlay()
         {
-            if (InvokeRequired)
+            Task.Run(() =>
             {
-                BeginInvoke(new Action(OpenMetricsOverlay));
-                return;
-            }
+                var overlay = Program.GetHardwareOverlay();
+                if (overlay.IsActive)
+                {
+                    Overlay.AppConfig.Set("overlay", 0);
+                    BeginInvoke(new Action(() => overlay.StopOverlay()));
+                    return;
+                }
 
-            if (Program.hardwareOverlay?.IsActive == true)
-            {
-                Overlay.AppConfig.Set("overlay", 0);
-                Program.hardwareOverlay?.StopOverlay();
-                return;
-            }
-
-            Overlay.AppConfig.Set("overlay", 1);
-            Program.GetHardwareOverlay().StartOverlay();
+                Overlay.AppConfig.Set("overlay", 1);
+                // Pre-initialize NVAPI/NVML and sensors in the background thread to prevent UI micro-stutters
+                PreySense.Overlay.HardwareControl.ReadSensorsOverlay();
+                BeginInvoke(new Action(() => overlay.StartOverlay()));
+            });
         }
     }
 }

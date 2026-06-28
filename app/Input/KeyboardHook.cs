@@ -25,6 +25,8 @@ namespace PreySense.Input
         private bool _isPredatorKeyPressed;
         private bool _predatorUsedInCombo;
         private bool _predatorRComboDown;
+        private bool _suppressPredatorReleaseAction;
+        private int? _activePredatorNumber;
 
         public KeyboardHook(Action onPredatorSensePressed, Action? onTurboKeyPressed = null, Action<int>? onPredatorNumberPressed = null, Action? onPredatorRPressed = null)
         {
@@ -42,10 +44,15 @@ namespace PreySense.Input
             {
                 if (curModule != null && curModule.ModuleName != null)
                 {
-                    return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+                    IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
+                    IntPtr hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, moduleHandle, 0);
+                    if (hook != IntPtr.Zero)
+                    {
+                        return hook;
+                    }
                 }
             }
-            return IntPtr.Zero;
+            return SetWindowsHookEx(WH_KEYBOARD_LL, proc, IntPtr.Zero, 0);
         }
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -79,13 +86,15 @@ namespace PreySense.Input
                         }
                         else if (isKeyUp)
                         {
-                            if (!_predatorUsedInCombo)
+                            if (!_predatorUsedInCombo && !_suppressPredatorReleaseAction)
                             {
                                 _onPredatorSensePressed();
                             }
                             _isPredatorKeyPressed = false;
                             _predatorUsedInCombo = false;
                             _predatorRComboDown = false;
+                            _suppressPredatorReleaseAction = false;
+                            _activePredatorNumber = null;
                         }
                         return (IntPtr)1; // Consume key
                     }
@@ -95,19 +104,34 @@ namespace PreySense.Input
                         _isPredatorKeyPressed = false;
                         _predatorUsedInCombo = false;
                         _predatorRComboDown = false;
+                        _suppressPredatorReleaseAction = false;
+                        _activePredatorNumber = null;
                         return (IntPtr)1;
                     }
 
                     // Predator key + number row (1-5) selects a performance mode directly.
-                    if (_isPredatorKeyPressed && isKeyDown && _onPredatorNumberPressed != null &&
+                    if (_isPredatorKeyPressed && _onPredatorNumberPressed != null &&
                         ((hookStruct.vkCode >= 0x31 && hookStruct.vkCode <= 0x35) ||   // top-row 1-5
                          (hookStruct.vkCode >= 0x61 && hookStruct.vkCode <= 0x65)))    // numpad 1-5
                     {
                         int number = hookStruct.vkCode >= 0x61
                             ? (int)(hookStruct.vkCode - 0x60)
                             : (int)(hookStruct.vkCode - 0x30);
-                        _predatorUsedInCombo = true;
-                        _onPredatorNumberPressed(number);
+
+                        if (isKeyDown)
+                        {
+                            if (_activePredatorNumber != number)
+                            {
+                                _predatorUsedInCombo = true;
+                                _suppressPredatorReleaseAction = true;
+                                _activePredatorNumber = number;
+                                _onPredatorNumberPressed(number);
+                            }
+                        }
+                        else if (isKeyUp && _activePredatorNumber == number)
+                        {
+                            _activePredatorNumber = null;
+                        }
                         return (IntPtr)1;
                     }
 
@@ -117,6 +141,7 @@ namespace PreySense.Input
                         {
                             _predatorRComboDown = true;
                             _predatorUsedInCombo = true;
+                            _suppressPredatorReleaseAction = true;
                             _onPredatorRPressed();
                         }
                         else if (isKeyUp)

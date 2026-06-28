@@ -53,7 +53,7 @@ namespace PreySense.Mode
                 profile.ApplyCpuLimits = (int)key.GetValue("ApplyCpuLimits", 0) == 1;
                 profile.ApplyGpuLimits = (int)key.GetValue("ApplyGpuLimits", 0) == 1;
                 profile.ApplyFanCurve = (int)key.GetValue("ApplyFanCurve", 0) == 1;
-                profile.FanRampUp = (int)key.GetValue("FanRampUp", 0);
+                profile.FanRampUp = (int)key.GetValue("FanRampUp", 1);
             }
             catch { }
 
@@ -230,15 +230,19 @@ namespace PreySense.Mode
         public static void ApplyProfile(PerformanceProfile profile, WmiController? wmi = null)
         {
             AppLogger.Log($"ProfileManager: Applying profile '{profile.Name}' (mode 0x{profile.PowerMode:X2})");
+            var factoryDefaults = LoadFactoryDefaultProfile(profile.PowerMode);
+            bool cpuLimitsDifferFromFactory =
+                profile.CpuPl1 != factoryDefaults.CpuPl1 ||
+                profile.CpuPl2 != factoryDefaults.CpuPl2;
 
             // Wait a second or two before applying power limit changes to stop EC from immediately overwriting them
-            if (profile.ApplyCpuLimits || profile.ApplyGpuLimits)
+            if ((profile.ApplyCpuLimits && cpuLimitsDifferFromFactory) || profile.ApplyGpuLimits)
             {
                 System.Threading.Thread.Sleep(2000);
             }
 
             // Apply CPU power limits (only if the user has opted in)
-            if (profile.ApplyCpuLimits)
+            if (profile.ApplyCpuLimits && cpuLimitsDifferFromFactory)
             {
                 AppLogger.Log($"ProfileManager: CPU PL1={profile.CpuPl1}W, PL2={profile.CpuPl2}W");
                 PowerLimitController.SetCpuPowerLimits(

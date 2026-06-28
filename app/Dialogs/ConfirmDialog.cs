@@ -19,6 +19,9 @@ namespace PreySense.Dialogs
         public static DialogResult Show(IWin32Window? owner, string message, string title, string yesText = "Apply && Restart Now", string noText = "Cancel")
         {
             using var dialog = new ConfirmDialog(message, title, yesText, noText);
+            dialog.StartPosition = owner == null
+                ? FormStartPosition.CenterScreen
+                : FormStartPosition.CenterParent;
             return dialog.ShowDialog(owner);
         }
     }

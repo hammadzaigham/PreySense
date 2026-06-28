@@ -10,6 +10,8 @@ namespace PreySense
 {
     public partial class MainForm
     {
+        private static readonly Color SilentModeOutlineColor = Color.FromArgb(210, 210, 210);
+
         private void ConfigureStartupWindow()
         {
             ApplyAppIcon();
@@ -37,7 +39,7 @@ namespace PreySense
             buttonGpuUltimateMode.Text = "Ultimate";
             buttonTurboFanModePower.Text = "Fans + Power";
 
-            buttonEcoMode.BorderColor = colorEco;
+            buttonEcoMode.BorderColor = SilentModeOutlineColor;
             buttonBalancedMode.BorderColor = colorStandard;
             buttonPerformanceMode.BorderColor = PerformanceModeColor;
             buttonTurboFanMode.BorderColor = TurboModeColor;
@@ -67,6 +69,7 @@ namespace PreySense
             button120Hz.Text = "120Hz + OD";
             buttonBatteryFull.Text = "100%";
             labelBatteryStatus.Visible = true;
+            UpdatePowerButtonAccentForPowerSource(SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline);
         }
 
         private void ConfigureStartupPanels()
@@ -78,12 +81,21 @@ namespace PreySense
             MatchSectionTitleColors();
         }
 
+        private void UpdatePowerButtonAccentForPowerSource(bool onBattery)
+        {
+            buttonEcoMode.BorderColor = onBattery ? colorEco : SilentModeOutlineColor;
+        }
+
         private void ConfigureStartupActions()
         {
             checkRunOnStartup.Checked = IsRunOnStartupEnabled();
+            checkRunOnStartup.ForeColor = foreMain;
+            checkRunOnStartup.UseVisualStyleBackColor = false;
             checkRunOnStartup.CheckedChanged += (_, _) => SetRunOnStartup(checkRunOnStartup.Checked);
 
             checkAutoGpuBattery.Checked = IsGpuBatteryAutoEnabled();
+            checkAutoGpuBattery.ForeColor = foreMain;
+            checkAutoGpuBattery.UseVisualStyleBackColor = false;
             checkAutoGpuBattery.CheckedChanged += (_, _) => SetGpuBatteryAuto(checkAutoGpuBattery.Checked);
         }
 
@@ -97,6 +109,7 @@ namespace PreySense
 
             SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
             _keyboardHook = new KeyboardHook(ToggleAppVisibility, null, HandleModeNumberKey, OpenMetricsOverlay);
+            _wmiHotkeyWatcher = new WmiHotkeyWatcher(OnHotkeyEvent);
             _quickAccessModeWatcher = new QuickAccessModeWatcher(HandleModeKeyPressed);
         }
 

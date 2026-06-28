@@ -194,6 +194,7 @@ public static class ControlHelper
             var chk = control as CheckBox;
             if (chk != null)
             {
+                chk.ForeColor = RForm.foreMain;
                 if (chk.BackColor != RForm.formBack)
                 {
                     chk.BackColor = RForm.buttonSecond;

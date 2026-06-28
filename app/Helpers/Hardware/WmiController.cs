@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.ServiceProcess;
+using System.Threading;
 using PreySense;
 
 namespace PreySense.Helpers
@@ -463,22 +464,35 @@ namespace PreySense.Helpers
         {
             if (!_acerServiceBroken && EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
             {
-                // Verify if it actually applied by reading it back
-                if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                // AcerService can report the previous mode for a brief moment after a successful set.
+                for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    SyncWindowsPowerMode(mode);
-                    return true;
-                }
-                else
-                {
-                    AppLogger.Log("SetPowerMode: Acer Service failed to verify/apply the mode. Falling back to WMI permanently.");
-                    _acerServiceBroken = true;
+                    if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                    {
+                        SyncWindowsPowerMode(mode);
+                        return true;
+                    }
+
+                    Thread.Sleep(120);
                 }
             }
 
             var (success, _) = SendCommand(AcerWmi.GamingMethods.SetMiscSetting, (ulong)0x0B | ((ulong)mode << 8));
-            SyncWindowsPowerMode(mode);
-            return success;
+            if (success)
+            {
+                for (int attempt = 0; attempt < 4; attempt++)
+                {
+                    if (TryGetPowerProfileWmi(out byte appliedMode) && appliedMode == mode)
+                    {
+                        SyncWindowsPowerMode(mode);
+                        return true;
+                    }
+
+                    Thread.Sleep(80);
+                }
+            }
+
+            return false;
         }
 
         public byte GetPowerProfile()

@@ -158,20 +158,21 @@ namespace PreySense.Rgb
             }
             _zoneRow = AddControlRow(body, "Zones", zonesRow);
             _zoneRow.Visible = false;
-
             // Brightness slider (1-5).
             _brightnessSettingRow = MakeSliderRow(body, "Brightness", sliderWidth, valueWidth, 1, 5, 5, out _brightnessValueBox, val =>
             {
                 if (!CanApplyHardware()) return;
-                _wmi.SetBrightness((byte)val);
                 if (_effectDropdown.SelectedIndex == 0)
                 {
                     _wmi.SetZoneColors(_wmi.ZoneColors, (byte)val);
                 }
+                else
+                {
+                    _wmi.SetBrightness((byte)val);
+                }
                 SaveRgbState();
             });
             ArmSliderInputs(_brightnessSettingRow, _brightnessValueBox);
-
             _effectDropdown.SelectedIndexChanged += (_, _) => ApplyMode();
             ArmDropdown(_effectDropdown);
             _directionDropdown.SelectedIndexChanged += (_, _) => ApplyDirection();
@@ -263,21 +264,52 @@ namespace PreySense.Rgb
 
             var localNud = nudVal;
             var localSlider = slider;
+            int lastAppliedValue = defaultValue;
+
             slider.ValueChanged += (_, _) =>
             {
                 if (_isUpdatingUI) return;
                 _isUpdatingUI = true;
-                try { localNud.Value = Math.Clamp(slider.Value, localNud.Minimum, localNud.Maximum); }
+                try
+                {
+                    localNud.Value = Math.Clamp(slider.Value, localNud.Minimum, localNud.Maximum);
+                }
                 finally { _isUpdatingUI = false; }
-                onValueChanged(slider.Value);
             };
+
+            slider.Slider.MouseUp += (_, _) =>
+            {
+                if (_isUpdatingUI) return;
+                _isUpdatingUI = true;
+                try
+                {
+                    if (lastAppliedValue != slider.Value)
+                    {
+                        lastAppliedValue = slider.Value;
+                        onValueChanged(slider.Value);
+                    }
+                }
+                finally { _isUpdatingUI = false; }
+            };
+
             nudVal.ValueChanged += (_, _) =>
             {
                 if (_isUpdatingUI) return;
                 _isUpdatingUI = true;
-                try { localSlider.Value = (int)localNud.Value; }
+                try
+                {
+                    int val = (int)localNud.Value;
+                    if (localSlider.Value != val)
+                    {
+                        localSlider.Value = val;
+                    }
+                    if (lastAppliedValue != val)
+                    {
+                        lastAppliedValue = val;
+                        onValueChanged(val);
+                    }
+                }
                 finally { _isUpdatingUI = false; }
-                onValueChanged((int)localNud.Value);
             };
 
             parent.Controls.Add(row, 0, parent.RowCount);

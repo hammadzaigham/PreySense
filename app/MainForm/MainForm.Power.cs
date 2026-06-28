@@ -144,7 +144,7 @@ namespace PreySense
             }
 
             _applyCustomFans = profile.ApplyFanCurve;
-            _fanRampUp = _applyCustomFans ? profile.FanRampUp : 0;
+            _fanRampUp = _applyCustomFans ? profile.FanRampUp : 1;
             _maxFanEnabled = GetRegistryInt(key, "Fan_MaxSpeed", 0) == 1;
             buttonTurboFanModePower.Activated = _applyCustomFans;
         }
@@ -161,8 +161,19 @@ namespace PreySense
 
         private void ApplyPowerMode(byte mode, bool persistHardware)
         {
-            _lastModeChangeTime = DateTime.Now;
+            if (persistHardware && IsKnownPowerMode(_lastKnownProfile) && mode == _lastKnownProfile)
+                return;
+
+            byte previousMode = IsKnownPowerMode(_lastKnownProfile) ? _lastKnownProfile : GetActivePowerMode();
             byte currentMode = 0x01;
+            string modeName = mode switch
+            {
+                0x00 => "Silent",
+                0x04 => "Performance",
+                0x05 => "Turbo",
+                0x06 => "Eco",
+                _ => "Balanced"
+            };
             try
             {
                 using var k = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
@@ -176,36 +187,46 @@ namespace PreySense
                 SaveState("PrevPower", _prevPowerMode);
             }
 
-            if (persistHardware)
-                _wmi.SetPowerMode(mode);
+            // Apply all visual state immediately so the button outline and label
+            // update before any blocking hardware call can delay the repaint.
             _lastKnownProfile = mode;
-
             HighlightPowerBtn(mode);
-            SaveState("Power", mode);
-
-            if (IsOnBatteryPower())
-            {
-                SaveState("PowerBattery", mode);
-            }
-            else
-            {
-                SaveState("PowerAC", mode);
-            }
-
-            string modeName = mode switch
-            {
-                0x00 => "Silent",
-                0x04 => "Performance",
-                0x05 => "Turbo",
-                0x06 => "Eco",
-                _ => "Balanced"
-            };
-
             UpdatePerformanceModeLabel(modeName);
             fansForm?.SyncActiveMode(mode);
 
+            if (previousMode != mode)
+            {
+                ShowModeToast(modeName, mode);
+            }
+
+            if (!persistHardware)
+            {
+                // Sync-only path (e.g. hardware poll): no WMI write needed.
+                ApplyFanCurvesForMode(mode);
+                return;
+            }
+
+            // Run the blocking WMI poll and profile apply off the UI thread so the
+            // button outline repaints immediately without waiting up to ~600 ms.
             _ = Task.Run(() =>
             {
+                bool applied = _wmi.SetPowerMode(mode);
+                if (!applied)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        _modeToast?.Dismiss();
+                        _lastKnownProfile = previousMode;
+                        MarkPowerMode(previousMode);
+                    }));
+                    return;
+                }
+
+                _lastModeChangeTime = DateTime.Now;
+                SaveState("Power", mode);
+                SaveState(IsOnBatteryPower() ? "PowerBattery" : "PowerAC", mode);
+
+
                 try
                 {
                     PreySense.Mode.ProfileManager.ApplyProfile(modeName, _wmi);
@@ -214,10 +235,39 @@ namespace PreySense
                 {
                     Debug.WriteLine($"Failed to auto-apply profile settings for {modeName}: {ex.Message}");
                 }
-            });
 
-            ApplyFanCurvesForMode(mode);
+                BeginInvoke(new Action(() => ApplyFanCurvesForMode(mode)));
+            });
         }
+
+        private void ShowModeToast(string modeName, byte mode)
+        {
+            if ((DateTime.Now - _lastModeToastTime).TotalMilliseconds < ModeToastDebounceMs)
+            {
+                return;
+            }
+
+            _lastModeToastTime = DateTime.Now;
+            _modeToast ??= new Overlay.ModeToastNotification();
+            _modeToast.ShowMode(modeName, GetModeAccentColor(mode), GetModeToastIcon(mode));
+        }
+
+        private static Color GetModeAccentColor(byte mode) => mode switch
+        {
+            0x00 => SilentModeOutlineColor,
+            0x06 => colorEco,
+            0x04 => PerformanceModeColor,
+            0x05 => colorTurbo,
+            _ => colorStandard
+        };
+
+        private Image? GetModeToastIcon(byte mode) => mode switch
+        {
+            0x00 or 0x06 => buttonEcoMode.Image,
+            0x04 => buttonPerformanceMode.Image,
+            0x05 => buttonTurboFanMode.Image,
+            _ => buttonBalancedMode.Image
+        };
 
         private void SyncPowerModeFromHardware(byte mode)
         {

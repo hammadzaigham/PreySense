@@ -69,12 +69,11 @@ namespace PreySense.Mode
             int pl2Watts,
             bool pl2Enable = true)
         {
-            if (AreCpuPowerLimitsAlreadyApplied(pl1Watts, pl2Watts, pl2Enable))
-            {
-                AppLogger.Log($"[Intel RAPL] CPU power limits already applied; skipped write (PL1={pl1Watts}W, PL2={pl2Watts}W, PL2Enable={pl2Enable}).");
-                return;
-            }
-
+            // Note: callers (ApplyProfile) are responsible for gating this call to only
+            // fire when the profile's limits differ from factory defaults.  We do not
+            // skip writes here based on the current MSR value, because the EC can reset
+            // the register after a mode switch and a stale readback would cause us to
+            // silently miss the re-apply.
             TrySetLimitsViaPawnIo(pl1Watts, pl2Watts, pl2Enable);
         }
 
@@ -135,7 +134,7 @@ namespace PreySense.Mode
                                     $"[Intel RAPL] PawnIO MSR 0x610 write={ok}, readback=0x{verifyVal:X16}, target=0x{newVal:X16}, " +
                                     $"PL1Match={((verifyVal & pl1Mask) == (newVal & pl1Mask))}, " +
                                     $"PL2Match={((verifyVal & pl2Mask) == (newVal & pl2Mask))} " +
-                                    $"(PL1: {pl1Watts}W, PL2: {pl2Watts}W, PL2Enable: {pl2Enable})");
+                                    $"(PL1: {pl1Watts}W, PL2: {pl2Watts}W)");
 
                                 if ((verifyVal & pl1Mask) == (newVal & pl1Mask) &&
                                     (verifyVal & pl2Mask) == (newVal & pl2Mask))
@@ -143,7 +142,7 @@ namespace PreySense.Mode
                             }
                             else
                             {
-                                AppLogger.Log($"[Intel RAPL] PawnIO MSR 0x610 write succeeded but readback failed, target=0x{newVal:X16} (PL1: {pl1Watts}W, PL2: {pl2Watts}W, PL2Enable: {pl2Enable})");
+                                AppLogger.Log($"[Intel RAPL] PawnIO MSR 0x610 write succeeded but readback failed, target=0x{newVal:X16} (PL1: {pl1Watts}W, PL2: {pl2Watts}W)");
                             }
                         }
                     }
@@ -280,38 +279,6 @@ namespace PreySense.Mode
 
 
 
-        private static bool AreCpuPowerLimitsAlreadyApplied(int pl1Watts, int pl2Watts, bool pl2Enable)
-        {
-            try
-            {
-                var msr = GetMsr();
-                if (msr == null)
-                    return false;
-
-                if (!msr.ReadMsr(MSR_RAPL_POWER_UNIT, out ulong unitRaw) ||
-                    !msr.ReadMsr(MSR_PKG_POWER_LIMIT, out ulong currentVal))
-                    return false;
-
-                int powerUnits = (int)(unitRaw & 0x0F);
-                double powerScale = 1.0 / (1 << powerUnits);
-                uint targetPl1Units = (uint)Math.Round(pl1Watts / powerScale);
-                uint targetPl2Units = (uint)Math.Round(pl2Watts / powerScale);
-
-                uint currentPl1Units = (uint)(currentVal & 0x7FFFUL);
-                uint currentPl2Units = (uint)((currentVal >> 32) & 0x7FFFUL);
-                bool currentPl1Enabled = (currentVal & (1UL << 15)) != 0;
-                bool currentPl2Enabled = (currentVal & (1UL << 47)) != 0;
-
-                return currentPl1Units == (targetPl1Units & 0x7FFFU) &&
-                       currentPl2Units == (targetPl2Units & 0x7FFFU) &&
-                       currentPl1Enabled &&
-                       currentPl2Enabled == pl2Enable;
-            }
-            catch
-            {
-                return false;
-            }
-        }
 
     }
 }
