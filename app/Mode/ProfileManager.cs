@@ -36,7 +36,6 @@ namespace PreySense.Mode
         public static PerformanceProfile LoadProfile(byte mode)
         {
             var profile = PerformanceProfile.CreateDefault(mode);
-            var factoryDefaults = LoadFactoryDefaultProfile(mode);
             string subKey = $@"{RegistryBase}\{ModeToProfileName(mode)}";
 
             try
@@ -44,8 +43,8 @@ namespace PreySense.Mode
                 using var key = Registry.CurrentUser.OpenSubKey(subKey);
                 if (key == null) return profile;
 
-                profile.CpuPl1 = Math.Clamp((int)key.GetValue("CpuPl1", profile.CpuPl1), 5, Math.Max(5, factoryDefaults.CpuPl1));
-                profile.CpuPl2 = Math.Clamp((int)key.GetValue("CpuPl2", profile.CpuPl2), 5, Math.Max(5, factoryDefaults.CpuPl2));
+                profile.CpuPl1 = Math.Clamp((int)key.GetValue("CpuPl1", profile.CpuPl1), 5, 200);
+                profile.CpuPl2 = Math.Clamp((int)key.GetValue("CpuPl2", profile.CpuPl2), 5, 200);
                 profile.WindowsPowerMode = Math.Clamp((int)key.GetValue("WindowsPowerMode", profile.WindowsPowerMode), 0, 2);
 
                 profile.GpuCoreOffset = Math.Clamp((int)key.GetValue("GpuCoreOffset", profile.GpuCoreOffset), -1000, 1000);
@@ -67,9 +66,6 @@ namespace PreySense.Mode
         public static bool SaveProfile(PerformanceProfile profile)
         {
             string subKey = $@"{RegistryBase}\{ModeToProfileName(profile.PowerMode)}";
-            var factoryDefaults = LoadFactoryDefaultProfile(profile.PowerMode);
-            int cpuPl1Max = Math.Max(5, factoryDefaults.CpuPl1);
-            int cpuPl2Max = Math.Max(5, factoryDefaults.CpuPl2);
 
             try
             {
@@ -80,8 +76,8 @@ namespace PreySense.Mode
                     return false;
                 }
 
-                key.SetValue("CpuPl1", Math.Clamp(profile.CpuPl1, 5, cpuPl1Max));
-                key.SetValue("CpuPl2", Math.Clamp(profile.CpuPl2, 5, cpuPl2Max));
+                key.SetValue("CpuPl1", Math.Clamp(profile.CpuPl1, 5, 200));
+                key.SetValue("CpuPl2", Math.Clamp(profile.CpuPl2, 5, 200));
                 key.SetValue("WindowsPowerMode", profile.WindowsPowerMode);
 
                 key.SetValue("GpuCoreOffset", profile.GpuCoreOffset);
@@ -235,21 +231,19 @@ namespace PreySense.Mode
         {
             AppLogger.Log($"ProfileManager: Applying profile '{profile.Name}' (mode 0x{profile.PowerMode:X2})");
 
+            // Wait a second or two before applying power limit changes to stop EC from immediately overwriting them
+            if (profile.ApplyCpuLimits || profile.ApplyGpuLimits)
+            {
+                System.Threading.Thread.Sleep(2000);
+            }
+
             // Apply CPU power limits (only if the user has opted in)
             if (profile.ApplyCpuLimits)
             {
-                var factoryDefaults = LoadFactoryDefaultProfile(profile.PowerMode);
-                if (profile.CpuPl1 == factoryDefaults.CpuPl1 && profile.CpuPl2 == factoryDefaults.CpuPl2)
-                {
-                    AppLogger.Log($"ProfileManager: skipped CPU power limits for '{profile.Name}' because PL1/PL2 are factory defaults ({profile.CpuPl1}W/{profile.CpuPl2}W).");
-                }
-                else
-                {
-                    AppLogger.Log($"ProfileManager: CPU PL1={profile.CpuPl1}W, PL2={profile.CpuPl2}W");
-                    PowerLimitController.SetCpuPowerLimits(
-                        profile.CpuPl1,
-                        profile.CpuPl2);
-                }
+                AppLogger.Log($"ProfileManager: CPU PL1={profile.CpuPl1}W, PL2={profile.CpuPl2}W");
+                PowerLimitController.SetCpuPowerLimits(
+                    profile.CpuPl1,
+                    profile.CpuPl2);
             }
 
             // Apply GPU offsets only when the profile explicitly enables them.

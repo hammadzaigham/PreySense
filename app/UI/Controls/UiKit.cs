@@ -13,15 +13,66 @@ public static class UiTheme
     public const int RowGap = 8;
     public const int ColumnGap = 6;
 
-    public static readonly Color FormBackground = Color.FromArgb(28, 28, 28);
-    public static readonly Color CardBackground = Color.FromArgb(28, 28, 28);
-    public static readonly Color ElevatedCardBackground = Color.FromArgb(38, 38, 40);
-    public static readonly Color TextPrimary = Color.White;
-    public static readonly Color TextMuted = Color.FromArgb(168, 168, 168);
-    public static readonly Color TextSubtle = Color.FromArgb(120, 120, 120);
-    public static readonly Color Separator = Color.FromArgb(55, 55, 55);
-    public static readonly Color Accent = Color.FromArgb(58, 174, 239);
-    public static readonly Color AccentWarn = Color.FromArgb(255, 147, 51);
+    public static Color FormBackground { get; set; } = Color.FromArgb(28, 28, 28);
+    public static Color CardBackground { get; set; } = Color.FromArgb(28, 28, 28);
+    public static Color ElevatedCardBackground { get; set; } = Color.FromArgb(38, 38, 40);
+    public static Color TextPrimary { get; set; } = Color.White;
+    public static Color TextMuted { get; set; } = Color.FromArgb(168, 168, 168);
+    public static Color TextSubtle { get; set; } = Color.FromArgb(120, 120, 120);
+    public static Color Separator { get; set; } = Color.FromArgb(55, 55, 55);
+    public static Color Accent { get; set; } = Color.FromArgb(58, 174, 239);
+    public static Color AccentWarn { get; set; } = Color.FromArgb(255, 147, 51);
+
+    static UiTheme()
+    {
+        InitializeTheme();
+    }
+
+    public static bool IsLightTheme()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key != null)
+            {
+                object? val = key.GetValue("AppsUseLightTheme");
+                if (val != null)
+                {
+                    return Convert.ToInt32(val) == 1;
+                }
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    public static void InitializeTheme()
+    {
+        if (IsLightTheme())
+        {
+            FormBackground = Color.FromArgb(240, 240, 240);
+            CardBackground = Color.FromArgb(240, 240, 240);
+            ElevatedCardBackground = Color.FromArgb(230, 230, 230);
+            TextPrimary = Color.FromArgb(20, 20, 20);
+            TextMuted = Color.FromArgb(80, 80, 80);
+            TextSubtle = Color.FromArgb(120, 120, 120);
+            Separator = Color.FromArgb(200, 200, 200);
+            Accent = Color.FromArgb(0, 120, 215);
+            AccentWarn = Color.FromArgb(237, 100, 0);
+        }
+        else
+        {
+            FormBackground = Color.FromArgb(28, 28, 28);
+            CardBackground = Color.FromArgb(28, 28, 28);
+            ElevatedCardBackground = Color.FromArgb(38, 38, 40);
+            TextPrimary = Color.White;
+            TextMuted = Color.FromArgb(168, 168, 168);
+            TextSubtle = Color.FromArgb(120, 120, 120);
+            Separator = Color.FromArgb(55, 55, 55);
+            Accent = Color.FromArgb(58, 174, 239);
+            AccentWarn = Color.FromArgb(255, 147, 51);
+        }
+    }
 
     public static float DialogScale(Control control, float multiplier = 1.25f)
     {
@@ -302,6 +353,7 @@ public sealed class UiBuilder
 
     public PredatorDropDown Combo(int width, Font font, int height = 36)
     {
+        bool light = UiTheme.IsLightTheme();
         return new PredatorDropDown
         {
             Size = new Size(width, S(height)),
@@ -313,7 +365,7 @@ public sealed class UiBuilder
             BackColor = UiTheme.ElevatedCardBackground,
             ForeColor = UiTheme.TextPrimary,
             BorderColor = UiTheme.Separator,
-            ButtonColor = Color.FromArgb(46, 46, 46),
+            ButtonColor = light ? Color.FromArgb(240, 240, 240) : Color.FromArgb(46, 46, 46),
             ArrowColor = UiTheme.TextPrimary
         };
     }

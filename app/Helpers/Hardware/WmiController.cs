@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.ServiceProcess;
 using PreySense;
 
 namespace PreySense.Helpers
@@ -144,9 +145,32 @@ namespace PreySense.Helpers
 
         public AcerServiceClient ServiceClient => _serviceClient;
 
+        private static void TryStartService(string serviceName)
+        {
+            try
+            {
+                using var sc = new ServiceController(serviceName);
+                if (sc.Status == ServiceControllerStatus.Stopped || sc.Status == ServiceControllerStatus.StopPending)
+                {
+                    AppLogger.Log($"TryStartService: starting service {serviceName}...");
+                    sc.Start();
+                    sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(5));
+                    AppLogger.Log($"TryStartService: service {serviceName} status is now {sc.Status}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"TryStartService: failed to start service {serviceName}: {ex.Message}");
+            }
+        }
+
         private bool EnsureAcerService()
         {
             if (_serviceClient.IsAvailable) return true;
+
+            TryStartService("AcerServiceSvc");
+            TryStartService("AcerLightingService");
+
             _serviceClient.Refresh();
             if (_serviceClient.IsAvailable) return true;
             return false;
@@ -241,7 +265,7 @@ namespace PreySense.Helpers
 
         private bool? _acConnectedCache;
         private DateTime _acStatusFetched = DateTime.MinValue;
-        private static readonly TimeSpan AcStatusCacheTtl = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan AcStatusCacheTtl = TimeSpan.FromSeconds(2);
 
         public void InvalidateAcStatusCache()
         {
@@ -364,9 +388,19 @@ namespace PreySense.Helpers
 
         public void ApplyZoneLighting()
         {
-            if (!EnsureAcerService()) return;
+            if (!EnsureAcerService())
+            {
+                return;
+            }
             bool ok = _serviceClient.SetLightingZones(_zoneColors, _brightness);
-            if (!ok) AppLogger.Log("ApplyZoneLighting: AcerService SetLightingZones failed.");
+            if (!ok)
+            {
+                AppLogger.Log("ApplyZoneLighting: AcerService SetLightingZones failed.");
+            }
+            else
+            {
+                AppLogger.Log($"Keyboard zone colors set: Zone0=#{_zoneColors[0].R:X2}{_zoneColors[0].G:X2}{_zoneColors[0].B:X2}, Zone1=#{_zoneColors[1].R:X2}{_zoneColors[1].G:X2}{_zoneColors[1].B:X2}, Zone2=#{_zoneColors[2].R:X2}{_zoneColors[2].G:X2}{_zoneColors[2].B:X2}, Zone3=#{_zoneColors[3].R:X2}{_zoneColors[3].G:X2}{_zoneColors[3].B:X2} (brightness={_brightness})");
+            }
         }
 
         private void ApplyLightingMode(int mode)
@@ -379,16 +413,29 @@ namespace PreySense.Helpers
                 return;
             }
 
-            if (!EnsureAcerService()) return;
-
             float factor = _brightness / 5.0f;
             byte r = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastR * factor)));
             byte g = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastG * factor)));
             byte b = (byte)Math.Min(255, Math.Max(0, Math.Round(_lastB * factor)));
 
+            if (!EnsureAcerService())
+            {
+                return;
+            }
+
             bool ok = _serviceClient.SetLighting(mode, r, g, b, _brightness, _speed, _direction);
-            if (!ok) AppLogger.Log($"ApplyLightingMode: AcerService SetLighting failed (mode={mode}).");
+            if (!ok)
+            {
+                AppLogger.Log($"ApplyLightingMode: AcerService SetLighting failed (mode={mode}).");
+            }
+            else
+            {
+                string modeName = mode >= 0 && mode < RgbProfile.UiModeNames.Length ? RgbProfile.UiModeNames[mode] : $"Unknown (0x{mode:X})";
+                AppLogger.Log($"Keyboard lighting mode set to: {modeName} (brightness={_brightness}, speed={_speed}, direction={_direction})");
+            }
         }
+
+
 
         private int GetSensorReading(ulong sensorId)
         {
@@ -410,12 +457,23 @@ namespace PreySense.Helpers
             }
         }
 
+        private bool _acerServiceBroken = false;
+
         public bool SetPowerMode(byte mode)
         {
-            if (EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
+            if (!_acerServiceBroken && EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
             {
-                SyncWindowsPowerMode(mode);
-                return true;
+                // Verify if it actually applied by reading it back
+                if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                {
+                    SyncWindowsPowerMode(mode);
+                    return true;
+                }
+                else
+                {
+                    AppLogger.Log("SetPowerMode: Acer Service failed to verify/apply the mode. Falling back to WMI permanently.");
+                    _acerServiceBroken = true;
+                }
             }
 
             var (success, _) = SendCommand(AcerWmi.GamingMethods.SetMiscSetting, (ulong)0x0B | ((ulong)mode << 8));
@@ -425,7 +483,7 @@ namespace PreySense.Helpers
 
         public byte GetPowerProfile()
         {
-            if (TryGetPowerProfileAcerService(out byte serviceMode))
+            if (!_acerServiceBroken && TryGetPowerProfileAcerService(out byte serviceMode))
                 return serviceMode;
 
             if (TryGetPowerProfileWmi(out byte wmiMode))
@@ -436,7 +494,7 @@ namespace PreySense.Helpers
 
         public bool TryGetPowerProfile(out byte mode)
         {
-            if (TryGetPowerProfileAcerService(out mode))
+            if (!_acerServiceBroken && TryGetPowerProfileAcerService(out mode))
                 return true;
 
             if (TryGetPowerProfileWmi(out mode))
@@ -449,14 +507,15 @@ namespace PreySense.Helpers
         public bool TryGetPowerProfileAcerService(out byte mode)
         {
             mode = 0;
-            if (!EnsureAcerService())
+            if (_acerServiceBroken || !EnsureAcerService())
                 return false;
 
             string? json = _serviceClient.QueryUpdatedData(AcerWmi.Service.OperatingMode);
             if (TryParseOperatingMode(json, out mode))
                 return true;
 
-            AppLogger.Log($"TryGetPowerProfileAcerService: invalid OPERATING_MODE response: {json ?? "null"}");
+            AppLogger.Log($"TryGetPowerProfileAcerService: invalid OPERATING_MODE response: {json ?? "null"}. Marking service as broken.");
+            _acerServiceBroken = true;
             return false;
         }
 
@@ -717,6 +776,7 @@ namespace PreySense.Helpers
         {
             ulong val = enabled ? 0x1E0000088402ul : 0x88402ul;
             SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val);
+            AppLogger.Log($"Keyboard LED backlight timeout: {(enabled ? "Enabled" : "Disabled")}");
         }
 
         public int GetBatteryMode()
@@ -905,19 +965,105 @@ namespace PreySense.Helpers
 
             RefreshAcerService();
 
-            if (!_serviceClient.IsAvailable)
-            {
-                AppLogger.Log("SetGpuMuxMode: AcerService unavailable on port 46933.");
-                return false;
-            }
-
-            if (_serviceClient.SetGpuMode(mode))
+            if (_serviceClient.IsAvailable && _serviceClient.SetGpuMode(mode))
             {
                 return true;
             }
 
-            AppLogger.Log($"SetGpuMuxMode: GPU_MODE={mode} failed via AcerService.");
-            return false;
+            AppLogger.Log($"SetGpuMuxMode: AcerService set failed or unavailable (mode={mode}). Trying direct WMI BIOS offset fallback.");
+            return TrySetGpuMuxModeWmi(mode);
+        }
+
+        private bool TrySetGpuMuxModeWmi(int mode)
+        {
+            try
+            {
+                // Map AcerService MUX values (1 = discrete, 2 = hybrid) to BIOS offset 80 values:
+                // AcerService mode 1 (Discrete) -> BIOS value 3 (Discrete GPU Only / dGPU)
+                // AcerService mode 2 (Hybrid) -> BIOS value 2 (Optimus / Hybrid)
+                byte biosVal = mode switch
+                {
+                    1 => 3, // Discrete
+                    2 => 2, // Optimus
+                    _ => 2
+                };
+
+                using var searcher = new ManagementObjectSearcher(AcerWmi.Namespace, "SELECT * FROM AcerBiosConfigurationTool");
+                using var collection = searcher.Get();
+                var biosObj = collection.Cast<ManagementObject>().FirstOrDefault();
+                if (biosObj == null)
+                {
+                    AppLogger.Log("TrySetGpuMuxModeWmi: AcerBiosConfigurationTool WMI class not found.");
+                    return false;
+                }
+
+                byte[] pwBytes = new byte[128];
+                using var inParams = biosObj.GetMethodParameters("GetBiosOptions");
+                inParams["PasswordLen"] = (ushort)0;
+                inParams["Password"] = pwBytes;
+
+                using var outParams = biosObj.InvokeMethod("GetBiosOptions", inParams, null);
+                if (outParams == null)
+                {
+                    AppLogger.Log("TrySetGpuMuxModeWmi: GetBiosOptions returned null outParams.");
+                    return false;
+                }
+
+                int getRetCode = 0;
+                if (outParams.Properties["ReturnCode"] != null)
+                    getRetCode = Convert.ToInt32(outParams["ReturnCode"]);
+                else if (outParams.Properties["ReturnValue"] != null)
+                    getRetCode = Convert.ToInt32(outParams["ReturnValue"]);
+
+                if (getRetCode != 0)
+                {
+                    AppLogger.Log($"TrySetGpuMuxModeWmi: GetBiosOptions failed with ReturnCode/ReturnValue={getRetCode}.");
+                    return false;
+                }
+
+                byte[]? data = outParams["Data"] as byte[];
+                if (data == null || data.Length <= 80)
+                {
+                    AppLogger.Log("TrySetGpuMuxModeWmi: Retrieved data buffer is invalid or too small.");
+                    return false;
+                }
+
+                // Update GPU mode at offset 80
+                data[80] = biosVal;
+
+                // Write it back
+                using var setParams = biosObj.GetMethodParameters("SetBiosOptions");
+                setParams["PasswordLen"] = (ushort)0;
+                setParams["Password"] = pwBytes;
+                setParams["Data"] = data;
+
+                using var setOut = biosObj.InvokeMethod("SetBiosOptions", setParams, null);
+                if (setOut == null)
+                {
+                    AppLogger.Log("TrySetGpuMuxModeWmi: SetBiosOptions returned null outParams.");
+                    return false;
+                }
+
+                int setRetCode = -1;
+                if (setOut.Properties["ReturnCode"] != null)
+                    setRetCode = Convert.ToInt32(setOut["ReturnCode"]);
+                else if (setOut.Properties["ReturnValue"] != null)
+                    setRetCode = Convert.ToInt32(setOut["ReturnValue"]);
+
+                if (setRetCode == 0 || setRetCode == 8)
+                {
+                    AppLogger.Log($"TrySetGpuMuxModeWmi: Successfully updated GPU MUX mode at BIOS offset 80 to {biosVal}.");
+                    return true;
+                }
+
+                AppLogger.Log($"TrySetGpuMuxModeWmi: SetBiosOptions failed with ReturnCode/ReturnValue={setRetCode}.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"TrySetGpuMuxModeWmi FAILED: {ex.Message}");
+                return false;
+            }
         }
 
         public bool SetSoundMode(int mode)

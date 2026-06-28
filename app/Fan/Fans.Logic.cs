@@ -37,8 +37,7 @@ namespace PreySense.Fan
                 {
                     _currentProfile.WindowsPowerMode = comboWindowsPowerMode.SelectedIndex;
                     ProfileManager.SaveProfile(_currentProfile);
-                    if (_editingMode == _activeMode)
-                        _wmi.ApplyOverlayScheme(comboWindowsPowerMode.SelectedIndex);
+                    _wmi.ApplyOverlayScheme(comboWindowsPowerMode.SelectedIndex);
                 }
             };
 
@@ -52,8 +51,6 @@ namespace PreySense.Fan
                 if (_isUpdatingUi) return;
                 EnforcePowerLimitOrder(pl1IsDriver: false);
             };
-
-            _buttonApplyCpuLimits.Click += (_, _) => ApplyCpuPowerLimits();
 
             trackGpuCoreOffset.Scroll += (_, _) =>
             {
@@ -71,8 +68,6 @@ namespace PreySense.Fan
                 labelGpuMemoryValue.Text = FormatGpuOffset(trackGpuMemoryOffset.Value);
                 _isUpdatingUi = false;
             };
-
-            _buttonApplyGpuLimits.Click += (_, _) => CommitGpuSettings();
 
             checkApplyFanCurves.CheckedChanged += (_, _) =>
             {
@@ -117,6 +112,12 @@ namespace PreySense.Fan
             panelCpuLimitsSection.Visible = tabIndex == 0;
             panelGpuOffsetsSection.Visible = tabIndex == 1;
             ShowCurveForMode(tabIndex == 1);
+
+            if (_buttonApplySettings != null)
+            {
+                _buttonApplySettings.Text = tabIndex == 0 ? "Apply Limits" : "Apply Overclock";
+                _buttonApplySettings.Enabled = tabIndex == 0 || _mainForm.GpuMode != 0;
+            }
         }
 
         private void CommitGpuSettings()
@@ -230,7 +231,6 @@ namespace PreySense.Fan
             trackGpuMemoryOffset.Enabled = allowed;
             numGpuCoreOffset.Enabled = allowed;
             numGpuMemoryOffset.Enabled = allowed;
-            _buttonApplyGpuLimits.Enabled = allowed;
             labelGpuOffsets.Enabled = true;
             labelGpuCoreTitle.Enabled = true;
             labelGpuMemoryTitle.Enabled = true;
@@ -241,9 +241,6 @@ namespace PreySense.Fan
             labelGpuMemoryTitle.ForeColor = foreMain;
             labelGpuCoreValue.ForeColor = foreMain;
             labelGpuMemoryValue.ForeColor = foreMain;
-            _buttonApplyGpuLimits.ForeColor = foreMain;
-            _buttonApplyGpuLimits.BackColor = buttonSecond;
-            _buttonApplyGpuLimits.FlatAppearance.BorderColor = borderSecond;
         }
 
         private void ResetDefaults()
@@ -282,6 +279,8 @@ namespace PreySense.Fan
             {
                 _mainForm.SetActiveFanCurves(_cpuCurve, _gpuCurve);
                 _mainForm.ApplyFanCurvesForMode(_activeMode);
+                ApplyCpuPowerLimits();
+                CommitGpuSettings();
             }
         }
 
@@ -394,9 +393,8 @@ namespace PreySense.Fan
 
         private void ApplyCpuLimitBounds(PerformanceProfile factoryDefaults)
         {
-            var caps = GetPowerLimitCaps(factoryDefaults.PowerMode);
-            _pl1MaxW = caps.pl1Max;
-            _pl2MaxW = caps.pl2Max;
+            _pl1MaxW = 200;
+            _pl2MaxW = 200;
             trackPl1.Minimum = 5;
             trackPl2.Minimum = 5;
             trackPl1.Maximum = _pl1MaxW;

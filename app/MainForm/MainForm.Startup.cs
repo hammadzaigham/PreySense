@@ -45,8 +45,6 @@ namespace PreySense
             buttonGpuStandardMode.BorderColor = colorStandard;
             buttonGpuUltimateMode.BorderColor = colorTurbo;
             buttonTurboFanModePower.BorderColor = colorCustom;
-            buttonTurboFanModePower.BackColor = buttonSecond;
-            buttonTurboFanModePower.ForeColor = foreMain;
             button60Hz.BorderColor = AccentColor;
             button120Hz.BorderColor = AccentColor;
             buttonMaxRefreshRate.BorderColor = AccentColor;
@@ -73,7 +71,6 @@ namespace PreySense
 
         private void ConfigureStartupPanels()
         {
-            panelMatrix.Visible = false;
             panelScreen.Visible = true;
             panelRgb.Visible = false;
             panelBattery.Visible = true;

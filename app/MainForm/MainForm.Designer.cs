@@ -30,17 +30,7 @@ namespace PreySense
         /// </summary>
         private void InitializeComponent()
         {
-            panelMatrix = new Panel();
-            panelMatrixAuto = new Panel();
-            checkMiniLedOnLidClose = new CheckBox();
-            checkMiniLedEnabled = new CheckBox();
-            tableLayoutMatrix = new TableLayoutPanel();
-            comboMiniLedMode = new RComboBox();
-            comboMiniLedRunningMode = new RComboBox();
-            buttonMiniLed = new RButton();
-            panelMatrixTitle = new Panel();
-            pictureMiniLedIcon = new PictureBox();
-            labelMatrix = new Label();
+
             panelBattery = new Panel();
             buttonBatteryFull = new RButton();
             sliderBatteryChargeLimit = new LabeledSliderControl();
@@ -98,14 +88,7 @@ namespace PreySense
             pictureRgbIcon = new PictureBox();
             labelRgb = new Label();
             panelStartup = new Panel();
-            pictureHandheldIcon = new PictureBox();
-            labelHandheldController = new Label();
-            panelVersion = new Panel();
-            panelMatrix.SuspendLayout();
-            panelMatrixAuto.SuspendLayout();
-            tableLayoutMatrix.SuspendLayout();
-            panelMatrixTitle.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureMiniLedIcon).BeginInit();
+
             panelBattery.SuspendLayout();
             panelBatteryTitle.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBatteryIcon).BeginInit();
@@ -126,178 +109,11 @@ namespace PreySense
             panelRgb.SuspendLayout();
             tableLayoutRgb.SuspendLayout();
             panelColor.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureBacklightSwatch).BeginInit();
             panelRgbTitle.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureRgbIcon).BeginInit();
             panelStartup.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureHandheldIcon).BeginInit();
-            panelVersion.SuspendLayout();
             SuspendLayout();
-            // 
-            // panelMatrix
-            // 
-            panelMatrix.AccessibleRole = AccessibleRole.Grouping;
-            panelMatrix.AutoSize = true;
-            panelMatrix.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panelMatrix.Controls.Add(panelMatrixAuto);
-            panelMatrix.Controls.Add(tableLayoutMatrix);
-            panelMatrix.Controls.Add(panelMatrixTitle);
-            panelMatrix.Dock = DockStyle.Top;
-            panelMatrix.Location = new Point(11, 1071);
-            panelMatrix.Margin = new Padding(0);
-            panelMatrix.Name = "panelMatrix";
-            panelMatrix.Padding = new Padding(20, 20, 20, 11);
-            panelMatrix.Size = new Size(827, 183);
-            panelMatrix.TabIndex = 4;
-            panelMatrix.TabStop = true;
-            // 
-            // panelMatrixAuto
-            // 
-            panelMatrixAuto.Controls.Add(checkMiniLedOnLidClose);
-            panelMatrixAuto.Controls.Add(checkMiniLedEnabled);
-            panelMatrixAuto.Dock = DockStyle.Top;
-            panelMatrixAuto.Location = new Point(20, 132);
-            panelMatrixAuto.Margin = new Padding(4);
-            panelMatrixAuto.Name = "panelMatrixAuto";
-            panelMatrixAuto.Padding = new Padding(10, 10, 0, 0);
-            panelMatrixAuto.Size = new Size(787, 42);
-            panelMatrixAuto.TabIndex = 47;
-            // 
-            // checkMiniLedOnLidClose
-            // 
-            checkMiniLedOnLidClose.AutoSize = true;
-            checkMiniLedOnLidClose.Dock = DockStyle.Left;
-            checkMiniLedOnLidClose.ForeColor = SystemColors.GrayText;
-            checkMiniLedOnLidClose.Location = new Point(260, 0);
-            checkMiniLedOnLidClose.Margin = new Padding(8, 4, 8, 4);
-            checkMiniLedOnLidClose.Name = "checkMiniLedOnLidClose";
-            checkMiniLedOnLidClose.Size = new Size(253, 40);
-            checkMiniLedOnLidClose.TabIndex = 46;
-            checkMiniLedOnLidClose.Text = "Disable on lid close";
-            checkMiniLedOnLidClose.UseVisualStyleBackColor = true;
-            checkMiniLedOnLidClose.Visible = true;
-            // 
-            // checkMiniLedEnabled
-            // 
-            checkMiniLedEnabled.AutoSize = true;
-            checkMiniLedEnabled.Dock = DockStyle.Left;
-            checkMiniLedEnabled.ForeColor = SystemColors.GrayText;
-            checkMiniLedEnabled.Location = new Point(8, 0);
-            checkMiniLedEnabled.Margin = new Padding(8, 4, 8, 4);
-            checkMiniLedEnabled.Name = "checkMiniLedEnabled";
-            checkMiniLedEnabled.Padding = new Padding(0, 0, 4, 0);
-            checkMiniLedEnabled.Size = new Size(252, 40);
-            checkMiniLedEnabled.TabIndex = 19;
-            checkMiniLedEnabled.Text = "Turn off on battery";
-            checkMiniLedEnabled.UseVisualStyleBackColor = true;
-            // 
-            // tableLayoutMatrix
-            // 
-            tableLayoutMatrix.AutoSize = true;
-            tableLayoutMatrix.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tableLayoutMatrix.ColumnCount = 3;
-            tableLayoutMatrix.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            tableLayoutMatrix.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            tableLayoutMatrix.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            tableLayoutMatrix.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            tableLayoutMatrix.Controls.Add(comboMiniLedMode, 0, 0);
-            tableLayoutMatrix.Controls.Add(comboMiniLedRunningMode, 1, 0);
-            tableLayoutMatrix.Controls.Add(buttonMiniLed, 2, 0);
-            tableLayoutMatrix.Dock = DockStyle.Top;
-            tableLayoutMatrix.Location = new Point(20, 60);
-            tableLayoutMatrix.Margin = new Padding(8, 4, 8, 4);
-            tableLayoutMatrix.Name = "tableLayoutMatrix";
-            tableLayoutMatrix.Padding = new Padding(3, 0, 3, 0);
-            tableLayoutMatrix.RowCount = 1;
-            tableLayoutMatrix.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutMatrix.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tableLayoutMatrix.Size = new Size(787, 72);
-            tableLayoutMatrix.TabIndex = 43;
-            // 
-            // comboMiniLedMode
-            // 
-            comboMiniLedMode.BorderColor = Color.White;
-            comboMiniLedMode.ButtonColor = Color.FromArgb(255, 255, 255);
-            comboMiniLedMode.Dock = DockStyle.Top;
-            comboMiniLedMode.Font = new Font("Segoe UI", 9F);
-            comboMiniLedMode.FormattingEnabled = true;
-            comboMiniLedMode.Items.AddRange(new object[] { "Off", "Dim", "Medium", "Bright" });
-            comboMiniLedMode.Location = new Point(10, 8);
-            comboMiniLedMode.Margin = new Padding(7, 8, 7, 4);
-            comboMiniLedMode.Name = "comboMiniLedMode";
-            comboMiniLedMode.Size = new Size(246, 40);
-            comboMiniLedMode.TabIndex = 16;
-            // 
-            // comboMiniLedRunningMode
-            // 
-            comboMiniLedRunningMode.BorderColor = Color.White;
-            comboMiniLedRunningMode.ButtonColor = Color.FromArgb(255, 255, 255);
-            comboMiniLedRunningMode.Dock = DockStyle.Top;
-            comboMiniLedRunningMode.Font = new Font("Segoe UI", 9F);
-            comboMiniLedRunningMode.FormattingEnabled = true;
-            comboMiniLedRunningMode.Items.AddRange(new object[] { "Banner", "Logo", "Picture", "Clock", "Audio" });
-            comboMiniLedRunningMode.Location = new Point(270, 8);
-            comboMiniLedRunningMode.Margin = new Padding(7, 8, 7, 4);
-            comboMiniLedRunningMode.Name = "comboMiniLedRunningMode";
-            comboMiniLedRunningMode.Size = new Size(246, 40);
-            comboMiniLedRunningMode.TabIndex = 17;
-            // 
-            // 
-            // 
-            // buttonMiniLed
-            // 
-            buttonMiniLed.Activated = false;
-            buttonMiniLed.AutoSize = true;
-            buttonMiniLed.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            buttonMiniLed.BackColor = SystemColors.ControlLight;
-            buttonMiniLed.BorderColor = Color.Transparent;
-            buttonMiniLed.BorderRadius = 2;
-            buttonMiniLed.Dock = DockStyle.Top;
-            buttonMiniLed.FlatAppearance.BorderSize = 0;
-            buttonMiniLed.FlatStyle = FlatStyle.Flat;
-            buttonMiniLed.Location = new Point(527, 4);
-            buttonMiniLed.Margin = new Padding(4);
-            buttonMiniLed.MaximumSize = new Size(0, 48);
-            buttonMiniLed.MinimumSize = new Size(0, 44);
-            buttonMiniLed.Name = "buttonMiniLed";
-            buttonMiniLed.Secondary = true;
-            buttonMiniLed.Size = new Size(253, 44);
-            buttonMiniLed.TabIndex = 18;
-            buttonMiniLed.Text = "Picture/GIF";
-            buttonMiniLed.UseVisualStyleBackColor = false;
-            // 
-            // panelMatrixTitle
-            // 
-            panelMatrixTitle.Controls.Add(pictureMiniLedIcon);
-            panelMatrixTitle.Controls.Add(labelMatrix);
-            panelMatrixTitle.Dock = DockStyle.Top;
-            panelMatrixTitle.Location = new Point(20, 20);
-            panelMatrixTitle.Margin = new Padding(4);
-            panelMatrixTitle.Name = "panelMatrixTitle";
-            panelMatrixTitle.Size = new Size(787, 40);
-            panelMatrixTitle.TabIndex = 45;
-            // 
-            // pictureMiniLedIcon
-            // 
-            pictureMiniLedIcon.BackgroundImage = Properties.Resources.icons8_matrix_32;
-            pictureMiniLedIcon.BackgroundImageLayout = ImageLayout.Zoom;
-            pictureMiniLedIcon.Location = new Point(8, 3);
-            pictureMiniLedIcon.Margin = new Padding(4);
-            pictureMiniLedIcon.Name = "pictureMiniLedIcon";
-            pictureMiniLedIcon.Size = new Size(32, 32);
-            pictureMiniLedIcon.TabIndex = 41;
-            pictureMiniLedIcon.TabStop = false;
-            // 
-            // labelMatrix
-            // 
-            labelMatrix.AutoSize = true;
-            labelMatrix.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            labelMatrix.Location = new Point(44, 0);
-            labelMatrix.Margin = new Padding(4, 0, 4, 0);
-            labelMatrix.Name = "labelMatrix";
-            labelMatrix.Size = new Size(170, 32);
-            labelMatrix.TabIndex = 40;
-            labelMatrix.Text = "Anime Matrix";
+
             // 
             // panelBattery
             // 
@@ -418,7 +234,7 @@ namespace PreySense
             tableButtons.Controls.Add(buttonQuit, 2, 0);
             tableButtons.Dock = DockStyle.Top;
             tableButtons.Location = new Point(20, 0);
-            tableButtons.Margin = new Padding(8, 4, 8, 4);
+            tableButtons.Margin = new Padding(8, 0, 8, 4);
             tableButtons.Name = "tableButtons";
             tableButtons.RowCount = 1;
             tableButtons.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
@@ -428,19 +244,19 @@ namespace PreySense
             // buttonTurboFanModePower
             // 
             buttonTurboFanModePower.Activated = false;
-            buttonTurboFanModePower.BackColor = buttonSecond;
+            buttonTurboFanModePower.BackColor = SystemColors.ControlLightLight;
             buttonTurboFanModePower.BorderColor = borderSecond;
             buttonTurboFanModePower.BorderRadius = 5;
             buttonTurboFanModePower.Dock = DockStyle.Top;
             buttonTurboFanModePower.FlatAppearance.BorderSize = 0;
             buttonTurboFanModePower.FlatStyle = FlatStyle.Flat;
-            buttonTurboFanModePower.ForeColor = foreMain;
+            buttonTurboFanModePower.ForeColor = SystemColors.ControlText;
             buttonTurboFanModePower.Image = Properties.Resources.icons8_fan_48;
             buttonTurboFanModePower.ImageAlign = ContentAlignment.BottomCenter;
             buttonTurboFanModePower.Location = new Point(4, 132);
             buttonTurboFanModePower.Margin = new Padding(4);
             buttonTurboFanModePower.Name = "buttonTurboFanModePower";
-            buttonTurboFanModePower.Secondary = true;
+            buttonTurboFanModePower.Secondary = false;
             buttonTurboFanModePower.Size = new Size(188, 120);
             buttonTurboFanModePower.TabIndex = 7;
             buttonTurboFanModePower.Text = "Fans + Power";
@@ -497,10 +313,10 @@ namespace PreySense
             checkRunOnStartup.BackColor = buttonSecond;
             checkRunOnStartup.Dock = DockStyle.Left;
             checkRunOnStartup.Location = new Point(20, 0);
-            checkRunOnStartup.Margin = new Padding(11, 5, 11, 5);
+            checkRunOnStartup.Margin = new Padding(11, 0, 11, 0);
             checkRunOnStartup.Name = "checkRunOnStartup";
             checkRunOnStartup.Padding = new Padding(10, 0, 0, 0);
-            checkRunOnStartup.Size = new Size(216, 50);
+            checkRunOnStartup.Size = new Size(216, 46);
             checkRunOnStartup.TabIndex = 21;
             checkRunOnStartup.Text = "Run on startup";
             checkRunOnStartup.UseVisualStyleBackColor = true;
@@ -613,7 +429,7 @@ namespace PreySense
             // buttonTurboFanMode
             // 
             buttonTurboFanMode.Activated = false;
-            buttonTurboFanMode.BackColor = SystemColors.ControlLight;
+            buttonTurboFanMode.BackColor = SystemColors.ControlLightLight;
             buttonTurboFanMode.BorderColor = Color.Transparent;
             buttonTurboFanMode.BorderRadius = 5;
             buttonTurboFanMode.Dock = DockStyle.Fill;
@@ -624,7 +440,7 @@ namespace PreySense
             buttonTurboFanMode.Location = new Point(592, 4);
             buttonTurboFanMode.Margin = new Padding(4);
             buttonTurboFanMode.Name = "buttonTurboFanMode";
-            buttonTurboFanMode.Secondary = true;
+            buttonTurboFanMode.Secondary = false;
             buttonTurboFanMode.Size = new Size(191, 120);
             buttonTurboFanMode.TabIndex = 3;
             buttonTurboFanMode.Text = "&Fans + Power";
@@ -1218,8 +1034,8 @@ namespace PreySense
             panelStartup.Location = new Point(11, 1787);
             panelStartup.Margin = new Padding(0);
             panelStartup.Name = "panelStartup";
-            panelStartup.Padding = new Padding(20, 0, 20, 0);
-            panelStartup.Size = new Size(827, 44);
+            panelStartup.Padding = new Padding(20, 10, 20, 10);
+            panelStartup.Size = new Size(827, 80);
             panelStartup.TabIndex = 9;
             // 
             // checkAutoGpuBattery
@@ -1228,104 +1044,14 @@ namespace PreySense
             checkAutoGpuBattery.BackColor = buttonSecond;
             checkAutoGpuBattery.Dock = DockStyle.Right;
             checkAutoGpuBattery.Location = new Point(442, 0);
-            checkAutoGpuBattery.Margin = new Padding(11, 5, 11, 5);
+            checkAutoGpuBattery.Margin = new Padding(11, 0, 11, 0);
             checkAutoGpuBattery.Name = "checkAutoGpuBattery";
             checkAutoGpuBattery.Padding = new Padding(10, 0, 0, 0);
-            checkAutoGpuBattery.Size = new Size(365, 50);
+            checkAutoGpuBattery.Size = new Size(365, 40);
             checkAutoGpuBattery.TabIndex = 40;
             checkAutoGpuBattery.Text = "iGPU on Battery";
             checkAutoGpuBattery.UseVisualStyleBackColor = true;
             checkRunOnStartup.BackColor = buttonSecond;
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // pictureHandheldIcon
-            // 
-            pictureHandheldIcon.BackgroundImage = Properties.Resources.icons8_controller_32;
-            pictureHandheldIcon.BackgroundImageLayout = ImageLayout.Zoom;
-            pictureHandheldIcon.Location = new Point(8, 0);
-            pictureHandheldIcon.Margin = new Padding(4);
-            pictureHandheldIcon.Name = "pictureHandheldIcon";
-            pictureHandheldIcon.Size = new Size(32, 32);
-            pictureHandheldIcon.TabIndex = 27;
-            pictureHandheldIcon.TabStop = false;
-            // 
-            // labelHandheldController
-            // 
-            labelHandheldController.AutoSize = true;
-            labelHandheldController.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            labelHandheldController.Location = new Point(43, 0);
-            labelHandheldController.Margin = new Padding(4, 0, 4, 0);
-            labelHandheldController.Name = "labelHandheldController";
-            labelHandheldController.Size = new Size(181, 32);
-            labelHandheldController.TabIndex = 26;
-            labelHandheldController.Text = "Ally Controller";
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // panelVersion
-            // 
-            panelVersion.AutoSize = true;
-            panelVersion.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panelVersion.Dock = DockStyle.Top;
-            panelVersion.Location = new Point(11, 1837);
-            panelVersion.MinimumSize = new Size(0, 50);
-            panelVersion.Name = "panelVersion";
-            panelVersion.Padding = new Padding(20, 5, 24, 5);
-            panelVersion.Size = new Size(827, 50);
-            panelVersion.TabIndex = 10;
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
-            // 
             // 
             // MainForm
             // 
@@ -1335,11 +1061,9 @@ namespace PreySense
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             ClientSize = new Size(849, 1225);
             Controls.Add(panelFooter);
-            Controls.Add(panelVersion);
             Controls.Add(panelStartup);
             Controls.Add(panelBattery);
             Controls.Add(panelRgb);
-            Controls.Add(panelMatrix);
             Controls.Add(panelScreen);
             Controls.Add(panelGPU);
             Controls.Add(panelPerformance);
@@ -1353,15 +1077,7 @@ namespace PreySense
             ShowIcon = false;
             StartPosition = FormStartPosition.CenterScreen;
             Text = "PreySense";
-            panelMatrix.ResumeLayout(false);
-            panelMatrix.PerformLayout();
-            panelMatrixAuto.ResumeLayout(false);
-            panelMatrixAuto.PerformLayout();
-            tableLayoutMatrix.ResumeLayout(false);
-            tableLayoutMatrix.PerformLayout();
-            panelMatrixTitle.ResumeLayout(false);
-            panelMatrixTitle.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureMiniLedIcon).EndInit();
+
             panelBattery.ResumeLayout(false);
             panelBatteryTitle.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)pictureBatteryIcon).EndInit();
@@ -1398,14 +1114,11 @@ namespace PreySense
             ((System.ComponentModel.ISupportInitialize)pictureRgbIcon).EndInit();
             panelStartup.ResumeLayout(false);
             panelStartup.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureHandheldIcon).EndInit();
-            panelVersion.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
         }
 
         #endregion
-        private Panel panelMatrix;
         private Panel panelBattery;
         private Panel panelFooter;
         private RButton buttonQuit;
@@ -1425,18 +1138,13 @@ namespace PreySense
         private RButton buttonAutoRefreshRate;
         private RButton button60Hz;
         private Panel panelRgb;
-        private TableLayoutPanel tableLayoutMatrix;
-        private RComboBox comboMiniLedRunningMode;
-        private RComboBox comboMiniLedMode;
         private TableLayoutPanel tableLayoutRgb;
         private RComboBox comboRgbLightingMode;
         private Panel panelColor;
         private PictureBox pictureBacklightSwatch;
-        private CheckBox checkMiniLedEnabled;
         private RButton button120Hz;
 
         private Label labelGpuHint;
-        private RButton buttonMiniLed;
         private RButton buttonRgbProfiles;
         private RButton buttonTurboFanMode;
         private LabeledSliderControl sliderBatteryChargeLimit;
@@ -1455,9 +1163,6 @@ namespace PreySense
         private Panel panelRgbTitle;
         private PictureBox pictureRgbIcon;
         private Label labelRgb;
-        private Panel panelMatrixTitle;
-        private PictureBox pictureMiniLedIcon;
-        private Label labelMatrix;
         private Panel panelBatteryTitle;
         private Label labelBatteryStatus;
         private PictureBox pictureBatteryIcon;
@@ -1468,13 +1173,8 @@ namespace PreySense
         private RButton buttonMetrics;
         private RCheckBox checkAutoGpuBattery;
         private RButton buttonBatteryFull;
-        private Label labelHandheldController;
-        private PictureBox pictureHandheldIcon;
-        private CheckBox checkMiniLedOnLidClose;
-        private Panel panelMatrixAuto;
         private RButton buttonMaxRefreshRate;
         private Label labelBacklight;
-        private Panel panelVersion;
         private RButton buttonTurboFanModePower;
         private RButton buttonColorProfiles;
     }

@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+
     <PackageReference Include="NvAPIWrapper.Net" Version="0.8.1.101" />
     <PackageReference Include="System.Management" Version="10.0.2" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
@@ -29,8 +30,6 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\*.*" />
     <EmbeddedResource Include="Pawn\IntelMSR.bin" LogicalName="PreySense.IntelMSR.bin" />
-    <EmbeddedResource Include="Embedded\PreySense.XtuBridge.exe" LogicalName="PreySense.XtuBridge.exe" />
-    <EmbeddedResource Include="Embedded\PreySense.XtuBridge.exe.config" LogicalName="PreySense.XtuBridge.exe.config" />
   </ItemGroup>
 
   <ItemGroup>

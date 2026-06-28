@@ -75,16 +75,7 @@ namespace PreySense.Mode
                 return;
             }
 
-            bool pawnIoApplied = TrySetLimitsViaPawnIo(pl1Watts, pl2Watts, pl2Enable);
-            if (pawnIoApplied)
-            {
-                if (pl2Enable)
-                    TrySetLimitsViaXtuService(pl1Watts, pl2Watts);
-                return;
-            }
-
-            if (pl2Enable && TrySetLimitsViaXtuService(pl1Watts, pl2Watts))
-                return;
+            TrySetLimitsViaPawnIo(pl1Watts, pl2Watts, pl2Enable);
         }
 
         private static bool TrySetLimitsViaPawnIo(int pl1Watts, int pl2Watts, bool pl2Enable)
@@ -159,7 +150,7 @@ namespace PreySense.Mode
                 }
                 else
                 {
-                    AppLogger.Log("[Intel RAPL] PawnIO MSR unavailable; trying XTU bridge fallback.");
+                    AppLogger.Log("[Intel RAPL] PawnIO MSR unavailable.");
                 }
             }
             catch (Exception ex)
@@ -287,126 +278,7 @@ namespace PreySense.Mode
             catch { }
         }
 
-        private static bool TrySetLimitsViaXtuService(int pl1Watts, int pl2Watts)
-        {
-            string? bridgePath = EnsureXtuBridgeExecutable();
-            if (bridgePath == null)
-            {
-                AppLogger.Log("[Intel RAPL] XTU bridge unavailable: embedded bridge could not be extracted.");
-                return false;
-            }
 
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = bridgePath,
-                    Arguments = $"{pl1Watts} {pl2Watts}",
-                    WorkingDirectory = AppContext.BaseDirectory,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using var process = Process.Start(psi);
-                if (process == null)
-                {
-                    AppLogger.Log("[Intel RAPL] XTU bridge failed to start.");
-                    return false;
-                }
-
-                if (!process.WaitForExit(15000))
-                {
-                    try { process.Kill(); } catch { }
-                    AppLogger.Log("[Intel RAPL] XTU bridge timed out.");
-                    return false;
-                }
-
-                string stdout = process.StandardOutput.ReadToEnd().Trim();
-                string stderr = process.StandardError.ReadToEnd().Trim();
-                if (!string.IsNullOrWhiteSpace(stdout))
-                    AppLogger.Log($"[Intel RAPL] XTU bridge: {stdout}");
-                if (!string.IsNullOrWhiteSpace(stderr))
-                    AppLogger.Log($"[Intel RAPL] XTU bridge error: {stderr}");
-
-                bool ok = process.ExitCode == 0;
-                AppLogger.Log($"[Intel RAPL] XTU bridge exit={process.ExitCode} (PL1={pl1Watts}W, PL2={pl2Watts}W).");
-                return ok;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"[Intel RAPL] XTU bridge failed: {ex.Message}");
-                return false;
-            }
-
-        }
-
-        private static string? EnsureXtuBridgeExecutable()
-        {
-            string directBridgePath = Path.Combine(AppContext.BaseDirectory, "PreySense.XtuBridge.exe");
-            if (File.Exists(directBridgePath))
-                return directBridgePath;
-
-            try
-            {
-                string bridgeDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "PreySense",
-                    "XtuBridge");
-                Directory.CreateDirectory(bridgeDir);
-
-                string bridgePath = Path.Combine(bridgeDir, "PreySense.XtuBridge.exe");
-                string configPath = bridgePath + ".config";
-
-                if (!ExtractResource("PreySense.XtuBridge.exe", bridgePath))
-                    return null;
-
-                ExtractResource("PreySense.XtuBridge.exe.config", configPath);
-                return bridgePath;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"[Intel RAPL] XTU bridge extraction failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        private static bool ExtractResource(string resourceName, string targetPath)
-        {
-            var asm = typeof(PowerLimitController).Assembly;
-            using Stream? stream = asm.GetManifestResourceStream(resourceName);
-            if (stream == null)
-                return false;
-
-            bool writeFile = true;
-            if (File.Exists(targetPath))
-            {
-                try
-                {
-                    writeFile = new FileInfo(targetPath).Length != stream.Length;
-                }
-                catch
-                {
-                    writeFile = true;
-                }
-            }
-
-            if (!writeFile)
-                return true;
-
-            stream.Position = 0;
-            string tempPath = targetPath + ".tmp";
-            using (var file = File.Create(tempPath))
-            {
-                stream.CopyTo(file);
-            }
-
-            if (File.Exists(targetPath))
-                File.Delete(targetPath);
-            File.Move(tempPath, targetPath);
-            return true;
-        }
 
         private static bool AreCpuPowerLimitsAlreadyApplied(int pl1Watts, int pl2Watts, bool pl2Enable)
         {

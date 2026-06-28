@@ -97,7 +97,7 @@ namespace PreySense.UI
             SetStyle(ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
             DoubleBuffered = true;
-            TabStop = true;
+            TabStop = false;
             Cursor = Cursors.Hand;
             Size = new Size(200, 28);
 

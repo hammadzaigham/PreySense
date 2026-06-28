@@ -116,5 +116,43 @@ namespace PreySense.Helpers
             }
             return success;
         }
+
+        public static bool HasPresentDisplayDevice(string hardwareIdSubstring)
+        {
+            Guid displayGuid = DisplayClassGuid;
+            IntPtr devInfoSet = SetupDiGetClassDevs(ref displayGuid, null, IntPtr.Zero, DIGCF_PRESENT);
+            if (devInfoSet == IntPtr.Zero || devInfoSet.ToInt64() == -1)
+                return false;
+
+            try
+            {
+                SP_DEVINFO_DATA devInfoData = new SP_DEVINFO_DATA();
+                devInfoData.cbSize = Marshal.SizeOf(devInfoData);
+
+                int memberIndex = 0;
+                while (SetupDiEnumDeviceInfo(devInfoSet, memberIndex, ref devInfoData))
+                {
+                    memberIndex++;
+
+                    StringBuilder buffer = new StringBuilder(1000);
+                    if (SetupDiGetDeviceRegistryProperty(devInfoSet, ref devInfoData, 1, out _, buffer, buffer.Capacity, out _))
+                    {
+                        string hwId = buffer.ToString().ToUpperInvariant();
+                        if (hwId.Contains(hardwareIdSubstring.ToUpperInvariant()))
+                            return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"HasPresentDisplayDevice failed: {ex.Message}");
+            }
+            finally
+            {
+                SetupDiDestroyDeviceInfoList(devInfoSet);
+            }
+
+            return false;
+        }
     }
 }

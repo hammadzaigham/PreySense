@@ -34,7 +34,7 @@ namespace PreySense.UI.Controls
             _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             ConfigureButton(_keyboardButton, "Keyboard");
-            ConfigureButton(_metricsButton, "&Metrics");
+            ConfigureButton(_metricsButton, "Metrics");
 
             _keyboardButton.Click += (_, _) => KeyboardClicked?.Invoke(this, EventArgs.Empty);
             _metricsButton.Click += (_, _) => MetricsClicked?.Invoke(this, EventArgs.Empty);

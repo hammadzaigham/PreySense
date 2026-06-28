@@ -71,7 +71,7 @@ public static class ControlHelper
     {
         foreach (Control control in controls)
         {
-
+            control.TabStop = false;
             AdjustControls(control.Controls);
 
             var button = control as RButton;
@@ -134,15 +134,61 @@ public static class ControlHelper
             }
 
             var pn = control as Panel;
-            if (pn != null && pn.Name.Contains("Header"))
+            if (pn != null)
             {
-                pn.BackColor = RForm.buttonSecond;
+                if (pn.Name.Contains("Header"))
+                {
+                    pn.BackColor = RForm.buttonSecond;
+                }
+                else if (pn.Name.Contains("Title"))
+                {
+                    pn.BackColor = pn.Parent?.BackColor ?? RForm.formBack;
+                    foreach (Control child in pn.Controls)
+                    {
+                        if (child is Label l)
+                        {
+                            l.BackColor = pn.BackColor;
+                            l.ForeColor = RForm.foreMain;
+                        }
+                        else if (child is PictureBox pb)
+                        {
+                            pb.BackColor = pn.BackColor;
+                        }
+                    }
+                }
             }
 
             var sl = control as Slider;
             if (sl != null)
             {
                 sl.borderColor = RForm.buttonMain;
+                sl.BackColor = UiTheme.CardBackground;
+                sl.ForeColor = UiTheme.TextPrimary;
+                sl.Invalidate();
+            }
+
+            var lsc = control as LabeledSliderControl;
+            if (lsc != null)
+            {
+                lsc.ApplyThemeColors();
+                lsc.Invalidate(true);
+            }
+
+            var pdd = control as PredatorDropDown;
+            if (pdd != null)
+            {
+                pdd.BackColor = UiTheme.IsLightTheme() ? Color.FromArgb(240, 240, 240) : Color.FromArgb(46, 46, 46);
+                pdd.ForeColor = UiTheme.TextPrimary;
+                pdd.BorderColor = UiTheme.Separator;
+                pdd.ButtonColor = UiTheme.IsLightTheme() ? Color.FromArgb(240, 240, 240) : Color.FromArgb(46, 46, 46);
+                pdd.ArrowColor = UiTheme.TextPrimary;
+                pdd.Invalidate();
+            }
+
+            var lbl = control as Label;
+            if (lbl != null)
+            {
+                lbl.ForeColor = RForm.foreMain;
             }
 
             var chk = control as CheckBox;

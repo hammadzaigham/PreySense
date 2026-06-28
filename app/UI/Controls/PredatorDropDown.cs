@@ -45,7 +45,7 @@ namespace PreySense.UI
             Invalidate();
         }
 
-        private Color borderColor = Color.FromArgb(55, 55, 55);
+        private Color borderColor = UiTheme.IsLightTheme() ? Color.FromArgb(200, 200, 200) : Color.FromArgb(55, 55, 55);
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color BorderColor
         {
@@ -53,7 +53,7 @@ namespace PreySense.UI
             set { borderColor = value; Invalidate(); }
         }
 
-        private Color buttonColor = Color.FromArgb(46, 46, 46);
+        private Color buttonColor = UiTheme.IsLightTheme() ? Color.FromArgb(240, 240, 240) : Color.FromArgb(46, 46, 46);
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color ButtonColor
         {
@@ -61,7 +61,7 @@ namespace PreySense.UI
             set { buttonColor = value; Invalidate(); }
         }
 
-        private Color arrowColor = Color.FromArgb(240, 240, 240);
+        private Color arrowColor = UiTheme.IsLightTheme() ? Color.FromArgb(20, 20, 20) : Color.FromArgb(240, 240, 240);
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color ArrowColor
         {
@@ -80,8 +80,10 @@ namespace PreySense.UI
             DropDownStyle = ComboBoxStyle.DropDownList;
             FlatStyle = FlatStyle.Flat;
             DrawMode = UseCustomTextPadding ? DrawMode.OwnerDrawFixed : DrawMode.Normal;
-            BackColor = Color.FromArgb(46, 46, 46);
-            ForeColor = Color.FromArgb(240, 240, 240);
+            
+            bool light = UiTheme.IsLightTheme();
+            BackColor = light ? Color.FromArgb(255, 255, 255) : Color.FromArgb(46, 46, 46);
+            ForeColor = light ? Color.FromArgb(20, 20, 20) : Color.FromArgb(240, 240, 240);
             Font = new Font("Segoe UI", 9f, FontStyle.Regular);
             Cursor = Cursors.Hand;
         }
@@ -147,7 +149,7 @@ namespace PreySense.UI
             }
 
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            Color bg = selected ? Color.FromArgb(58, 174, 239) : BackColor;
+            Color bg = selected ? UiTheme.Accent : BackColor;
             Color fg = selected ? Color.White : ForeColor;
 
             using (var bgBrush = new SolidBrush(bg))
@@ -228,7 +230,7 @@ namespace PreySense.UI
                 }
 
                 var innerBorderColor = BackColor;
-                var outerBorderColor = Focused ? Color.FromArgb(58, 174, 239) : (isHovered ? Color.FromArgb(90, 90, 90) : BorderColor);
+                var outerBorderColor = Focused ? UiTheme.Accent : (isHovered ? (UiTheme.IsLightTheme() ? Color.FromArgb(160, 160, 160) : Color.FromArgb(90, 90, 90)) : BorderColor);
                 var middle = new Point(dropDownRect.Left + dropDownRect.Width / 2,
                     dropDownRect.Top + dropDownRect.Height / 2);
                 

@@ -25,7 +25,7 @@ This project is experimental and hardware-specific. It has been developed and te
 - Windows 10 or Windows 11 x64.
 - Acer Predator laptop with compatible Acer WMI and AcerService interfaces.
 - Microsoft .NET 10 Windows Desktop Runtime x64.
-- Either XTU or [PawnIO](https://pawnio.eu/) driver installed for CPU power limit access.
+- [PawnIO](https://pawnio.eu/) driver installed for CPU power limit access.
 - Predator Sense installed for Acer Services.
 
 ## Download

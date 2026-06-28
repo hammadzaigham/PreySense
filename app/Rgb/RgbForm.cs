@@ -18,7 +18,7 @@ namespace PreySense.Rgb
 
         private static readonly string[] CustomPresetNames =
         {
-            "None / Custom", "Ice Cold", "Volcano", "Cyberpunk", "Neon Matrix", "Forest", "Miami Vice"
+            "None / Custom", "Ice Cold", "Volcano", "Cyberpunk", "Sunset Glow", "Deep Space", "Nordic Aurora", "Magma Flow"
         };
 
         private static readonly Color[][] CustomPresetColors =
@@ -27,40 +27,55 @@ namespace PreySense.Rgb
             new[] { Color.Cyan, Color.DeepSkyBlue, Color.Cyan, Color.DeepSkyBlue },
             new[] { Color.Red, Color.OrangeRed, Color.DarkRed, Color.Orange },
             new[] { Color.FromArgb(255, 0, 128), Color.Cyan, Color.FromArgb(255, 0, 128), Color.Cyan },
-            new[] { Color.Lime, Color.Green, Color.Lime, Color.Green },
-            new[] { Color.ForestGreen, Color.DarkGreen, Color.ForestGreen, Color.DarkGreen },
-            new[] { Color.FromArgb(255, 105, 180), Color.FromArgb(0, 240, 255), Color.FromArgb(255, 105, 180), Color.FromArgb(0, 240, 255) }
+            new[] { Color.DarkOrange, Color.DeepPink, Color.Purple, Color.DarkViolet },
+            new[] { Color.MidnightBlue, Color.MediumSlateBlue, Color.DarkOrchid, Color.RoyalBlue },
+            new[] { Color.Teal, Color.SpringGreen, Color.MediumAquamarine, Color.LimeGreen },
+            new[] { Color.DarkRed, Color.OrangeRed, Color.Gold, Color.Yellow }
         };
 
-        private Color _keyColor = Color.FromArgb(0, 150, 255);
         private bool _ledTimeoutEnabled = false;
         private bool _loadingState;
+        private bool _hardwareApplyEnabled;
 
         public RgbForm(MainForm mainForm, WmiController wmi)
         {
             _mainForm = mainForm;
             _wmi = wmi;
             _dpiScale = DeviceDpi / 96f;
+            _loadingState = true;
 
             InitializeComponent();
-            InitTheme(true);
+            InitTheme(false);
             LoadState();
+            _loadingState = false;
         }
 
-        private void ApplyMode()
+        private void ArmHardwareApply() => _hardwareApplyEnabled = true;
+
+        private bool CanApplyHardware() => !_loadingState && _hardwareApplyEnabled;
+
+        private void UpdateModeLayout(int mode)
         {
-            if (_loadingState) return;
-            int idx = _effectDropdown.SelectedIndex;
-            int mode = idx >= 0 && idx < RgbProfile.ModeCount ? idx : 0;
-            byte brightness = GetRgbBrightness();
-            byte speed = (byte)_speedSettingRow.Value;
-            byte direction = GetSelectedDirection();
             UpdateDirectionVisibility(mode);
             bool isStatic = mode == 0;
             _speedSettingRow.Parent!.Visible = !isStatic;
             _brightnessSettingRow.Parent!.Visible = true;
             _zoneRow.Visible = isStatic;
             _presetRow.Visible = isStatic;
+        }
+
+        private static int GetRegistryInt(RegistryKey? key, string name, int fallback) =>
+            key != null ? (int)key.GetValue(name, fallback) : fallback;
+
+        private void ApplyMode()
+        {
+            if (!CanApplyHardware()) return;
+            int idx = _effectDropdown.SelectedIndex;
+            int mode = idx >= 0 && idx < RgbProfile.ModeCount ? idx : 0;
+            byte brightness = GetRgbBrightness();
+            byte speed = (byte)_speedSettingRow.Value;
+            byte direction = GetSelectedDirection();
+            UpdateModeLayout(mode);
             _wmi.SetRgbMode(mode, _wmi.LastR, _wmi.LastG, _wmi.LastB, brightness, speed, direction);
             SaveRgbState(mode);
         }
@@ -68,7 +83,7 @@ namespace PreySense.Rgb
         private byte GetRgbBrightness() => (byte)_brightnessSettingRow.Value;
 
         private byte GetSelectedDirection() =>
-            _directionDropdown.SelectedIndex == 1 ? (byte)2 : (byte)1;
+            _directionDropdown.SelectedIndex == 1 ? (byte)1 : (byte)2;
 
         private void UpdateDirectionVisibility(int mode)
         {
@@ -77,7 +92,7 @@ namespace PreySense.Rgb
 
         private void ApplyDirection()
         {
-            if (_loadingState) return;
+            if (!CanApplyHardware()) return;
             if (_effectDropdown.SelectedIndex != RgbProfile.WaveModeIndex) return;
             byte direction = GetSelectedDirection();
             _wmi.SetDirection(direction);
@@ -86,6 +101,7 @@ namespace PreySense.Rgb
 
         private void ToggleLedTimeout()
         {
+            ArmHardwareApply();
             SetLedTimeout(!_ledTimeoutEnabled);
         }
 
@@ -95,18 +111,21 @@ namespace PreySense.Rgb
             _ledTimeoutButton.Activated = enabled;
             _ledTimeoutButton.BackColor = enabled ? colorStandard : buttonSecond;
             _ledTimeoutButton.ForeColor = enabled ? SystemColors.ControlLightLight : foreMain;
-            if (_loadingState) return;
+            if (!CanApplyHardware()) return;
             _wmi.SetLedTimeout(enabled);
             _mainForm.SaveState("LedTimeout", enabled ? 1 : 0);
         }
 
         private void PickZone(int zone)
         {
+            ArmHardwareApply();
             _colorPicker.Color = _wmi.ZoneColors[zone];
             if (_colorPicker.ShowDialog() != DialogResult.OK) return;
 
+
             Color color = _colorPicker.Color;
             _wmi.ZoneColors[zone] = color;
+            _presetDropdown.SelectedIndex = 0;
             _wmi.SetZoneColors(_wmi.ZoneColors, GetRgbBrightness());
             SaveRgbState(0);
             UpdateZoneColors();
@@ -114,8 +133,10 @@ namespace PreySense.Rgb
 
         private void SyncZones()
         {
+            ArmHardwareApply();
             Color color = _wmi.ZoneColors[0];
             for (int i = 0; i < 4; i++) _wmi.ZoneColors[i] = color;
+            _presetDropdown.SelectedIndex = 0;
             _wmi.SetZoneColors(_wmi.ZoneColors, GetRgbBrightness());
             SaveRgbState(0);
             UpdateZoneColors();
@@ -129,6 +150,7 @@ namespace PreySense.Rgb
 
         private void ApplyPreset()
         {
+            if (!CanApplyHardware()) return;
             int presetIdx = _presetDropdown.SelectedIndex;
             if (presetIdx <= 0) return;
 
@@ -170,47 +192,54 @@ namespace PreySense.Rgb
             {
                 _loadingState = true;
                 using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
-                if (key == null) return;
+                int savedModeVersion = GetRegistryInt(key, "RGB_ModeVersion", 1);
+                int savedMode = key != null
+                    ? RgbProfile.NormalizeSavedMode(GetRegistryInt(key, "RGB_Mode", _wmi.LastRgbMode), savedModeVersion)
+                    : _wmi.LastRgbMode;
+                int rgbMode = Math.Clamp(_wmi.LastRgbMode, 0, RgbProfile.ModeCount - 1);
+                if (rgbMode == 0 && savedMode != 0)
+                    rgbMode = savedMode;
+                _effectDropdown.SelectedIndex = rgbMode;
 
-                int modeVersion = (int)key.GetValue("RGB_ModeVersion", 1);
-                int rgbMode = RgbProfile.NormalizeSavedMode((int)key.GetValue("RGB_Mode", 0), modeVersion);
-                _effectDropdown.SelectedIndex = Math.Clamp(rgbMode, 0, RgbProfile.ModeCount - 1);
+                Color[] colors = new Color[4];
+                for (int i = 0; i < colors.Length; i++)
+                {
+                    Color fallback = i < _wmi.ZoneColors.Length ? _wmi.ZoneColors[i] : Color.FromArgb(_wmi.LastR, _wmi.LastG, _wmi.LastB);
+                    int zR = GetRegistryInt(key, $"RGB_Zone{i}_R", fallback.R);
+                    int zG = GetRegistryInt(key, $"RGB_Zone{i}_G", fallback.G);
+                    int zB = GetRegistryInt(key, $"RGB_Zone{i}_B", fallback.B);
+                    colors[i] = Color.FromArgb(zR, zG, zB);
+                }
 
-                int r = (int)key.GetValue("RGB_Zone0_R", 0);
-                int g = (int)key.GetValue("RGB_Zone0_G", 150);
-                int b = (int)key.GetValue("RGB_Zone0_B", 255);
-                _keyColor = Color.FromArgb(r, g, b);
+                int speed = RgbProfile.NormalizeStepLevel(GetRegistryInt(key, "RGB_Speed", _wmi.Speed));
+                int brightness = RgbProfile.NormalizeStepLevel(GetRegistryInt(key, "RGB_Brightness", _wmi.Brightness));
+                int direction = GetRegistryInt(key, "RGB_Direction", _wmi.Direction);
+                int preset = GetRegistryInt(key, "RGB_Preset", 0);
 
-                int speed = RgbProfile.NormalizeStepLevel((int)key.GetValue("RGB_Speed", 3));
+                _wmi.SetCachedRgbState(
+                    rgbMode,
+                    colors[0].R,
+                    colors[0].G,
+                    colors[0].B,
+                    (byte)brightness,
+                    (byte)speed,
+                    direction == 1 ? (byte)1 : (byte)2,
+                    colors);
+
                 _speedSettingRow.Value = speed;
-
-                int brightness = RgbProfile.NormalizeStepLevel((int)key.GetValue("RGB_Brightness", 5));
                 _brightnessSettingRow.Value = brightness;
-
-                int preset = (int)key.GetValue("RGB_Preset", 0);
                 _presetDropdown.SelectedIndex = Math.Clamp(preset, 0, CustomPresetNames.Length - 1);
+                _directionDropdown.SelectedIndex = direction == 1 ? 1 : 0;
 
-                int direction = (int)key.GetValue("RGB_Direction", 1);
-                _directionDropdown.SelectedIndex = direction == 2 ? 1 : 0;
-
-                bool ledTimeout = key.GetValue("LedTimeout") is int savedTimeout
+                bool ledTimeout = key?.GetValue("LedTimeout") is int savedTimeout
                     ? savedTimeout == 1
                     : _wmi.GetLedTimeout();
                 SetLedTimeout(ledTimeout);
 
                 UpdateZoneColors();
-                UpdateDirectionVisibility(rgbMode);
-                bool isStatic = rgbMode == 0;
-                _speedSettingRow.Parent!.Visible = !isStatic;
-                _brightnessSettingRow.Parent!.Visible = true;
-                _zoneRow.Visible = isStatic;
-                _presetRow.Visible = isStatic;
+                UpdateModeLayout(rgbMode);
             }
             catch { }
-            finally
-            {
-                _loadingState = false;
-            }
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

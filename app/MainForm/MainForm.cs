@@ -89,8 +89,7 @@ namespace PreySense
         private bool _isApplyingSavedRgbState = false;
         private bool _isTelemetryUpdating = false;
         private int _fanRampUp = 0;
-        private System.Windows.Forms.Timer _batteryThrottleTimer = null!;
-        private int _targetBatteryMode = -1;
+        private int _pendingBatteryMode = -1;
         private int _maxHz = 60;
         private int _lastRefreshRate = -1;
         private int _lastAppliedGammaRefreshRate = -1;
@@ -212,7 +211,7 @@ namespace PreySense
             tableButtons.Controls.Add(_footerQuickActions, 0, 0);
             tableButtons.SetColumnSpan(_footerQuickActions, 2);
 
-            buttonQuit.Text = "&Quit";
+            buttonQuit.Text = "Quit";
             buttonQuit.Image = GetThemeIcon(ResizeImageToSize(Properties.Resources.icons8_quit_32, 18, 18));
             buttonQuit.ImageAlign = ContentAlignment.MiddleLeft;
             buttonQuit.TextAlign = ContentAlignment.MiddleCenter;
@@ -315,16 +314,6 @@ namespace PreySense
             buttonRgbLighting.Click += (s, e) => OpenRgbProfilesForm();
 
             // Battery Limit Slider
-            _batteryThrottleTimer = new System.Windows.Forms.Timer { Interval = 33 };
-            _batteryThrottleTimer.Tick += (s, e) => {
-                _batteryThrottleTimer.Stop();
-                if (_targetBatteryMode != -1)
-                {
-                    ApplyBatteryMode(_targetBatteryMode);
-                    _targetBatteryMode = -1;
-                }
-            };
-
             sliderBatteryChargeLimit.Min = 40;
             sliderBatteryChargeLimit.Max = 100;
             sliderBatteryChargeLimit.Step = 5;
@@ -341,12 +330,15 @@ namespace PreySense
                 UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
                 if (_isLoaded && !_isApplyingSavedBatteryLimit)
                 {
-                    int mode = (val == 80) ? 1 : 0;
-                    _targetBatteryMode = mode;
-                    if (!_batteryThrottleTimer.Enabled)
-                    {
-                        _batteryThrottleTimer.Start();
-                    }
+                    _pendingBatteryMode = (val == 80) ? 1 : 0;
+                }
+            };
+            sliderBatteryChargeLimit.Slider.ValueCommitted += (s, e) =>
+            {
+                if (_isLoaded && !_isApplyingSavedBatteryLimit && _pendingBatteryMode != -1)
+                {
+                    ApplyBatteryMode(_pendingBatteryMode);
+                    _pendingBatteryMode = -1;
                 }
             };
             labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%"; // Show value at launch
@@ -354,11 +346,9 @@ namespace PreySense
             buttonBatteryFull.Click += (s, e) => {
                 int nextMode = sliderBatteryChargeLimit.Value == 80 ? 0 : 1;
                 sliderBatteryChargeLimit.Value = nextMode == 1 ? 80 : 100;
-                _targetBatteryMode = nextMode;
-                if (!_batteryThrottleTimer.Enabled)
-                {
-                    _batteryThrottleTimer.Start();
-                }
+                _pendingBatteryMode = nextMode;
+                ApplyBatteryMode(_pendingBatteryMode);
+                _pendingBatteryMode = -1;
             };
 
             buttonColorProfiles.Click += (s, e) => OpenColorForm();

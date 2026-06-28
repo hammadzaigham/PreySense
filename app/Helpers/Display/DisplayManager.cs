@@ -18,7 +18,7 @@ namespace PreySense.Helpers
         public double GammaB { get; set; } = 1.0;
         public int Saturation { get; set; } = 50;
         public int Hue { get; set; } = 0;
-        public bool BlueLight { get; set; } = false;
+        public int BlueLight { get; set; } = 0;
     }
 
     public static class DisplayManager
@@ -63,7 +63,7 @@ namespace PreySense.Helpers
                     profile.GammaB = Convert.ToDouble(key.GetValue("GammaB", "1.0"));
                     profile.Saturation = (int)key.GetValue("Saturation", 50);
                     profile.Hue = (int)key.GetValue("Hue", 0);
-                    profile.BlueLight = (int)key.GetValue("BlueLight", 0) == 1;
+                    profile.BlueLight = (int)key.GetValue("BlueLight", 0);
                 }
             }
             catch (Exception ex)
@@ -92,7 +92,7 @@ namespace PreySense.Helpers
                     key.SetValue("GammaB", profile.GammaB.ToString("0.00"));
                     key.SetValue("Saturation", profile.Saturation);
                     key.SetValue("Hue", profile.Hue);
-                    key.SetValue("BlueLight", profile.BlueLight ? 1 : 0);
+                    key.SetValue("BlueLight", profile.BlueLight);
                 }
             }
             catch (Exception ex)
@@ -146,8 +146,18 @@ namespace PreySense.Helpers
                 double sG = 0.715 + 0.285 * sat;
                 double sB = 0.072 + 0.928 * sat;
 
-                double blueScale = profile.BlueLight ? 0.6 : 1.0;
-                double greenScale = profile.BlueLight ? 0.9 : 1.0;
+                double blueScale = profile.BlueLight switch
+                {
+                    1 => 0.82,  // Low Reduction (18%)
+                    2 => 0.64,  // High Reduction (36%)
+                    _ => 1.0    // Off
+                };
+                double greenScale = profile.BlueLight switch
+                {
+                    1 => 0.95,  // Low Reduction (5% shift)
+                    2 => 0.90,  // High Reduction (10% shift)
+                    _ => 1.0    // Off
+                };
 
                 for (int i = 0; i < 256; i++)
                 {

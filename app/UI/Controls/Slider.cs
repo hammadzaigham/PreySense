@@ -52,14 +52,15 @@ namespace PreySense.UI
         public List<int> supportedValues = new();
 
         public event EventHandler? ValueChanged;
+        public event EventHandler? ValueCommitted;
 
         public Slider()
         {
             // This reduces flicker
             DoubleBuffered = true;
-            TabStop = true;
-            BackColor = RForm.formBack;
-            ForeColor = RForm.foreMain;
+            TabStop = false;
+            BackColor = UiTheme.CardBackground;
+            ForeColor = UiTheme.TextPrimary;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
 
             _animTimer.Tick += delegate
@@ -74,6 +75,12 @@ namespace PreySense.UI
                 }
                 Invalidate();
             };
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            BackColor = UiTheme.CardBackground;
         }
 
         private void AnimateInner(float target)
@@ -147,6 +154,7 @@ namespace PreySense.UI
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            bool changed = false;
             switch (e.KeyCode)
             {
                 case Keys.Right:
@@ -155,6 +163,7 @@ namespace PreySense.UI
                         Value = supportedValues.Where(v => v > Value).DefaultIfEmpty(Value).Min();
                     else
                         Value = Math.Min(Max, Value + Step);
+                    changed = true;
                     break;
                 case Keys.Left:
                 case Keys.Down:
@@ -162,8 +171,11 @@ namespace PreySense.UI
                         Value = supportedValues.Where(v => v < Value).DefaultIfEmpty(Value).Max();
                     else
                         Value = Math.Max(Min, Value - Step);
+                    changed = true;
                     break;
             }
+            if (changed)
+                ValueCommitted?.Invoke(this, EventArgs.Empty);
             AccessibilityNotifyClients(AccessibleEvents.Focus, 0);
             base.OnKeyDown(e);
         }
@@ -315,6 +327,7 @@ namespace PreySense.UI
             base.OnMouseUp(e);
             _moving = false;
             _dragX = null;
+            ValueCommitted?.Invoke(this, EventArgs.Empty);
             AnimateInner(ClientRectangle.Contains(e.Location) ? InnerHover : InnerNormal);
             Invalidate();
         }

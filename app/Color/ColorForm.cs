@@ -11,6 +11,8 @@ public partial class ColorForm : RForm
     private readonly MainForm _mainForm;
     private readonly int _refreshRate;
     private bool _isLoading;
+    private int _currentChannel = 0; // 0 = All, 1 = Red, 2 = Green, 3 = Blue
+    private DisplayColorProfile _profile = null!;
 
     public ColorForm(MainForm mainForm, int refreshRate)
     {
@@ -19,8 +21,85 @@ public partial class ColorForm : RForm
 
         InitializeComponent();
         InitTheme(true);
-        _blueLightCheck.CheckedChanged += (s, e) => { if (!_isLoading) RequestApply(); };
+
+        _blueLightCombo.Items.AddRange(new object[] {
+            "Off",
+            "Low (18% Reduction)",
+            "High (36% Reduction)"
+        });
+        _blueLightCombo.SelectedIndexChanged += (s, e) => { if (!_isLoading) RequestApply(); };
+
+        _btnAll.Click += (s, e) => SwitchChannel(0);
+        _btnRed.Click += (s, e) => SwitchChannel(1);
+        _btnGreen.Click += (s, e) => SwitchChannel(2);
+        _btnBlue.Click += (s, e) => SwitchChannel(3);
+
         LoadProfile();
+    }
+
+    private void SwitchChannel(int channel)
+    {
+        _currentChannel = channel;
+        UpdateChannelButtonOutlines();
+        LoadChannelValuesToUi();
+    }
+
+    private void UpdateChannelButtonOutlines()
+    {
+        var outlineColor = Color.FromArgb(128, 128, 128);
+
+        _btnAll.BorderColor = _currentChannel == 0 ? outlineColor : Color.Transparent;
+        _btnAll.Activated = _currentChannel == 0;
+
+        _btnRed.BorderColor = _currentChannel == 1 ? outlineColor : Color.Transparent;
+        _btnRed.Activated = _currentChannel == 1;
+
+        _btnGreen.BorderColor = _currentChannel == 2 ? outlineColor : Color.Transparent;
+        _btnGreen.Activated = _currentChannel == 2;
+
+        _btnBlue.BorderColor = _currentChannel == 3 ? outlineColor : Color.Transparent;
+        _btnBlue.Activated = _currentChannel == 3;
+    }
+
+    private void LoadChannelValuesToUi()
+    {
+        _isLoading = true;
+        try
+        {
+            int brightness = _currentChannel switch
+            {
+                1 => _profile.BrightnessR,
+                2 => _profile.BrightnessG,
+                3 => _profile.BrightnessB,
+                _ => _profile.BrightnessR
+            };
+            int contrast = _currentChannel switch
+            {
+                1 => _profile.ContrastR,
+                2 => _profile.ContrastG,
+                3 => _profile.ContrastB,
+                _ => _profile.ContrastR
+            };
+            double gamma = _currentChannel switch
+            {
+                1 => _profile.GammaR,
+                2 => _profile.GammaG,
+                3 => _profile.GammaB,
+                _ => _profile.GammaR
+            };
+
+            _brightnessSlider.Value = ToUiPercent(brightness);
+            _contrastSlider.Value = ToUiPercent(contrast);
+            _gammaSlider.Value = ToUiGamma(gamma);
+
+            _brightnessValue.Value = ToUiPercent(brightness);
+            _contrastValue.Value = ToUiPercent(contrast);
+            _gammaValue.Value = ClampGamma(gamma);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     private void LoadProfile()
@@ -28,42 +107,48 @@ public partial class ColorForm : RForm
         _isLoading = true;
         try
         {
-            var profile = DisplayManager.LoadProfile(_refreshRate);
+            _profile = DisplayManager.LoadProfile(_refreshRate);
 
-            _brightnessSlider.Value = ToUiPercent(profile.BrightnessR);
-            _contrastSlider.Value = ToUiPercent(profile.ContrastR);
-            _gammaSlider.Value = ToUiGamma(profile.GammaR);
-            _saturationSlider.Value = profile.Saturation;
-            _hueSlider.Value = profile.Hue;
-            _blueLightCheck.Checked = profile.BlueLight;
+            _saturationSlider.Value = _profile.Saturation;
+            _hueSlider.Value = _profile.Hue;
+            _blueLightCombo.SelectedIndex = Math.Clamp(_profile.BlueLight, 0, 2);
 
-            _brightnessValue.Value = ToUiPercent(profile.BrightnessR);
-            _contrastValue.Value = ToUiPercent(profile.ContrastR);
-            _gammaValue.Value = ClampGamma(profile.GammaR);
-            _saturationValue.Value = profile.Saturation;
-            _hueValue.Value = profile.Hue;
+            _saturationValue.Value = _profile.Saturation;
+            _hueValue.Value = _profile.Hue;
         }
         finally
         {
             _isLoading = false;
-            RequestApply();
         }
+        SwitchChannel(_currentChannel);
     }
 
     private void ResetProfile()
     {
-        _brightnessSlider.Value = 50;
-        _contrastSlider.Value = 50;
-        _gammaSlider.Value = 100;
+        _profile.BrightnessR = 100;
+        _profile.BrightnessG = 100;
+        _profile.BrightnessB = 100;
+        _profile.ContrastR = 100;
+        _profile.ContrastG = 100;
+        _profile.ContrastB = 100;
+        _profile.GammaR = 1.0;
+        _profile.GammaG = 1.0;
+        _profile.GammaB = 1.0;
+        _profile.Saturation = 50;
+        _profile.Hue = 0;
+        _profile.BlueLight = 0;
+
         _saturationSlider.Value = 50;
         _hueSlider.Value = 0;
-        _blueLightCheck.Checked = false;
+        _blueLightCombo.SelectedIndex = 0;
 
         _brightnessValue.Value = 50;
         _contrastValue.Value = 50;
         _gammaValue.Value = 1.00m;
         _saturationValue.Value = 50;
         _hueValue.Value = 0;
+
+        SwitchChannel(_currentChannel);
         RequestApply();
     }
 
@@ -72,24 +157,47 @@ public partial class ColorForm : RForm
         if (_isLoading) return;
         _pendingApply = false;
 
-        var profile = new DisplayColorProfile
-        {
-            BrightnessR = ToProfilePercent(_brightnessSlider.Value),
-            BrightnessG = ToProfilePercent(_brightnessSlider.Value),
-            BrightnessB = ToProfilePercent(_brightnessSlider.Value),
-            ContrastR = ToProfilePercent(_contrastSlider.Value),
-            ContrastG = ToProfilePercent(_contrastSlider.Value),
-            ContrastB = ToProfilePercent(_contrastSlider.Value),
-            GammaR = (double)_gammaValue.Value,
-            GammaG = (double)_gammaValue.Value,
-            GammaB = (double)_gammaValue.Value,
-            Saturation = _saturationSlider.Value,
-            Hue = _hueSlider.Value,
-            BlueLight = _blueLightCheck.Checked
-        };
+        int uiBrightness = _brightnessSlider.Value;
+        int uiContrast = _contrastSlider.Value;
+        double uiGamma = (double)_gammaValue.Value;
 
-        DisplayManager.SaveProfile(_refreshRate, profile);
-        DisplayManager.ApplyProfile(profile);
+        if (_currentChannel == 0) // All
+        {
+            _profile.BrightnessR = ToProfilePercent(uiBrightness);
+            _profile.BrightnessG = ToProfilePercent(uiBrightness);
+            _profile.BrightnessB = ToProfilePercent(uiBrightness);
+            _profile.ContrastR = ToProfilePercent(uiContrast);
+            _profile.ContrastG = ToProfilePercent(uiContrast);
+            _profile.ContrastB = ToProfilePercent(uiContrast);
+            _profile.GammaR = uiGamma;
+            _profile.GammaG = uiGamma;
+            _profile.GammaB = uiGamma;
+        }
+        else if (_currentChannel == 1) // Red
+        {
+            _profile.BrightnessR = ToProfilePercent(uiBrightness);
+            _profile.ContrastR = ToProfilePercent(uiContrast);
+            _profile.GammaR = uiGamma;
+        }
+        else if (_currentChannel == 2) // Green
+        {
+            _profile.BrightnessG = ToProfilePercent(uiBrightness);
+            _profile.ContrastG = ToProfilePercent(uiContrast);
+            _profile.GammaG = uiGamma;
+        }
+        else if (_currentChannel == 3) // Blue
+        {
+            _profile.BrightnessB = ToProfilePercent(uiBrightness);
+            _profile.ContrastB = ToProfilePercent(uiContrast);
+            _profile.GammaB = uiGamma;
+        }
+
+        _profile.Saturation = _saturationSlider.Value;
+        _profile.Hue = _hueSlider.Value;
+        _profile.BlueLight = _blueLightCombo.SelectedIndex;
+
+        DisplayManager.SaveProfile(_refreshRate, _profile);
+        DisplayManager.ApplyProfile(_profile);
     }
 
     private void SliderChanged(object? sender, EventArgs e)

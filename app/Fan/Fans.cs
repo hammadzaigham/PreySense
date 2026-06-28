@@ -26,10 +26,9 @@ namespace PreySense.Fan
         private Panel _curveHost = null!;
         private Panel _curveFrame = null!;
         private RCheckBox checkApplyGpuLimits = null!;
-        private RButton _buttonApplyCpuLimits = null!;
-        private RButton _buttonApplyGpuLimits = null!;
         private RButton _buttonSaveSettings = null!;
         private RButton _buttonResetDefaults = null!;
+        private RButton _buttonApplySettings = null!;
         private NumericUpDown numPl1 = null!;
         private NumericUpDown numPl2 = null!;
         private bool _enforcingPlOrder;
@@ -39,8 +38,8 @@ namespace PreySense.Fan
         private byte _editingMode;
         private NumericUpDown numGpuCoreOffset = null!;
         private NumericUpDown numGpuMemoryOffset = null!;
-        private int _pl1MaxW = 140;
-        private int _pl2MaxW = 140;
+        private int _pl1MaxW = 200;
+        private int _pl2MaxW = 200;
         private RNumericUpDown numFanRampUp = null!;
         private Label labelFanRampUp = null!;
 
@@ -97,14 +96,7 @@ namespace PreySense.Fan
             return Array.IndexOf(PerfModes, (byte)0x01);
         }
 
-        private static (int pl1Max, int pl2Max) GetPowerLimitCaps(byte mode) => mode switch
-        {
-            0x06 => (45, 50),
-            0x00 => (55, 140),
-            0x04 => (75, 140),
-            0x05 => (85, 140),
-            _ => (65, 140),
-        };
+
 
         public void RefreshCurves()
         {

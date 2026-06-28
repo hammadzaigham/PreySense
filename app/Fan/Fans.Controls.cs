@@ -26,25 +26,8 @@ namespace PreySense.Fan
                 EnforcePowerLimitOrder(pl1IsDriver: false);
             });
 
-            _buttonApplyCpuLimits = new RButton
-            {
-                Text = "Apply Power Limits",
-                Dock = DockStyle.Top,
-                Secondary = true,
-                BorderRadius = 2,
-                BorderColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = buttonSecond,
-                ForeColor = foreMain,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Height = Math.Max(40, (int)(42 * (DeviceDpi / 192f))),
-                Margin = Padding.Empty,
-                UseVisualStyleBackColor = false
-            };
-            _buttonApplyCpuLimits.FlatAppearance.BorderColor = borderSecond;
-            panelApplyCpuLimits.Controls.Clear();
-            panelApplyCpuLimits.Controls.Add(_buttonApplyCpuLimits);
             checkApplyCpuLimits.Visible = false;
+            panelApplyCpuLimits.Visible = false;
 
             panelCpuLimitsSection.Controls.SetChildIndex(panelCpuLimitsTitle, 4);
             panelCpuLimitsSection.Controls.SetChildIndex(panelPl1, 3);
@@ -71,24 +54,6 @@ namespace PreySense.Fan
             {
                 Visible = false
             };
-            _buttonApplyGpuLimits = new RButton
-            {
-                Text = "Apply Overclock",
-                Dock = DockStyle.Top,
-                Secondary = true,
-                BorderRadius = 2,
-                BorderColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = buttonSecond,
-                ForeColor = foreMain,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Height = Math.Max(40, (int)(42 * (DeviceDpi / 192f))),
-                Margin = Padding.Empty,
-                UseVisualStyleBackColor = false
-            };
-            _buttonApplyGpuLimits.FlatAppearance.BorderColor = borderSecond;
-            panelGpuOffsetsSection.Controls.Add(_buttonApplyGpuLimits);
-            panelGpuOffsetsSection.Controls.SetChildIndex(_buttonApplyGpuLimits, 0);
         }
 
         private void CreateFanCurveCards()
@@ -416,15 +381,43 @@ namespace PreySense.Fan
         private void ConfigureResetButton(Func<int, int> S)
         {
             var host = new Panel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, BackColor = formBack, Margin = new Padding(0), Padding = new Padding(0, S(12), 0, 0) };
+            
+            var buttonRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty, BackColor = formBack };
+            buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            buttonRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            _buttonSaveSettings = CreateFooterButton("Save Settings", S);
+            _buttonSaveSettings.Margin = new Padding(S(4), 0, 0, S(8));
+
+            _buttonApplySettings = CreateFooterButton("Apply Power Limits", S);
+            _buttonApplySettings.Margin = new Padding(0, 0, S(4), S(8));
+
+            _buttonApplySettings.Click += (_, _) =>
+            {
+                if (buttonCPU.Activated)
+                {
+                    ApplyCpuPowerLimits();
+                }
+                else if (buttonGPU.Activated)
+                {
+                    CommitGpuSettings();
+                }
+            };
+
+            buttonRow.Controls.Add(_buttonApplySettings, 0, 0);
+            buttonRow.Controls.Add(_buttonSaveSettings, 1, 0);
+
             var stack = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, Padding = Padding.Empty, BackColor = formBack };
             stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            _buttonSaveSettings = CreateFooterButton("Save Settings", S);
+
             _buttonResetDefaults = CreateFooterButton("Factory Defaults", S);
             _buttonSaveSettings.Click += (_, _) => SaveVisibleSettings();
             _buttonResetDefaults.Click += (_, _) => ResetDefaults();
-            stack.Controls.Add(_buttonSaveSettings, 0, 0);
+
+            stack.Controls.Add(buttonRow, 0, 0);
             stack.Controls.Add(_buttonResetDefaults, 0, 1);
             host.Controls.Add(stack);
             panelMainControls.Controls.Add(host);
@@ -508,24 +501,16 @@ namespace PreySense.Fan
             panelCpuLimitsSectionMode.Visible = true;
             panelCpuLimitsSectionMode.AutoSize = false;
             panelCpuLimitsSectionMode.Dock = DockStyle.Top;
-            panelCpuLimitsSectionMode.Height = S(54);
-            panelCpuLimitsSectionMode.Padding = new Padding(S(6), S(2), S(8), 0);
+            panelCpuLimitsSectionMode.Height = S(68);
+            panelCpuLimitsSectionMode.Padding = new Padding(0, S(8), 0, S(20));
             comboWindowsPowerMode.Visible = true;
-            comboWindowsPowerMode.Dock = DockStyle.None;
-            comboWindowsPowerMode.Margin = new Padding(0);
-            comboWindowsPowerMode.Height = S(38);
-            comboWindowsPowerMode.Width = Math.Max(0, panelCpuLimitsSectionMode.ClientSize.Width - panelCpuLimitsSectionMode.Padding.Left - panelCpuLimitsSectionMode.Padding.Right);
+            comboWindowsPowerMode.Dock = DockStyle.Fill;
+            comboWindowsPowerMode.Margin = Padding.Empty;
             comboWindowsPowerMode.BackColor = buttonMain;
             comboWindowsPowerMode.ForeColor = foreMain;
             comboWindowsPowerMode.BorderColor = formBack;
             comboWindowsPowerMode.ButtonColor = buttonMain;
             comboWindowsPowerMode.ArrowColor = foreMain;
-            panelCpuLimitsSectionMode.Resize += (_, _) =>
-            {
-                int width = Math.Max(0, panelCpuLimitsSectionMode.ClientSize.Width - panelCpuLimitsSectionMode.Padding.Left - panelCpuLimitsSectionMode.Padding.Right);
-                comboWindowsPowerMode.Bounds = new Rectangle(0, S(8), width, S(38));
-            };
-            comboWindowsPowerMode.Bounds = new Rectangle(0, S(8), Math.Max(0, panelCpuLimitsSectionMode.ClientSize.Width - panelCpuLimitsSectionMode.Padding.Left - panelCpuLimitsSectionMode.Padding.Right), S(38));
             powerModeHost.Controls.Add(panelCpuLimitsSectionMode);
             powerModeHost.Controls.Add(panelCpuLimitsSectionModeTitle);
             panelMainControls.Controls.Add(powerModeHost);
@@ -538,15 +523,13 @@ namespace PreySense.Fan
             panelApplyCpuLimits.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             panelApplyCpuLimits.Dock = DockStyle.Top;
             panelApplyCpuLimits.Padding = new Padding(S(4), S(6), S(4), S(6));
-            StyleApplyButton(_buttonApplyCpuLimits, S);
             panelCpuLimitsSection.AutoSize = true;
             SetTopDockOrder(panelCpuLimitsSection, panelApplyCpuLimits, panelPl2, panelPl1, panelCpuLimitsTitle);
             BuildSliderRow(panelGpuOffsetsSectionCore, labelGpuCoreTitle, "Core Offset (MHz)", labelGpuCoreValue, trackGpuCoreOffset, numGpuCoreOffset, S);
             BuildSliderRow(panelGpuOffsetsSectionMemory, labelGpuMemoryTitle, "Memory Offset (MHz)", labelGpuMemoryValue, trackGpuMemoryOffset, numGpuMemoryOffset, S);
-            StyleApplyButton(_buttonApplyGpuLimits, S);
             panelGpuOffsetsSection.AutoSize = true;
             panelGpuOffsetsSection.Padding = new Padding(0, 0, 0, S(10));
-            SetTopDockOrder(panelGpuOffsetsSection, _buttonApplyGpuLimits, panelGpuOffsetsSectionMemory, panelGpuOffsetsSectionCore, panelGpuOffsetsTitle);
+            SetTopDockOrder(panelGpuOffsetsSection, panelGpuOffsetsSectionMemory, panelGpuOffsetsSectionCore, panelGpuOffsetsTitle);
         }
 
         private void BuildSliderRow(Panel panel, Label titleLabel, string titleText, Label hideLabel, RTrackBar track, NumericUpDown numeric, Func<int, int> S)

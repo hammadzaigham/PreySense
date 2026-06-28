@@ -1,4 +1,3 @@
 <Solution>
   <Project Path="app/PreySense.csproj" />
-  <Project Path="xtu/PreySense.XtuBridge/PreySense.XtuBridge.csproj" />
 </Solution>

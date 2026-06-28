@@ -2,7 +2,7 @@ namespace PreySense
 {
     internal static class Program
     {
-        public const string VersionString = "1.0.1";
+        public const string VersionString = "1.1.0";
         public static MainForm? settingsForm;
         public static Overlay.HardwareOverlay? hardwareOverlay;
         private static CancellationTokenSource? _overlayUnloadCts;
@@ -16,6 +16,32 @@ namespace PreySense
             if (TryRunHeadlessCommand(args))
             {
                 return;
+            }
+
+            if (!PawnIO.IntelMsr.IsPawnIoAvailable(out _))
+            {
+                var result = Dialogs.ConfirmDialog.Show(
+                    null,
+                    "PawnIO is not installed. It is required to apply CPU power limits.\n\nWould you like to install it now?",
+                    "PawnIO Required",
+                    "Install PawnIO",
+                    "Continue"
+                );
+                if (result == DialogResult.Yes)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "https://pawnio.eu/",
+                            UseShellExecute = true
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log($"Failed to open PawnIO URL: {ex.Message}");
+                    }
+                }
             }
 
             settingsForm = new MainForm();

@@ -5,7 +5,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Runtime.Versioning;
-using System.Windows.Forms;
+using PreySense.UI;
+
 
 namespace PreySense.Fan
 {
@@ -67,7 +68,7 @@ namespace PreySense.Fan
                 ControlStyles.ResizeRedraw,
                 true);
 
-            BackColor = Color.FromArgb(20, 20, 22);
+            BackColor = UiTheme.IsLightTheme() ? Color.FromArgb(250, 250, 250) : Color.FromArgb(20, 20, 22);
             Cursor = Cursors.Hand;
         }
 
@@ -98,8 +99,9 @@ namespace PreySense.Fan
 
         private void DrawGrid(Graphics g)
         {
-            using var gridPen = new Pen(Color.FromArgb(40, 40, 45), 1f);
-            using var labelBrush = new SolidBrush(Color.FromArgb(120, 120, 135));
+            bool light = UiTheme.IsLightTheme();
+            using var gridPen = new Pen(light ? Color.FromArgb(220, 220, 220) : Color.FromArgb(40, 40, 45), 1f);
+            using var labelBrush = new SolidBrush(light ? Color.FromArgb(80, 80, 80) : Color.FromArgb(120, 120, 135));
             using var font = new Font(GridFontFamily, GraphWidth < 320 ? GridFontSizeNarrow : GridFontSizeWide);
 
             int tempStep = GraphWidth < 320 ? 20 : 10;
@@ -164,15 +166,16 @@ namespace PreySense.Fan
 
         private void DrawNodes(Graphics g, Color themeColor)
         {
+            bool light = UiTheme.IsLightTheme();
             for (int i = 0; i < _points.Length; i++)
             {
                 PointF point = GetPixelCoords(_points[i]);
                 bool isHighlighted = i == _hoveredIndex || i == _draggedIndex;
-                Color nodeColor = isHighlighted ? Color.White : themeColor;
+                Color nodeColor = isHighlighted ? (light ? Color.FromArgb(240, 240, 240) : Color.White) : themeColor;
                 int radius = isHighlighted ? NodeRadius + 2 : NodeRadius;
 
                 using var nodeBrush = new SolidBrush(nodeColor);
-                using var borderPen = new Pen(Color.FromArgb(30, 30, 30), 1.5f);
+                using var borderPen = new Pen(light ? Color.FromArgb(200, 200, 200) : Color.FromArgb(30, 30, 30), 1.5f);
 
                 g.FillEllipse(nodeBrush, point.X - radius, point.Y - radius, radius * 2, radius * 2);
                 g.DrawEllipse(borderPen, point.X - radius, point.Y - radius, radius * 2, radius * 2);

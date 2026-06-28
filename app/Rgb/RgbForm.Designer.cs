@@ -30,7 +30,7 @@ namespace PreySense.Rgb
         private TableLayoutPanel _directionRow = null!;
         private RButton[] _zoneColorButtons = Array.Empty<RButton>();
         private TableLayoutPanel _zoneRow = null!;
-        private const int LabelColPx = 64;
+        private const int LabelColPx = 84;
 
         private int S(int px) => (int)(px * _dpiScale);
 
@@ -44,7 +44,7 @@ namespace PreySense.Rgb
             SuspendLayout();
             Controls.Clear();
 
-            _formW = S(332);
+            _formW = S(420);
             _ui = new UiBuilder(_dpiScale, _formW);
 
             UiTheme.ApplyFixedDialog(this, "Keyboard Lighting");
@@ -54,11 +54,11 @@ namespace PreySense.Rgb
             ShowIcon = false;
 
             int contentWidth = _formW - S(UiTheme.DialogPadding * 2);
-            int cardBodyWidth = contentWidth - S(UiTheme.CardPadding * 2);
+            int cardBodyWidth = contentWidth - S(UiTheme.CardPadding) * 4;
             int labelColWidth = S(LabelColPx);
-            int valueWidth = S(44);
-            int controlWidth = cardBodyWidth - labelColWidth - S(6);
-            int sliderWidth = controlWidth - valueWidth;
+            int valueWidth = S(52);
+            int controlWidth = Math.Max(S(220), cardBodyWidth - labelColWidth - S(8));
+            int sliderWidth = Math.Max(S(140), controlWidth - valueWidth);
 
             var root = _ui.RootStack(this, _formW,
                 new Padding(S(UiTheme.DialogPadding), S(2), S(UiTheme.DialogPadding), S(2)));
@@ -114,28 +114,31 @@ namespace PreySense.Rgb
             // Speed slider (1-5).
             _speedSettingRow = MakeSliderRow(body, "Speed", sliderWidth, valueWidth, 1, 5, 3, out _speedValueBox, val =>
             {
-                if (_loadingState) return;
+                if (!CanApplyHardware()) return;
                 _wmi.SetSpeed((byte)val);
                 SaveRgbState();
             });
+            ArmSliderInputs(_speedSettingRow, _speedValueBox);
 
             // Direction dropdown (only visible for wave mode).
             _directionRow = AddComboRow(body, "Direction", controlWidth, out _directionDropdown);
-            _directionDropdown.Items.Add("Right");
             _directionDropdown.Items.Add("Left");
+            _directionDropdown.Items.Add("Right");
             _directionDropdown.SelectedIndex = 0;
+            ArmDropdown(_directionDropdown);
             _directionRow.Visible = false;
 
             // Preset dropdown.
             _presetRow = AddComboRow(body, "Preset", controlWidth, out _presetDropdown);
             foreach (var name in CustomPresetNames) _presetDropdown.Items.Add(name);
             _presetDropdown.SelectedIndex = 0;
+            ArmDropdown(_presetDropdown);
             _presetRow.Visible = false;
 
             // Zone color buttons (Z1-Z4 + Sync).
             var zonesRow = _ui.Stack(controlWidth, FlowDirection.LeftToRight);
             zonesRow.AutoSize = false;
-            zonesRow.Height = S(28);
+            zonesRow.Height = S(32);
             zonesRow.Width = controlWidth;
             zonesRow.Margin = Padding.Empty;
             int zoneBtnW = (controlWidth - S(UiTheme.ColumnGap) * 4) / 5;
@@ -144,7 +147,7 @@ namespace PreySense.Rgb
             for (int i = 0; i < 5; i++)
             {
                 bool isSync = i == 4;
-                _zoneColorButtons[i] = _ui.Button(zoneLabels[i], zoneBtnW, S(26), _fontBody, UiTheme.Separator, secondary: !isSync);
+                _zoneColorButtons[i] = _ui.Button(zoneLabels[i], zoneBtnW, S(30), _fontBody, UiTheme.Separator, secondary: !isSync);
                 _zoneColorButtons[i].BorderRadius = 2;
                 _zoneColorButtons[i].Borderless = true;
                 _zoneColorButtons[i].FlatAppearance.BorderSize = 0;
@@ -159,7 +162,7 @@ namespace PreySense.Rgb
             // Brightness slider (1-5).
             _brightnessSettingRow = MakeSliderRow(body, "Brightness", sliderWidth, valueWidth, 1, 5, 5, out _brightnessValueBox, val =>
             {
-                if (_loadingState) return;
+                if (!CanApplyHardware()) return;
                 _wmi.SetBrightness((byte)val);
                 if (_effectDropdown.SelectedIndex == 0)
                 {
@@ -167,8 +170,10 @@ namespace PreySense.Rgb
                 }
                 SaveRgbState();
             });
+            ArmSliderInputs(_brightnessSettingRow, _brightnessValueBox);
 
             _effectDropdown.SelectedIndexChanged += (_, _) => ApplyMode();
+            ArmDropdown(_effectDropdown);
             _directionDropdown.SelectedIndexChanged += (_, _) => ApplyDirection();
             _presetDropdown.SelectedIndexChanged += (_, _) => ApplyPreset();
             for (int i = 0; i < 4; i++)
@@ -279,6 +284,18 @@ namespace PreySense.Rgb
             parent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             parent.RowCount++;
             return slider;
+        }
+
+        private void ArmSliderInputs(LabeledSliderControl slider, RNumericUpDown valueBox)
+        {
+            slider.Slider.MouseDown += (_, _) => ArmHardwareApply();
+            valueBox.MouseDown += (_, _) => ArmHardwareApply();
+            valueBox.KeyDown += (_, _) => ArmHardwareApply();
+        }
+
+        private void ArmDropdown(PredatorDropDown combo)
+        {
+            combo.SelectionChangeCommitted += (_, _) => ArmHardwareApply();
         }
 
         private TableLayoutPanel AddComboRow(TableLayoutPanel parent, string labelText, int width, out PredatorDropDown combo)

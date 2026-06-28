@@ -45,7 +45,7 @@ The Predator Sense UI may display renamed labels for some effects, but the wire 
 
 ## Payload notes
 
-Dynamic keyboard effects use `device: 0`, `duration: 3`, `colortype: 1`, brightness `1..5`, speed `1..5`, and optional wave direction `1` or `2`.
+Dynamic keyboard effects use `device: 0`, `duration: 3`, `colortype: 1`, brightness `1..5`, speed `1..5`, and an optional wave direction field. PreySense now exposes and passes through raw direction values `1..4` for hardware probing, though only `1` and `2` are currently documented by existing notes.
 
 Per-zone static uses `device: 1` and an `LEDs` array with four zone colors.
 

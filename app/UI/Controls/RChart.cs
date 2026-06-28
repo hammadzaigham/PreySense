@@ -18,9 +18,8 @@ namespace PreySense.UI
             {
                 base.OnPaint(e);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                AppLogger.Log("RChart paint: " + ex.Message);
                 _disableInvalidates?.SetValue(this, false);
             }
         }

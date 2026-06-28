@@ -10,13 +10,11 @@ namespace PreySense.UI
 
     public class RForm : Form
     {
-
         public static Color colorEco = Color.FromArgb(255, 6, 180, 138);
         public static Color colorStandard = Color.FromArgb(255, 58, 174, 239);
         public static Color colorTurbo = Color.FromArgb(255, 255, 32, 32);
         public static Color colorCustom = Color.FromArgb(255, 255, 128, 0);
         public static Color colorGray = Color.FromArgb(255, 168, 168, 168);
-
 
         public static Color buttonMain;
         public static Color buttonSecond;
@@ -39,11 +37,45 @@ namespace PreySense.UI
         [DllImport("UXTheme.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern int SetWindowTheme(nint hWnd, string pszSubAppName, string? pszSubIdList);
 
-        [DllImport("DwmApi")] //System.Runtime.InteropServices
+        [DllImport("DwmApi")]
         private static extern int DwmSetWindowAttribute(nint hwnd, int attr, int[] attrValue, int attrSize);
 
         public bool darkTheme = false;
         private bool themeInitialized = false;
+
+        public RForm()
+        {
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            Disposed += (sender, args) =>
+            {
+                SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            };
+        }
+
+        private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == UserPreferenceCategory.General)
+            {
+                if (InvokeRequired)
+                {
+                    try { BeginInvoke(new Action(() => RefreshThemeIfChanged())); } catch { }
+                }
+                else
+                {
+                    RefreshThemeIfChanged();
+                }
+            }
+        }
+
+        private void RefreshThemeIfChanged()
+        {
+            bool themeChanged = InitTheme(false);
+            if (themeChanged)
+            {
+                Invalidate(true);
+            }
+        }
+
         protected override CreateParams CreateParams
         {
             get
@@ -54,25 +86,55 @@ namespace PreySense.UI
                 return parms;
             }
         }
+
         public static void InitColors(bool darkTheme)
         {
             flatTheme = AppConfig.GetString("theme")?.ToLower() == "flat";
 
-            buttonMain = Color.FromArgb(255, 46, 46, 46);
-            buttonSecond = Color.FromArgb(255, 36, 36, 36);
+            if (darkTheme)
+            {
+                buttonMain = Color.FromArgb(255, 46, 46, 46);
+                buttonSecond = Color.FromArgb(255, 36, 36, 36);
 
-            formBack = Color.FromArgb(255, 28, 28, 28);
-            foreMain = Color.FromArgb(255, 240, 240, 240);
-            borderMain = Color.FromArgb(255, 55, 55, 55);
-            borderSecond = Color.FromArgb(255, 42, 42, 42);
+                formBack = Color.FromArgb(255, 28, 28, 28);
+                foreMain = Color.FromArgb(255, 240, 240, 240);
+                borderMain = Color.FromArgb(255, 55, 55, 55);
+                borderSecond = Color.FromArgb(255, 42, 42, 42);
 
-            chartMain = Color.FromArgb(255, 35, 35, 35);
-            chartGrid = Color.FromArgb(255, 70, 70, 70);
+                chartMain = Color.FromArgb(255, 35, 35, 35);
+                chartGrid = Color.FromArgb(255, 70, 70, 70);
+            }
+            else
+            {
+                buttonMain = Color.FromArgb(255, 220, 220, 220);
+                buttonSecond = Color.FromArgb(255, 230, 230, 230);
+
+                formBack = Color.FromArgb(255, 240, 240, 240);
+                foreMain = Color.FromArgb(255, 20, 20, 20);
+                borderMain = Color.FromArgb(255, 200, 200, 200);
+                borderSecond = Color.FromArgb(255, 215, 215, 215);
+
+                chartMain = Color.FromArgb(255, 250, 250, 250);
+                chartGrid = Color.FromArgb(255, 220, 220, 220);
+            }
         }
 
         private static bool IsDarkTheme()
         {
-            return true;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                if (key != null)
+                {
+                    object? val = key.GetValue("AppsUseLightTheme");
+                    if (val != null)
+                    {
+                        return Convert.ToInt32(val) == 0;
+                    }
+                }
+            }
+            catch { }
+            return true; // Default to dark theme
         }
 
         public bool InitTheme(bool setDPI = false)
@@ -83,6 +145,7 @@ namespace PreySense.UI
             darkTheme = newDarkTheme;
             themeInitialized = true;
 
+            UiTheme.InitializeTheme();
             InitColors(darkTheme);
             BackColor = formBack;
             ForeColor = foreMain;
@@ -93,8 +156,16 @@ namespace PreySense.UI
 
             if (changed || firstInit)
             {
-                SetPreferredAppMode(1);
-                SetWindowTheme(Handle, "DarkMode_Explorer", null);
+                if (darkTheme)
+                {
+                    SetPreferredAppMode(1);
+                    SetWindowTheme(Handle, "DarkMode_Explorer", null);
+                }
+                else
+                {
+                    SetPreferredAppMode(2);
+                    SetWindowTheme(Handle, "Explorer", null);
+                }
                 ApplyCaptionColors();
                 ShowIcon = ShowWindowIcon;
                 ShowInTaskbar = ShowWindowInTaskbar;
@@ -106,13 +177,10 @@ namespace PreySense.UI
                 this.Invalidate();
             }
 
-
             return changed;
-
         }
 
         protected virtual bool ShowWindowIcon => false;
-
         protected virtual bool ShowWindowInTaskbar => false;
 
         protected override void OnHandleCreated(EventArgs e)
@@ -141,6 +209,5 @@ namespace PreySense.UI
 
         private static int ToColorRef(Color color) =>
             color.R | (color.G << 8) | (color.B << 16);
-
     }
 }

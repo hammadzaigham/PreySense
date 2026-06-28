@@ -7,12 +7,10 @@ public partial class MainForm
         panelPerformance.Padding = new Padding(20);
         panelGPU.Padding = new Padding(20, 20, 20, 0);
         panelScreen.Padding = new Padding(20, 11, 20, 0);
-        panelMatrix.Padding = new Padding(20, 20, 20, 11);
         panelRgb.Padding = new Padding(20, 20, 20, 0);
         panelBattery.Padding = new Padding(20, 15, 20, 0);
-        panelStartup.Padding = new Padding(20, 0, 20, 0);
-        panelVersion.Padding = new Padding(20, 5, 24, 5);
-        panelFooter.Padding = new Padding(20, 0, 20, 10);
+        panelStartup.Padding = new Padding(20, 10, 20, 20);
+        panelFooter.Padding = new Padding(20, 10, 20, 0);
         MatchSectionTitleColors();
     }
 
@@ -22,7 +20,6 @@ public partial class MainForm
         MatchTitlePanel(panelGPUTitle);
         MatchTitlePanel(panelScreenTitle);
         MatchTitlePanel(panelRgbTitle);
-        MatchTitlePanel(panelMatrixTitle);
         MatchTitlePanel(panelBatteryTitle);
     }
 
@@ -51,10 +48,8 @@ public partial class MainForm
     private void ApplyThemeAwareVisibility()
     {
         panelRgb.Visible = true;
-        panelMatrix.Visible = true;
         panelBattery.Visible = true;
         panelStartup.Visible = true;
-        panelVersion.Visible = false;
     }
 }
 

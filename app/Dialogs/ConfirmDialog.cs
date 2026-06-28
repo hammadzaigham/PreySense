@@ -16,7 +16,7 @@ namespace PreySense.Dialogs
             _labelMessage.ForeColor = RForm.foreMain;
         }
 
-        public static DialogResult Show(IWin32Window owner, string message, string title, string yesText = "Apply && Restart Now", string noText = "Cancel")
+        public static DialogResult Show(IWin32Window? owner, string message, string title, string yesText = "Apply && Restart Now", string noText = "Cancel")
         {
             using var dialog = new ConfirmDialog(message, title, yesText, noText);
             return dialog.ShowDialog(owner);

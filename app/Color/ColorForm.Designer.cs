@@ -10,6 +10,10 @@ public partial class ColorForm
     private TableLayoutPanel _body = null!;
     private Label _title = null!;
     private RButton _resetButton = null!;
+    private RButton _btnAll = null!;
+    private RButton _btnRed = null!;
+    private RButton _btnGreen = null!;
+    private RButton _btnBlue = null!;
     private LabeledSliderControl _brightnessSlider = null!;
     private LabeledSliderControl _contrastSlider = null!;
     private LabeledSliderControl _gammaSlider = null!;
@@ -20,7 +24,7 @@ public partial class ColorForm
     private RNumericUpDown _gammaValue = null!;
     private RNumericUpDown _saturationValue = null!;
     private RNumericUpDown _hueValue = null!;
-    private RCheckBox _blueLightCheck = null!;
+    private PredatorDropDown _blueLightCombo = null!;
     private System.Windows.Forms.Timer _applyTimer = null!;
     private bool _pendingApply;
 
@@ -79,12 +83,14 @@ public partial class ColorForm
         _body.Controls.Add(new Panel { Height = _ui.S(10), Dock = DockStyle.Top, Margin = Padding.Empty, BackColor = Color.Transparent }, 0, _body.RowCount++);
         _body.RowStyles.Add(new RowStyle(SizeType.Absolute, _ui.S(10)));
 
+        AddChannelButtonsRow(out _btnAll, out _btnRed, out _btnGreen, out _btnBlue);
+
         AddRangeRow("Brightness", 0, 100, 50, 0, out _brightnessSlider, out _brightnessValue);
         AddRangeRow("Contrast", 0, 100, 50, 0, out _contrastSlider, out _contrastValue);
         AddRangeRow("Gamma", 0, 500, 100, 2, out _gammaSlider, out _gammaValue);
         AddRangeRow("Saturation", 0, 100, 50, 0, out _saturationSlider, out _saturationValue);
         AddRangeRow("Hue", -180, 180, 0, 0, out _hueSlider, out _hueValue);
-        AddCheckBoxRow("Blue Light", out _blueLightCheck);
+        AddDropDownRow("Bluelight Shield", out _blueLightCombo);
 
         _brightnessSlider.ValueChanged += SliderChanged;
         _contrastSlider.ValueChanged += SliderChanged;
@@ -177,26 +183,101 @@ public partial class ColorForm
         _body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 
-    private void AddCheckBoxRow(string labelText, out RCheckBox checkBox)
+    private void AddDropDownRow(string labelText, out PredatorDropDown dropDown)
     {
-        checkBox = new RCheckBox
-        {
-            Text = labelText,
-            AutoSize = false,
-            BackColor = UiTheme.ElevatedCardBackground,
-            ForeColor = UiTheme.TextPrimary,
-            Font = UiTheme.Font(_ui.Scale, 9f),
-            Padding = new Padding(_ui.S(16), 0, _ui.S(16), 0),
-            Margin = new Padding(0, 0, 0, _ui.S(UiTheme.RowGap)),
-            Height = _ui.S(30),
-            Width = _ui.FormWidth - _ui.S(UiTheme.DialogPadding) * 2 - _ui.S(UiTheme.CardPadding) * 2,
-            Cursor = Cursors.Hand,
-            TextAlign = ContentAlignment.MiddleLeft,
-            CheckAlign = ContentAlignment.MiddleLeft,
-            UseVisualStyleBackColor = false
-        };
+        int width = _ui.FormWidth - _ui.S(UiTheme.DialogPadding) * 2 - _ui.S(UiTheme.CardPadding) * 2;
+        int labelWidth = _ui.S(92);
+        int comboWidth = width - labelWidth - _ui.S(2);
 
-        _body.Controls.Add(checkBox, 0, _body.RowCount++);
+        var row = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, _ui.S(UiTheme.RowGap)),
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, labelWidth));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, comboWidth));
+        row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var label = _ui.Text(labelText, UiTheme.Font(_ui.Scale, 9f), UiTheme.TextPrimary);
+        label.AutoSize = false;
+        label.Width = labelWidth;
+        label.Height = _ui.S(28);
+        label.TextAlign = ContentAlignment.MiddleLeft;
+        label.Margin = Padding.Empty;
+        row.Controls.Add(label, 0, 0);
+
+        dropDown = new PredatorDropDown
+        {
+            Width = comboWidth,
+            Height = _ui.S(28),
+            Margin = Padding.Empty,
+            Cursor = Cursors.Hand
+        };
+        row.Controls.Add(dropDown, 1, 0);
+
+        _body.Controls.Add(row, 0, _body.RowCount++);
+        _body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    }
+
+    private void AddChannelButtonsRow(out RButton btnAll, out RButton btnRed, out RButton btnGreen, out RButton btnBlue)
+    {
+        int width = _ui.FormWidth - _ui.S(UiTheme.DialogPadding) * 2 - _ui.S(UiTheme.CardPadding) * 2;
+        int btnWidth = (width - _ui.S(12)) / 4;
+
+        var row = new TableLayoutPanel
+        {
+            // Flow/Table row containing All, Red, Green, Blue buttons
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, _ui.S(10)),
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, btnWidth));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, btnWidth));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, btnWidth));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, btnWidth));
+        row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        btnAll = _ui.Button("All", btnWidth, _ui.S(26), UiTheme.Font(_ui.Scale, 8.5f, FontStyle.Bold), UiTheme.Separator, secondary: true);
+        btnRed = _ui.Button("Red", btnWidth, _ui.S(26), UiTheme.Font(_ui.Scale, 8.5f, FontStyle.Bold), UiTheme.Separator, secondary: true);
+        btnGreen = _ui.Button("Green", btnWidth, _ui.S(26), UiTheme.Font(_ui.Scale, 8.5f, FontStyle.Bold), UiTheme.Separator, secondary: true);
+        btnBlue = _ui.Button("Blue", btnWidth, _ui.S(26), UiTheme.Font(_ui.Scale, 8.5f, FontStyle.Bold), UiTheme.Separator, secondary: true);
+
+        foreach (var btn in new[] { btnAll, btnRed, btnGreen, btnBlue })
+        {
+            btn.BorderRadius = 2;
+            btn.Borderless = false;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderSize = 0;
+            btn.BorderColor = Color.Transparent;
+            btn.HoverBorderColor = Color.FromArgb(160, 160, 160);
+            btn.BackColor = UiTheme.ElevatedCardBackground;
+            btn.ForeColor = UiTheme.TextPrimary;
+            btn.Margin = new Padding(0, 0, _ui.S(3), 0);
+        }
+        btnBlue.Margin = Padding.Empty;
+
+        row.Controls.Add(btnAll, 0, 0);
+        row.Controls.Add(btnRed, 1, 0);
+        row.Controls.Add(btnGreen, 2, 0);
+        row.Controls.Add(btnBlue, 3, 0);
+
+        _body.Controls.Add(row, 0, _body.RowCount++);
         _body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 }
+
+
+
+
+

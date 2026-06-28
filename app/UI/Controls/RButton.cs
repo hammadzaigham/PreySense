@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 
 namespace PreySense.UI
 {
@@ -94,6 +95,8 @@ namespace PreySense.UI
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
+            TabStop = false;
+            UseMnemonic = false;
             BackColorChanged += (s, e) => UpdateHoverColor();
             UpdateHoverColor();
         }
@@ -221,6 +224,30 @@ namespace PreySense.UI
             base.OnMouseLeave(e);
             hovered = false;
             Invalidate();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs kevent)
+        {
+            if (kevent.KeyCode == Keys.Space || kevent.KeyCode == Keys.Enter)
+            {
+                kevent.Handled = true;
+                kevent.SuppressKeyPress = true;
+                return;
+            }
+
+            base.OnKeyDown(kevent);
+        }
+
+        protected override void OnKeyUp(KeyEventArgs kevent)
+        {
+            if (kevent.KeyCode == Keys.Space || kevent.KeyCode == Keys.Enter)
+            {
+                kevent.Handled = true;
+                kevent.SuppressKeyPress = true;
+                return;
+            }
+
+            base.OnKeyUp(kevent);
         }
 
     }

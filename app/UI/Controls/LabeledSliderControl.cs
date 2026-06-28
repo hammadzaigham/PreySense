@@ -194,12 +194,12 @@ public class LabeledSliderControl : Panel
         _layout.PerformLayout();
     }
 
-    private void ApplyThemeColors()
+    public void ApplyThemeColors()
     {
-        BackColor = RForm.formBack;
+        BackColor = UiTheme.CardBackground;
         _layout.BackColor = BackColor;
-        _title.ForeColor = RForm.foreMain;
-        _value.ForeColor = RForm.foreMain;
+        _title.ForeColor = UiTheme.TextPrimary;
+        _value.ForeColor = UiTheme.TextPrimary;
         Invalidate();
     }
 }
