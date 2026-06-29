@@ -849,8 +849,8 @@ namespace PreySense.Helpers
                 byte biosVal = mode switch
                 {
                     1 => 3, // Discrete
-                    2 => 2, // Optimus
-                    _ => 2
+                    2 => 1, // Auto Select
+                    _ => 1
                 };
 
                 using var searcher = new ManagementObjectSearcher(AcerWmi.Namespace, "SELECT * FROM AcerBiosConfigurationTool");
