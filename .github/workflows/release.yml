@@ -23,7 +23,7 @@ jobs:
 
       - name: Publish
         shell: pwsh
-        run: ./publish.ps1
+        run: ./.github/publish.ps1
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
