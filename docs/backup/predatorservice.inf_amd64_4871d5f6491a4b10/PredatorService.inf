@@ -1,0 +1,262 @@
+;
+; PredatorService.inf
+;
+[Version]
+Signature="$WINDOWS NT$"
+Class=SoftwareComponent
+ClassGuid={5c4c3332-344d-483c-8739-259e934c9cc8}
+Provider=%ProviderString%
+DriverVer = 05/22/2025,1.2.107.16
+CatalogFile=PredatorService.cat
+PnpLockdown=1
+
+; ================= Device section =====================
+
+[Manufacturer]
+%ManufacturerString%=Microsoft,NTamd64.10.0...19041
+
+; Works on Win7 and later because we use inbox HID-KMDF mapper
+[Microsoft.NTamd64.10.0...19041]
+;%DeviceDesc%=PredatorService, SWC\VEN_1025&DEV_165F
+%DeviceDesc%=PredatorService, SWC\SWComp_AcerNBAgentServiceDriver
+
+[PredatorService]
+CopyFiles=SysCopy
+CopyFiles=ExeCopy
+
+;[PredatorService.NT.hw]
+;AddReg=Launcher.AddReg, PredatorServiceUninstall.AddReg
+
+[PredatorService.Services]
+;AddService=PredatorService,0x00000002,PredatorService_Service_Inst,
+AddService=,0x00000002,
+AddService=AASSvc, 0x00000800, AcerAgentService_ServiceInstall
+AddService=AcerLightingService, 0x00000800, AcerLightingService_ServiceInstall
+
+;[PredatorService_Service_Inst]
+;DisplayName    = %ServiceDesc%
+;ServiceType    = 1
+;StartType      = 3
+;ErrorControl   = 1
+;ServiceBinary  = %13%\PredatorServiceSoftwareComponent.sys
+
+[AcerAgentService_ServiceInstall]
+DisplayName    = %AgentServiceDesc%
+Description    = %AgentServiceDesc%
+ServiceType    = 0x00000010      ; SERVICE_WIN32_SHARE_PROCESS
+StartType      = 2               ; SERVICE_AUTO_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\AcerCentralService.exe
+
+[AcerLightingService_ServiceInstall]
+DisplayName    = %LightingServiceDesc%
+Description    = %LightingServiceDesc%
+ServiceType    = 0x00000010      ; SERVICE_WIN32_SHARE_PROCESS
+StartType      = 2               ; SERVICE_AUTO_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\AcerLightingService.exe
+
+; ================= copy files =====================
+
+[SysCopy]
+;PredatorServiceSoftwareComponent.sys
+
+[ExeCopy]
+AcerCentralService.exe
+AcerAgentService.exe
+AcerHardwareService.exe
+DtsApoAppWin32DLL.dll
+AcerLightingService.exe
+OpenRGB.exe
+AcerUSBController.dll
+hidapi.dll
+inpoutx64.dll
+libusb-1.0.dll
+Qt6Core.dll
+Qt6Gui.dll
+Qt6Widgets.dll
+RGBDevice.ini
+msvcp140_1.dll
+msvcp140_2.dll
+msvcp140.dll
+vccorlib140.dll
+vcruntime140.dll
+vcruntime140_1.dll
+ucrtbased.dll
+AcerECKeyboardController.dll
+AcerECLightbarController.dll
+SunrexUSBKeyboard.dll
+DarfonUSBController.dll
+License.txt
+
+;
+;Device setting
+;
+Predator PH315-55.ini
+Predator PH315-55s.ini
+;
+Predator PH3D15-71.ini
+Predator PH16-71.ini
+Predator PH18-71.ini
+Predator PT14-51.ini
+Predator PT16-51.ini
+Predator PTX17-71.ini
+Predator PHN16-71.ini
+; Nitro
+Nitro AN16-41.ini
+Nitro AN16-51.ini
+Nitro AN16-71.ini
+Nitro AN17-41.ini
+Nitro AN17-51.ini
+Nitro AN17-71.ini
+Nitro AN515-58.ini
+Nitro AN517-55.ini
+Nitro ANV15-51.ini
+; 2024 Predator
+Predator PH16-72.ini
+Predator PH18-72.ini
+Predator PHN14-51.ini
+Predator PHN16-72.ini
+Predator PHN18-71.ini
+Predator PTN16-51.ini
+; 2024 Nitro
+Nitro AN14-41.ini
+Nitro AN16-42.ini
+Nitro AN16-43.ini
+Nitro AN16-72.ini
+Nitro AN16-73.ini
+Nitro AN17-42.ini
+Nitro AN17-72.ini
+Nitro ANV14-61.ini
+Nitro ANV15-41.ini
+Nitro ANV16-41.ini
+Nitro ANV16-71.ini
+Nitro ANV15-42.ini
+Nitro ANV15-52.ini
+; Tender
+T7001.ini
+; 2025 Predator
+; 2025 Nitro
+Nitro ANV16-42.ini
+Nitro ANV16-61.ini
+Nitro ANV17-41.ini
+Nitro ANV17-61.ini
+
+;ADBCUninstall.exe
+;ADBCLauncher.exe
+
+[SourceDisksNames]
+1=%DiskDesc%,,,
+
+[SourceDisksFiles]
+;PredatorServiceSoftwareComponent.sys=1
+AcerCentralService.exe = 1
+AcerAgentService.exe = 1
+AcerHardwareService.exe = 1
+DtsApoAppWin32DLL.dll = 1
+AcerLightingService.exe = 1
+OpenRGB.exe = 1
+AcerUSBController.dll = 1
+hidapi.dll = 1
+inpoutx64.dll = 1
+libusb-1.0.dll = 1
+Qt6Core.dll = 1
+Qt6Gui.dll = 1
+Qt6Widgets.dll = 1
+RGBDevice.ini = 1
+msvcp140_1.dll = 1
+msvcp140_2.dll = 1
+msvcp140.dll = 1
+vccorlib140.dll = 1
+vcruntime140.dll = 1
+vcruntime140_1.dll = 1
+ucrtbased.dll = 1
+AcerECKeyboardController.dll = 1
+AcerECLightbarController.dll = 1
+SunrexUSBKeyboard.dll = 1
+DarfonUSBController.dll = 1
+License.txt = 1
+;
+Predator PH315-55.ini=1
+Predator PH315-55s.ini=1
+Predator PH3D15-71.ini =1
+;
+Predator PH3D15-71.ini=1
+Predator PH16-71.ini=1
+Predator PH18-71.ini=1
+Predator PT14-51.ini=1
+Predator PT16-51.ini=1
+Predator PTX17-71.ini=1
+Predator PHN16-71.ini=1
+;
+Nitro AN16-41.ini=1
+Nitro AN16-51.ini=1
+Nitro AN16-71.ini=1
+Nitro AN17-41.ini=1
+Nitro AN17-51.ini=1
+Nitro AN17-71.ini=1
+
+
+Nitro AN515-58.ini=1
+Nitro AN517-55.ini=1
+Nitro ANV15-51.ini=1
+; 2024 Predator
+Predator PH16-72.ini=1
+Predator PH18-72.ini=1
+Predator PHN14-51.ini=1
+Predator PHN16-72.ini=1
+Predator PHN18-71.ini=1
+Predator PTN16-51.ini=1
+; 2024 Nitro
+Nitro AN14-41.ini=1
+Nitro AN16-42.ini=1
+Nitro AN16-43.ini=1
+Nitro AN16-72.ini=1
+Nitro AN16-73.ini=1
+Nitro AN17-42.ini=1
+Nitro AN17-72.ini=1
+Nitro ANV14-61.ini=1
+Nitro ANV15-41.ini=1
+Nitro ANV16-41.ini=1
+Nitro ANV16-71.ini=1
+Nitro ANV15-42.ini=1
+Nitro ANV15-52.ini=1
+; 2025 Nitro
+Nitro ANV16-42.ini=1
+Nitro ANV16-61.ini=1
+Nitro ANV17-41.ini=1
+Nitro ANV17-61.ini=1
+; Tender
+T7001.ini=1
+
+;ADBCUninstall.exe = 1
+;ADBCLauncher.exe = 1
+
+[DestinationDirs]
+SysCopy=13
+ExeCopy=13
+
+;[PredatorServiceUninstall.AddReg]
+;HKLM,%PredatorService_UNINSTALL%,DisplayName,,"Acer Display Backlight Control"
+;HKLM,%PredatorService_UNINSTALL%,InstallLocation,,%16422%"\Acer Display Backlight Control"
+;HKLM,%PredatorService_UNINSTALL%,DisplayVersion,,"1.0.0.3"
+;HKLM,%PredatorService_UNINSTALL%,DisplayIcon,,%16422%"\Acer Display Backlight Control\ADBCSvc.exe"
+;HKLM,%PredatorService_UNINSTALL%,Publisher,,%ManufacturerString%
+;HKLM,%PredatorService_UNINSTALL%,UninstallString,,%16422%"\Acer Display Backlight Control\ADBCUninstall.exe"
+
+;[Launcher.AddReg]
+;HKLM,%AUTORUN%,Launcher,,%16422%"\Acer Display Backlight Control\ADBCLauncher.exe"
+
+;---------------------------------------------------------------;
+
+[Strings]
+ProviderString			= "Acer Incorporated"
+ManufacturerString		= "Acer Incorporated"
+ClassName				= "Predator Service"
+DeviceDesc				= "Acer Agent Service Software Component"
+ServiceDesc				= "Predator Service"
+AgentServiceDesc		= "Acer Agent Service"
+LightingServiceDesc		= "Acer Lighting Service"
+DiskDesc				= "Predator Service Installation Disk"
+AUTORUN					= "Software\Microsoft\Windows\CurrentVersion\Run"
+;PredatorService_UNINSTALL	= "Software\Microsoft\Windows\CurrentVersion\Uninstall\{5AF1E4FF-6524-47FF-AF52-671D028DF7DE}"

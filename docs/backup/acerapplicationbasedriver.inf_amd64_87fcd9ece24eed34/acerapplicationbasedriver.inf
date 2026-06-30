@@ -1,0 +1,59 @@
+;
+; AcerApplicationBaseDriver.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=System 
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318} 
+Provider=%ManufacturerName%
+CatalogFile=AcerApplicationBaseDriver.cat
+DriverVer = 10/22/2025,1.0.0.6
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 13
+AcerApplicationBaseDriver_Device_CoInstaller_CopyFiles = 11
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+AcerApplicationBaseDriver.sys  = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=AcerInc,NTamd64.10.0...26100
+
+[AcerInc.NTamd64.10.0...26100]
+%AcerApplicationBaseDriver.DeviceDesc%=AcerApplicationBaseDriver_Device, ACPI\VEN_1025&DEV_165F
+%AcerApplicationBaseDriver.DeviceDesc.cte%=AcerApplicationBaseDriver_Device, ACPI\VEN_1025&DEV_1783
+
+[AcerApplicationBaseDriver_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+AcerApplicationBaseDriver.sys
+
+;-------------- Service installation
+[AcerApplicationBaseDriver_Device.NT.Services]
+;AddService=,2
+AddService=AcerApplicationBaseDriver_Device,0x00000002,AcerApplicationBaseDriver_Device_Service_Inst,
+
+[AcerApplicationBaseDriver_Device_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %13%\AcerApplicationBaseDriver.sys
+
+
+[Strings]
+ManufacturerName="Acer Incorporated" ;
+DiskName = "AcerApplicationBaseDriver Installation Disk"
+AcerApplicationBaseDriver.DeviceDesc = "Acer Application Base Software Component"
+AcerApplicationBaseDriver.DeviceDesc.cte = "Acer Application Base Software Component"
+ServiceDesc = "Acer Application Base Driver"

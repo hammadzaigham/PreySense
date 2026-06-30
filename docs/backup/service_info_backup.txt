@@ -1,0 +1,227 @@
+=== AcerLightingService ===
+--- sc qc ---
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: AcerLightingService
+        TYPE               : 10  WIN32_OWN_PROCESS 
+        START_TYPE         : 2   AUTO_START
+        ERROR_CONTROL      : 1   NORMAL
+        BINARY_PATH_NAME   : C:\WINDOWS\System32\DriverStore\FileRepository\predatorservice.inf_amd64_4871d5f6491a4b10\AcerLightingService.exe
+        LOAD_ORDER_GROUP   : 
+        TAG                : 0
+        DISPLAY_NAME       : Acer Lighting Service
+        DEPENDENCIES       : 
+        SERVICE_START_NAME : LocalSystem
+--- sc queryex ---
+
+SERVICE_NAME: AcerLightingService 
+        TYPE               : 10  WIN32_OWN_PROCESS  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+        PID                : 27948
+        FLAGS              : 
+--- Get-CimInstance ---
+
+
+Name                    : AcerLightingService
+Status                  : OK
+ExitCode                : 0
+DesktopInteract         : False
+ErrorControl            : Normal
+PathName                : C:\WINDOWS\System32\DriverStore\FileRepository\predatorservice.inf_amd64_4871d5f6491a4b10\Ace
+                          rLightingService.exe
+ServiceType             : Own Process
+StartMode               : Auto
+Caption                 : Acer Lighting Service
+Description             : Acer Lighting Service
+InstallDate             : 
+CreationClassName       : Win32_Service
+Started                 : True
+SystemCreationClassName : Win32_ComputerSystem
+SystemName              : PREDATOR-HAMMAD
+AcceptPause             : False
+AcceptStop              : True
+DisplayName             : Acer Lighting Service
+ServiceSpecificExitCode : 0
+StartName               : LocalSystem
+State                   : Running
+TagId                   : 0
+CheckPoint              : 0
+DelayedAutoStart        : False
+ProcessId               : 27948
+WaitHint                : 0
+PSComputerName          : 
+CimClass                : root/cimv2:Win32_Service
+CimInstanceProperties   : {Caption, Description, InstallDate, Name...}
+CimSystemProperties     : Microsoft.Management.Infrastructure.CimSystemProperties
+
+
+
+
+
+
+=== AcerServiceSvc ===
+--- sc qc ---
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: AcerServiceSvc
+        TYPE               : 10  WIN32_OWN_PROCESS 
+        START_TYPE         : 2   AUTO_START
+        ERROR_CONTROL      : 1   NORMAL
+        BINARY_PATH_NAME   : C:\WINDOWS\System32\DriverStore\FileRepository\acerservicecomponent.inf_amd64_dc983e19363ee831\AcerServiceWrapper.exe
+        LOAD_ORDER_GROUP   : 
+        TAG                : 0
+        DISPLAY_NAME       : Acer Service Component Service
+        DEPENDENCIES       : 
+        SERVICE_START_NAME : LocalSystem
+--- sc queryex ---
+
+SERVICE_NAME: AcerServiceSvc 
+        TYPE               : 10  WIN32_OWN_PROCESS  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+        PID                : 21544
+        FLAGS              : 
+--- Get-CimInstance ---
+
+
+Name                    : AcerServiceSvc
+Status                  : OK
+ExitCode                : 0
+DesktopInteract         : False
+ErrorControl            : Normal
+PathName                : C:\WINDOWS\System32\DriverStore\FileRepository\acerservicecomponent.inf_amd64_dc983e19363ee83
+                          1\AcerServiceWrapper.exe
+ServiceType             : Own Process
+StartMode               : Auto
+Caption                 : Acer Service Component Service
+Description             : Acer Service Component Service
+InstallDate             : 
+CreationClassName       : Win32_Service
+Started                 : True
+SystemCreationClassName : Win32_ComputerSystem
+SystemName              : PREDATOR-HAMMAD
+AcceptPause             : False
+AcceptStop              : True
+DisplayName             : Acer Service Component Service
+ServiceSpecificExitCode : 0
+StartName               : LocalSystem
+State                   : Running
+TagId                   : 0
+CheckPoint              : 0
+DelayedAutoStart        : False
+ProcessId               : 21544
+WaitHint                : 0
+PSComputerName          : 
+CimClass                : root/cimv2:Win32_Service
+CimInstanceProperties   : {Caption, Description, InstallDate, Name...}
+CimSystemProperties     : Microsoft.Management.Infrastructure.CimSystemProperties
+
+
+
+
+
+
+=== AcerQAAgentSvis ===
+--- sc qc ---
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: AcerQAAgentSvis
+        TYPE               : 10  WIN32_OWN_PROCESS 
+        START_TYPE         : 2   AUTO_START
+        ERROR_CONTROL      : 1   NORMAL
+        BINARY_PATH_NAME   : C:\WINDOWS\system32\AcerQAAgent.exe
+        LOAD_ORDER_GROUP   : 
+        TAG                : 0
+        DISPLAY_NAME       : Acer Quick Access
+        DEPENDENCIES       : 
+        SERVICE_START_NAME : LocalSystem
+--- sc queryex ---
+
+SERVICE_NAME: AcerQAAgentSvis 
+        TYPE               : 10  WIN32_OWN_PROCESS  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+        PID                : 28608
+        FLAGS              : 
+--- Get-CimInstance ---
+
+
+Name                    : AcerQAAgentSvis
+Status                  : OK
+ExitCode                : 0
+DesktopInteract         : False
+ErrorControl            : Normal
+PathName                : C:\WINDOWS\system32\AcerQAAgent.exe
+ServiceType             : Own Process
+StartMode               : Auto
+Caption                 : Acer Quick Access
+Description             : Acer Quick Access Service
+InstallDate             : 
+CreationClassName       : Win32_Service
+Started                 : True
+SystemCreationClassName : Win32_ComputerSystem
+SystemName              : PREDATOR-HAMMAD
+AcceptPause             : False
+AcceptStop              : True
+DisplayName             : Acer Quick Access
+ServiceSpecificExitCode : 0
+StartName               : LocalSystem
+State                   : Running
+TagId                   : 0
+CheckPoint              : 0
+DelayedAutoStart        : False
+ProcessId               : 28608
+WaitHint                : 0
+PSComputerName          : 
+CimClass                : root/cimv2:Win32_Service
+CimInstanceProperties   : {Caption, Description, InstallDate, Name...}
+CimSystemProperties     : Microsoft.Management.Infrastructure.CimSystemProperties
+
+
+
+
+
+
+=== AcerApplicationBaseDriver_Device ===
+--- sc qc ---
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: AcerApplicationBaseDriver_Device
+        TYPE               : 1  KERNEL_DRIVER 
+        START_TYPE         : 3   DEMAND_START
+        ERROR_CONTROL      : 1   NORMAL
+        BINARY_PATH_NAME   : \SystemRoot\System32\DriverStore\FileRepository\acerapplicationbasedriver.inf_amd64_87fcd9ece24eed34\AcerApplicationBaseDriver.sys
+        LOAD_ORDER_GROUP   : 
+        TAG                : 0
+        DISPLAY_NAME       : Acer Application Base Driver
+        DEPENDENCIES       : 
+        SERVICE_START_NAME : 
+--- sc queryex ---
+
+SERVICE_NAME: AcerApplicationBaseDriver_Device 
+        TYPE               : 1  KERNEL_DRIVER  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+        PID                : 0
+        FLAGS              : 
+--- Get-CimInstance ---
+
+
+

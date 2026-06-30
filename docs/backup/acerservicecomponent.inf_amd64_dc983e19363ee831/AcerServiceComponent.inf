@@ -1,0 +1,80 @@
+;
+; Copyright (c) ULIC Tek Inc.  All rights reserved.
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=SoftwareComponent
+ClassGuid={5c4c3332-344d-483c-8739-259e934c9cc8}
+Provider=%ManufacturerName%
+CatalogFile=AcerServiceComponent.cat
+DriverVer = 08/12/2024,1.0.266.0
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+AcerService.exe = 1,,
+AcerServiceWrapper.exe = 1,,
+AcerServiceWrapper.xml = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64.10.0...19041,NTarm64.10.0...19041
+
+[Standard.NTamd64.10.0...19041]
+%AcerServiceComponentDeviceDesc%=ServiceComponentInst.NTamd64, SWC\SWComp_AcerServiceComponent
+
+[Standard.NTarm64.10.0...19041]
+%AcerServiceComponentDeviceDesc%=ServiceComponentInst.NTarm64, SWC\SWComp_AcerServiceComponent
+
+[ServiceComponentInst.NTamd64]
+CopyFiles=Drivers_Dir
+
+[ServiceComponentInst.NTarm64]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+AcerService.exe
+AcerServiceWrapper.exe
+AcerServiceWrapper.xml
+
+;-------------- Service installation
+[ServiceComponentInst.NTamd64.Services]
+AddService = , 0x00000002
+AddService = AcerServiceSvc, 0x00000800, AcerServiceSvc_Inst.NTamd64
+
+[ServiceComponentInst.NTarm64.Services]
+AddService = , 0x00000002
+AddService = AcerServiceSvc, 0x00000800, AcerServiceSvc_Inst.NTarm64
+
+[AcerServiceSvc_Inst.NTamd64]
+DisplayName    = %AcerServiceComponentSVCDESC%
+Description    = %AcerServiceComponentSVCDESC%
+ServiceType    = 0x00000010
+StartType      = 2               ; SERVICE_WIN32_OWN_PROCESS
+ErrorControl   = 1               ; SERVICE_AUTO_START
+;DelayedAutoStart = 0x1
+ServiceBinary  = %13%\AcerServiceWrapper.exe
+
+[AcerServiceSvc_Inst.NTarm64]
+DisplayName    = %AcerServiceComponentSVCDESC%
+Description    = %AcerServiceComponentSVCDESC%
+ServiceType    = 0x00000010
+StartType      = 2               ; SERVICE_WIN32_OWN_PROCESS
+ErrorControl   = 1               ; SERVICE_AUTO_START
+DelayedAutoStart = 0x1
+ServiceBinary  = %13%\AcerServiceWrapper.exe
+
+[Strings]
+ManufacturerName="ULIC Tek Inc."
+DiskName = "Acer Service Component Installation Disk"
+AcerServiceComponentDeviceDesc = "Acer Service Software Component"
+AcerServiceComponentSVCDESC = "Acer Service Component Service"

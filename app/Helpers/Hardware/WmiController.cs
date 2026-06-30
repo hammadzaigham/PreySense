@@ -118,18 +118,35 @@ namespace PreySense.Helpers
                     using var inParams = obj.GetMethodParameters(method);
                     // Dynamically discover the input parameter name (not always "gmInput")
                     string inputName = "gmInput";
-                    foreach (var prop in inParams.Properties.Cast<PropertyData>())
+                    foreach (var inProp in inParams.Properties.Cast<PropertyData>())
                     {
-                        inputName = prop.Name;
-                        break;
+                        if (!inProp.Name.StartsWith("__"))
+                        {
+                            inputName = inProp.Name;
+                            break;
+                        }
                     }
-                    inParams[inputName] = input;
+                    var inputProp = inParams.Properties[inputName];
+                    object typedInput = inputProp.Type switch
+                    {
+                        System.Management.CimType.UInt32 => Convert.ToUInt32(input),
+                        System.Management.CimType.UInt16 => Convert.ToUInt16(input),
+                        System.Management.CimType.SInt32 => Convert.ToInt32(input),
+                        System.Management.CimType.SInt64 => Convert.ToInt64(input),
+                        System.Management.CimType.UInt64 => Convert.ToUInt64(input),
+                        _ => input
+                    };
+                    inParams[inputName] = typedInput;
                     using var outParams = obj.InvokeMethod(method, inParams, null);
                     // Dynamically discover the output parameter name
                     string outputName = "gmOutput";
-                    foreach (var prop in outParams.Properties.Cast<PropertyData>())
+                    foreach (var outProp in outParams.Properties.Cast<PropertyData>())
                     {
-                        if (prop.Name != "ReturnValue") { outputName = prop.Name; break; }
+                        if (outProp.Name != "ReturnValue" && !outProp.Name.StartsWith("__"))
+                        {
+                            outputName = outProp.Name;
+                            break;
+                        }
                     }
                     ulong result = Convert.ToUInt64(outParams[outputName]);
                     return ((result & 0xFF) == 0, result);
@@ -431,6 +448,15 @@ namespace PreySense.Helpers
                 }
             }
 
+            if (EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
+            {
+                if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                {
+                    SyncWindowsPowerMode(mode);
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -439,12 +465,18 @@ namespace PreySense.Helpers
             if (TryGetPowerProfileWmi(out byte wmiMode))
                 return wmiMode;
 
+            if (TryGetPowerProfileAcerService(out byte serviceMode))
+                return serviceMode;
+
             return 0x01;
         }
 
         public bool TryGetPowerProfile(out byte mode)
         {
             if (TryGetPowerProfileWmi(out mode))
+                return true;
+
+            if (TryGetPowerProfileAcerService(out mode))
                 return true;
 
             mode = 0;
@@ -459,6 +491,20 @@ namespace PreySense.Helpers
                 return true;
 
             AppLogger.Log($"TryGetPowerProfileWmi: invalid mode 0x{mode:X2} (success={success}, output=0x{output:X}).");
+            return false;
+        }
+
+        public bool TryGetPowerProfileAcerService(out byte mode)
+        {
+            mode = 0;
+            if (!EnsureAcerService())
+                return false;
+
+            string? json = _serviceClient.QueryUpdatedData(AcerWmi.Service.OperatingMode);
+            if (TryParseOperatingMode(json, out mode))
+                return true;
+
+            AppLogger.Log($"TryGetPowerProfileAcerService: invalid OPERATING_MODE response: {json ?? "null"}");
             return false;
         }
 
@@ -796,14 +842,31 @@ namespace PreySense.Helpers
                 AppLogger.Log("WmiController: OLED monitor detected. Skipping LCD overdrive enable under the hood.");
                 return;
             }
-            SendCommand(AcerWmi.GamingMethods.SetProfile, enable ? 0x1000000000010ul : 0x10ul);
+            var (success, _) = SendCommand(AcerWmi.GamingMethods.SetProfile, enable ? 0x1000000000010ul : 0x10ul);
+            if (!success)
+            {
+                if (EnsureAcerService())
+                {
+                    _serviceClient.SetLcdOverdrive(enable);
+                }
+            }
         }
 
         #region AcerService-first (WMI fallback where noted)
 
         public bool SetFanControl(int mode, int cpuSpeed = 50, int gpuSpeed = 50)
         {
-            return SetFanControlWmi(mode, cpuSpeed, gpuSpeed);
+            if (SetFanControlWmi(mode, cpuSpeed, gpuSpeed))
+            {
+                return true;
+            }
+
+            if (EnsureAcerService() && _serviceClient.SetFanControl(mode, cpuSpeed, gpuSpeed))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>AcerService GPU_MODE mux values: 1 = discrete (Ultimate), 2 = hybrid (Endurance/Standard).</summary>

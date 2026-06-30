@@ -83,11 +83,7 @@ namespace PreySense.Mode
 
         public static (int coreOffset, int memoryOffset) GetDefaultGpuOffsets(byte mode)
         {
-            return mode switch
-            {
-                0x05 => (100, 200),
-                _ => (0, 0)
-            };
+            return (0, 0);
         }
     }
 }

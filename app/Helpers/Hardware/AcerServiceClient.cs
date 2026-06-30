@@ -312,6 +312,39 @@ namespace PreySense
             return CheckResponse(response);
         }
 
+        public bool SetOperatingMode(int mode)
+        {
+            if (!_serviceAvailable) return false;
+            string json = $"{{\"Function\":\"{AcerWmi.Service.OperatingMode}\",\"Parameter\":{{\"mode\":{mode}}}}}";
+            var response = SendCommand(AcerWmi.Service.SetDeviceDataPacket, json);
+            return CheckResponse(response);
+        }
+
+        public bool SetLcdOverdrive(bool enabled)
+        {
+            if (!_serviceAvailable) return false;
+            int status = enabled ? 1 : 0;
+            string json = $"{{\"Function\":\"{AcerWmi.Service.LcdOverdrive}\",\"Parameter\":{{\"status\":{status}}}}}";
+            var response = SendCommand(AcerWmi.Service.SetDeviceDataPacket, json);
+            return CheckResponse(response);
+        }
+
+        public bool SetFanControl(int mode, int cpuSpeed = 50, int gpuSpeed = 50)
+        {
+            if (!_serviceAvailable) return false;
+            cpuSpeed = Math.Clamp(cpuSpeed, 0, 100);
+            gpuSpeed = Math.Clamp(gpuSpeed, 0, 100);
+            string customData = mode switch
+            {
+                2 => $",\"custom_fan_data\":[{{\"fan_custom_auto\":0,\"fan_custom_speed\":{cpuSpeed},\"fan_name\":\"CPU\"}},{{\"fan_custom_auto\":0,\"fan_custom_speed\":{gpuSpeed},\"fan_name\":\"GPU\"}}]",
+                0 => $",\"custom_fan_data\":[{{\"fan_custom_auto\":1,\"fan_custom_speed\":{cpuSpeed},\"fan_name\":\"CPU\"}},{{\"fan_custom_auto\":1,\"fan_custom_speed\":{gpuSpeed},\"fan_name\":\"GPU\"}}]",
+                _ => ""
+            };
+            string json = $"{{\"Function\":\"{AcerWmi.Service.FanControl}\",\"Parameter\":{{\"mode\":{mode}{customData}}}}}";
+            var response = SendCommand(AcerWmi.Service.SetDeviceDataPacket, json);
+            return CheckResponse(response);
+        }
+
 
 
         /// <summary>

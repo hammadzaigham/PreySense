@@ -19,7 +19,7 @@ namespace PreySense
             MinimizeBox = false;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "Prey Sense";
+            Text = "Prey Sense - v1.3.0";
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
         }

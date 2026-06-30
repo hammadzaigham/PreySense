@@ -16,7 +16,7 @@ Use that file instead of scattering raw WMI class names or AcerService command s
 | --- | --- | --- |
 | `AcerServiceSvc` | Keep enabled | Provides the AcerService TCP command/telemetry endpoints used for lighting, operating modes, fan control, sound mode, boot sound, LCD overdrive, GPU mux, and panel DFR. |
 | `AcerLightingService` | Keep enabled | Routes RGB/lighting and several Acer device commands behind the AcerService stack. |
-| `AcerQAAgentSvis` | Keep enabled | Backs Quick Access mode-key/current-mode state on `wss://localhost:5141`. |
+| `AcerQAAgentSvis` | Optional | Backs Quick Access mode-key/current-mode state on `wss://localhost:5141`. Can be disabled if physical Mode key cycling is not used. |
 | `AcerCCAgentSvis` | Disable | Not used by PreySense. |
 | `AcerDIAgentSvis` | Disable | Not used by PreySense. |
 | `ASMSvc` | Keep enabled | Used for battery charge limit control. |
@@ -102,7 +102,7 @@ Observed editable NVAPI settings:
 | `P0_3DPerformance` | Graphics delta | `-1000..+1000 MHz` |
 | `P0_3DPerformance` | Memory delta | `-1000..+3000 MHz` |
 
-Turbo defaults remain `+100 MHz` core and `+200 MHz` memory. Other modes default to `0/0`, but Eco performance mode can now store and apply GPU offsets just like the other modes.
+All modes default to `0/0` MHz GPU core and memory clock offsets, but each performance mode can store and apply custom GPU offsets if enabled.
 
 Applying GPU offsets requires the per-mode `ApplyGpuLimits` flag to be enabled. Slider edits clear the apply checkbox to show that the new value has not been applied yet.
 
@@ -126,4 +126,5 @@ The physical mode key/current-mode state is read through Acer Quick Access over:
 
 `wss://localhost:5141`
 
-This is why `AcerQAAgentSvis` stays enabled. AcerService `GET_UPDATED_DATA OPERATING_MODE` can be stale after Predator Sense is killed, so Quick Access is preferred for startup/current mode state when available.
+This is why `AcerQAAgentSvis` is used. If disabled/removed, physical Mode key events won't cycle modes, but users can still cycle modes via standard keyboard shortcuts (e.g., Predator Key + 1-5) or via the PreySense UI directly. AcerService `GET_UPDATED_DATA OPERATING_MODE` is queried as a fallback.
+

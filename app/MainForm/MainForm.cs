@@ -68,8 +68,6 @@ namespace PreySense
         private QuickAccessModeWatcher? _quickAccessModeWatcher;
         private Overlay.ModeToastNotification? _modeToast;
         private System.Windows.Forms.Timer _timer = new();
-        private System.Windows.Forms.Timer _startupFadeTimer = new();
-        private bool _isFadingIn;
         private ColorDialog _colorPicker = new() { FullOpen = true };
         private NotifyIcon? _trayIcon;
         private ContextMenuStrip? _trayMenu;
@@ -117,6 +115,8 @@ namespace PreySense
         private bool _applyCustomFans = false;
         private int _lastFanCpuPercent = 50;
         private int _lastFanGpuPercent = 50;
+        private int _lastWrittenCpuSpeed = -1;
+        private int _lastWrittenGpuSpeed = -1;
         private bool _maxFanEnabled = false;
         public bool MaxFanEnabled => _maxFanEnabled;
         private PointF[] _cpuCurve = Array.Empty<PointF>();
@@ -165,7 +165,7 @@ namespace PreySense
                 }
                 else
                 {
-                    StartFade(true);
+                    Opacity = 1.0;
                 }
             };
 
@@ -173,6 +173,7 @@ namespace PreySense
         }
 
         protected override bool ShowWindowIcon => true;
+        protected override bool ShowWindowInTaskbar => true;
 
         protected override void OnHandleCreated(EventArgs e)
         {
@@ -180,38 +181,7 @@ namespace PreySense
             int val = 1;
             DwmSetWindowAttribute(this.Handle, DWMWA_TRANSITIONS_FORCEDISABLED, ref val, sizeof(int));
         }
-        private void StartFade(bool fadeIn)
-        {
-            _isFadingIn = fadeIn;
-            _startupFadeTimer.Interval = 20;
-            _startupFadeTimer.Tick -= FadeTimer_Tick;
-            _startupFadeTimer.Tick += FadeTimer_Tick;
-            _startupFadeTimer.Start();
-        }
-
-        private void FadeTimer_Tick(object? sender, EventArgs e)
-        {
-            if (_isFadingIn)
-            {
-                double next = Math.Min(1.0, Opacity + 0.20);
-                Opacity = next;
-                if (next >= 1.0)
-                {
-                    _startupFadeTimer.Stop();
-                }
-            }
-            else
-            {
-                double next = Math.Max(0.0, Opacity - 0.20);
-                Opacity = next;
-                if (next <= 0.0)
-                {
-                    _startupFadeTimer.Stop();
-                    this.Hide();
-                    Overlay.ProcessMemoryHelper.TrimAfter();
-                }
-            }
-        }
+        // Removed StartFade and FadeTimer_Tick to prevent focus loss issues with transparent windows
         private void ConfigureFooterButtons()
         {
             _footerQuickActions = new FooterQuickActionsControl
@@ -486,6 +456,8 @@ namespace PreySense
             buttonTurboFanModePower.Activated = enable;
             buttonTurboFanModePower.BorderColor = enable ? RForm.colorCustom : borderSecond;
             SaveState("Fan_CurveEnabled", enable ? 1 : 0);
+            _lastWrittenCpuSpeed = -1;
+            _lastWrittenGpuSpeed = -1;
             if (enable)
             {
                 _filteredCpuTemp = 0f;
@@ -633,10 +605,15 @@ namespace PreySense
                 }
             }
 
-            // Write to WMI in background thread to avoid stutters
+            // Write to WMI in background thread to avoid stutters only if speeds have changed
             int cpuSpeed = _lastFanCpuPercent;
             int gpuSpeed = _lastFanGpuPercent;
-            Task.Run(() => _wmi.SetFanControl(2, cpuSpeed, gpuSpeed));
+            if (cpuSpeed != _lastWrittenCpuSpeed || gpuSpeed != _lastWrittenGpuSpeed)
+            {
+                _lastWrittenCpuSpeed = cpuSpeed;
+                _lastWrittenGpuSpeed = gpuSpeed;
+                Task.Run(() => _wmi.SetFanControl(2, cpuSpeed, gpuSpeed));
+            }
         }
 
         /// <summary>
@@ -656,6 +633,8 @@ namespace PreySense
             _gpuTargetPending = -1;
             _cpuDelayTicks = 0;
             _gpuDelayTicks = 0;
+            _lastWrittenCpuSpeed = -1;
+            _lastWrittenGpuSpeed = -1;
 
             if (_maxFanEnabled)
             {
@@ -788,30 +767,18 @@ namespace PreySense
                 return;
             }
 
-            _startupFadeTimer.Stop();
-            Opacity = 0;
+            Opacity = 1.0;
 
-            if (this.Visible)
-            {
-                // Toggling ShowInTaskbar forces window handle recreation on the active virtual desktop
-                // without playing the Windows minimize/restore transition animations.
-                bool original = this.ShowInTaskbar;
-                this.ShowInTaskbar = !original;
-                this.ShowInTaskbar = original;
-            }
-            else
-            {
-                this.Show();
-            }
-            ShowWindow(this.Handle, SW_RESTORE);
-            SetForegroundWindow(this.Handle);
-            SetActiveWindow(this.Handle);
-            this.Activate();
-            this.Focus();
+            // Force a minimize/restore state transition. This is a reliable Windows Forms trick
+            // that bypasses OS-level foreground activation restrictions, ensuring the window
+            // is brought to the front and receives keyboard focus without taskbar flashing.
+            this.WindowState = FormWindowState.Minimized;
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
+
             this.TopMost = true;
+            this.Activate();
             this.TopMost = false;
-
-            StartFade(true);
         }
 
         public void HideApp()
@@ -830,8 +797,22 @@ namespace PreySense
                     sub.Close();
             }
 
-            _startupFadeTimer.Stop();
-            StartFade(false);
+            this.Hide();
+            Overlay.ProcessMemoryHelper.TrimAfter();
+        }
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            base.OnDeactivate(e);
+
+            // Hide the app only if the active window of our application becomes null (user clicked away)
+            BeginInvoke(new Action(() =>
+            {
+                if (Form.ActiveForm == null)
+                {
+                    HideApp();
+                }
+            }));
         }
 
         private void QuitApplication()
@@ -938,46 +919,35 @@ namespace PreySense
 
         private void LoadCurrentHardwarePowerMode()
         {
-            Task.Run(async () =>
+            byte detectedMode = 0x01; // Default to Balanced
+
+            try
             {
-                byte detectedMode;
+                using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
+                if (key != null)
+                {
+                    bool onBattery = IsOnBatteryPower();
+                    string regKey = onBattery ? "PowerBattery" : "PowerAC";
+                    int savedMode = GetRegistryInt(key, regKey, -1);
+                    if (savedMode == -1)
+                    {
+                        savedMode = GetRegistryInt(key, "Power", -1);
+                    }
 
-                if (QuickAccessModeWatcher.TryGetCurrentPowerMode(out byte quickAccessMode) && IsKnownPowerMode(quickAccessMode))
-                {
-                    AppLogger.Log($"LoadCurrentHardwarePowerMode: startup Quick Access SystemUsageControl 0x{quickAccessMode:X2}.");
-                    detectedMode = quickAccessMode;
+                    if (savedMode != -1 && IsKnownPowerMode((byte)savedMode))
+                    {
+                        detectedMode = (byte)savedMode;
+                        AppLogger.Log($"LoadCurrentHardwarePowerMode: loaded startup mode 0x{detectedMode:X2} from registry.");
+                    }
                 }
-                else if (_wmi.TryGetPowerProfileWmi(out byte wmiMode) && IsKnownPowerMode(wmiMode))
-                {
-                    AppLogger.Log($"LoadCurrentHardwarePowerMode: startup WMI operating mode 0x{wmiMode:X2}.");
-                    detectedMode = wmiMode;
-                }
-                else
-                {
-                    AppLogger.Log("LoadCurrentHardwarePowerMode: could not read a valid WMI operating mode.");
-                    return;
-                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LoadCurrentHardwarePowerMode: failed to read registry: {ex.Message}");
+            }
 
-                BeginInvoke(new Action(() =>
-                {
-                    MarkPowerMode(detectedMode);
-                    ApplyFanCurvesForMode(detectedMode);
-                }));
-
-                // Apply saved CPU limits and GPU overclock for the detected mode.
-                // ApplyProfile internally waits 2s before writing MSR/NVAPI so the EC settles.
-                // It does not change the WMI performance mode.
-                try
-                {
-                    string modeName = PreySense.Mode.ProfileManager.ModeToProfileName(detectedMode);
-                    AppLogger.Log($"LoadCurrentHardwarePowerMode: applying startup profile settings for '{modeName}'.");
-                    await PreySense.Mode.ProfileManager.ApplyProfileAsync(modeName);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Log($"LoadCurrentHardwarePowerMode: failed to apply startup profile settings: {ex.Message}");
-                }
-            });
+            // Apply the loaded power mode to both the hardware and application state
+            ApplyPowerMode(detectedMode, persistHardware: true);
         }
 
         private static bool IsKnownPowerMode(byte mode)

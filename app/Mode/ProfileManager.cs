@@ -14,6 +14,8 @@ namespace PreySense.Mode
     public static class ProfileManager
     {
         private const string RegistryBase = @"SOFTWARE\PreySense\Profiles";
+        private static int _lastAppliedCoreOffset = 0;
+        private static int _lastAppliedMemoryOffset = 0;
 
         /// <summary>
         /// Maps a WMI power mode code to a registry-safe profile name.
@@ -259,11 +261,28 @@ namespace PreySense.Mode
             // Apply CPU boost mode
             PowerLimitController.SetCpuBoost(profile.CpuBoost);
 
-            // Apply GPU offsets only when the profile explicitly enables them.
+            // Apply GPU offsets only when the profile explicitly enables them and they differ from last applied.
             if (profile.ApplyGpuLimits && IsDiscreteGpuAvailableForOverclock())
             {
-                AppLogger.Log($"ProfileManager: applying NVAPI GPU offsets for profile '{profile.Name}' (core={profile.GpuCoreOffset:+#;-#;0}MHz, memory={profile.GpuMemoryOffset:+#;-#;0}MHz).");
-                NvidiaWrapper.ApplyGpuSettings(profile.GpuCoreOffset, profile.GpuMemoryOffset);
+                if (profile.GpuCoreOffset != _lastAppliedCoreOffset || profile.GpuMemoryOffset != _lastAppliedMemoryOffset)
+                {
+                    AppLogger.Log($"ProfileManager: applying NVAPI GPU offsets for profile '{profile.Name}' (core={profile.GpuCoreOffset:+#;-#;0}MHz, memory={profile.GpuMemoryOffset:+#;-#;0}MHz).");
+                    NvidiaWrapper.ApplyGpuSettings(profile.GpuCoreOffset, profile.GpuMemoryOffset);
+                    _lastAppliedCoreOffset = profile.GpuCoreOffset;
+                    _lastAppliedMemoryOffset = profile.GpuMemoryOffset;
+                }
+                else
+                {
+                    AppLogger.Log($"ProfileManager: skipped NVAPI GPU offsets for profile '{profile.Name}' because offsets have not changed.");
+                }
+            }
+            else if (IsDiscreteGpuAvailableForOverclock() && (_lastAppliedCoreOffset != 0 || _lastAppliedMemoryOffset != 0))
+            {
+                // Reset to stock if overclocking is disabled for the new profile but was active previously
+                AppLogger.Log($"ProfileManager: resetting GPU offsets to stock (0/0) because overclocking is disabled for profile '{profile.Name}'.");
+                NvidiaWrapper.ApplyGpuSettings(0, 0);
+                _lastAppliedCoreOffset = 0;
+                _lastAppliedMemoryOffset = 0;
             }
             else if (profile.ApplyGpuLimits)
             {
