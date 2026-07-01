@@ -433,27 +433,55 @@ namespace PreySense.Helpers
 
         public bool SetPowerMode(byte mode)
         {
-            var (success, _) = SendCommand(AcerWmi.GamingMethods.SetMiscSetting, (ulong)0x0B | ((ulong)mode << 8));
-            if (success)
+            string modePref = PreySense.Overlay.AppConfig.GetString("HardwareControlMode", "service");
+            if (modePref == "wmi")
             {
-                for (int attempt = 0; attempt < 4; attempt++)
+                var (success, _) = SendCommand(AcerWmi.GamingMethods.SetMiscSetting, (ulong)0x0B | ((ulong)mode << 8));
+                if (success)
                 {
-                    if (TryGetPowerProfileWmi(out byte appliedMode) && appliedMode == mode)
+                    for (int attempt = 0; attempt < 4; attempt++)
+                    {
+                        if (TryGetPowerProfileWmi(out byte appliedMode) && appliedMode == mode)
+                        {
+                            SyncWindowsPowerMode(mode);
+                            return true;
+                        }
+                        Thread.Sleep(80);
+                    }
+                }
+
+                if (EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
+                {
+                    if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
                     {
                         SyncWindowsPowerMode(mode);
                         return true;
                     }
-
-                    Thread.Sleep(80);
                 }
             }
-
-            if (EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
+            else
             {
-                if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                if (EnsureAcerService() && _serviceClient.SetOperatingMode(mode))
                 {
-                    SyncWindowsPowerMode(mode);
-                    return true;
+                    if (TryGetPowerProfileAcerService(out byte appliedMode) && appliedMode == mode)
+                    {
+                        SyncWindowsPowerMode(mode);
+                        return true;
+                    }
+                }
+
+                var (success, _) = SendCommand(AcerWmi.GamingMethods.SetMiscSetting, (ulong)0x0B | ((ulong)mode << 8));
+                if (success)
+                {
+                    for (int attempt = 0; attempt < 4; attempt++)
+                    {
+                        if (TryGetPowerProfileWmi(out byte appliedMode) && appliedMode == mode)
+                        {
+                            SyncWindowsPowerMode(mode);
+                            return true;
+                        }
+                        Thread.Sleep(80);
+                    }
                 }
             }
 
@@ -473,11 +501,21 @@ namespace PreySense.Helpers
 
         public bool TryGetPowerProfile(out byte mode)
         {
-            if (TryGetPowerProfileWmi(out mode))
-                return true;
-
-            if (TryGetPowerProfileAcerService(out mode))
-                return true;
+            string modePref = PreySense.Overlay.AppConfig.GetString("HardwareControlMode", "service");
+            if (modePref == "wmi")
+            {
+                if (TryGetPowerProfileWmi(out mode))
+                    return true;
+                if (TryGetPowerProfileAcerService(out mode))
+                    return true;
+            }
+            else
+            {
+                if (TryGetPowerProfileAcerService(out mode))
+                    return true;
+                if (TryGetPowerProfileWmi(out mode))
+                    return true;
+            }
 
             mode = 0;
             return false;
@@ -568,7 +606,7 @@ namespace PreySense.Helpers
 
         public static int ScalePercentToWmi(int percent)
         {
-            return Math.Clamp(percent, 10, 100);
+            return Math.Clamp(percent, 0, 100);
         }
 
         public void SetCpuFanSpeed(int percent)
@@ -856,14 +894,30 @@ namespace PreySense.Helpers
 
         public bool SetFanControl(int mode, int cpuSpeed = 50, int gpuSpeed = 50)
         {
-            if (SetFanControlWmi(mode, cpuSpeed, gpuSpeed))
+            string modePref = PreySense.Overlay.AppConfig.GetString("HardwareControlMode", "service");
+            if (modePref == "wmi")
             {
-                return true;
-            }
+                if (SetFanControlWmi(mode, cpuSpeed, gpuSpeed))
+                {
+                    return true;
+                }
 
-            if (EnsureAcerService() && _serviceClient.SetFanControl(mode, cpuSpeed, gpuSpeed))
+                if (EnsureAcerService() && _serviceClient.SetFanControl(mode, cpuSpeed, gpuSpeed))
+                {
+                    return true;
+                }
+            }
+            else
             {
-                return true;
+                if (EnsureAcerService() && _serviceClient.SetFanControl(mode, cpuSpeed, gpuSpeed))
+                {
+                    return true;
+                }
+
+                if (SetFanControlWmi(mode, cpuSpeed, gpuSpeed))
+                {
+                    return true;
+                }
             }
 
             return false;

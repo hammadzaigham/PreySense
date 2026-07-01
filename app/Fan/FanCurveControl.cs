@@ -78,16 +78,16 @@ namespace PreySense.Fan
         private PointF GetPixelCoords(PointF point)
         {
             float x = LeftPad + ((point.X - TempMin) / (TempMax - TempMin)) * GraphWidth;
-            float clampedY = Math.Clamp(point.Y, 10f, 100f);
-            float y = TopPad + ((100f - clampedY) / 90f) * GraphHeight;
+            float clampedY = Math.Clamp(point.Y, 0f, 100f);
+            float y = TopPad + ((100f - clampedY) / 100f) * GraphHeight;
             return new PointF(x, y);
         }
 
         private PointF GetValueCoords(float pixelX, float pixelY)
         {
             float x = TempMin + ((pixelX - LeftPad) / GraphWidth) * (TempMax - TempMin);
-            float y = 100f - ((pixelY - TopPad) / GraphHeight) * 90f;
-            return new PointF(Math.Clamp(x, TempMin, TempMax), Math.Clamp(y, 10f, 100f));
+            float y = 100f - ((pixelY - TopPad) / GraphHeight) * 100f;
+            return new PointF(Math.Clamp(x, TempMin, TempMax), Math.Clamp(y, 0f, 100f));
         }
 
         private static string GetYLabel(int percentage) => $"{percentage}%";
@@ -113,9 +113,9 @@ namespace PreySense.Fan
                 DrawCenteredLabel(g, $"{t}", font, labelBrush, x, Height - BottomPad + 5);
             }
 
-            for (int i = 10; i <= 100; i += 10)
+            for (int i = 0; i <= 100; i += 10)
             {
-                float y = TopPad + ((100 - i) / 90f) * GraphHeight;
+                float y = TopPad + ((100 - i) / 100f) * GraphHeight;
                 g.DrawLine(gridPen, LeftPad, y, Width - RightPad, y);
 
                 string label = GetYLabel(i);

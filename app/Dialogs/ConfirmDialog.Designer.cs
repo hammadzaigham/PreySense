@@ -64,7 +64,6 @@ namespace PreySense.Dialogs
             };
 
             int yesWidth = Math.Max(S(80), TextRenderer.MeasureText(yesText, new Font(UiTheme.FontFamily, 9.5F)).Width + S(26));
-            int noWidth = Math.Max(S(80), TextRenderer.MeasureText(noText, new Font(UiTheme.FontFamily, 9.5F)).Width + S(26));
 
             _buttonYes = new RButton
             {
@@ -76,17 +75,21 @@ namespace PreySense.Dialogs
             };
             _buttonYes.Click += (_, _) => Close();
 
-            _buttonNo = new RButton
+            if (!string.IsNullOrEmpty(noText))
             {
-                Text = noText,
-                Size = new Size(noWidth, S(30)),
-                DialogResult = DialogResult.No,
-                Secondary = true,
-                Margin = new Padding(S(6), 0, S(6), 0)
-            };
-            _buttonNo.Click += (_, _) => Close();
+                int noWidth = Math.Max(S(80), TextRenderer.MeasureText(noText, new Font(UiTheme.FontFamily, 9.5F)).Width + S(26));
+                _buttonNo = new RButton
+                {
+                    Text = noText,
+                    Size = new Size(noWidth, S(30)),
+                    DialogResult = DialogResult.No,
+                    Secondary = true,
+                    Margin = new Padding(S(6), 0, S(6), 0)
+                };
+                _buttonNo.Click += (_, _) => Close();
+                footer.Controls.Add(_buttonNo);
+            }
 
-            footer.Controls.Add(_buttonNo);
             footer.Controls.Add(_buttonYes);
 
             root.Controls.Add(_labelMessage, 0, 0);

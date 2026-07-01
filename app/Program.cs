@@ -2,7 +2,7 @@ namespace PreySense
 {
     internal static class Program
     {
-        public const string VersionString = "1.3.0";
+        public const string VersionString = "1.3.1";
         public static MainForm? settingsForm;
         public static Overlay.HardwareOverlay? hardwareOverlay;
         private static CancellationTokenSource? _overlayUnloadCts;
@@ -62,11 +62,12 @@ namespace PreySense
                 );
                 if (result == DialogResult.Yes)
                 {
-                    MessageBox.Show(
-                        "Downloading the latest PawnIO driver installer.\n\nPlease click Yes on the Windows administrator prompt (UAC) when it appears to allow the driver installation to complete.",
+                    Dialogs.ConfirmDialog.Show(
+                        null,
+                        "Downloading the latest PawnIO driver installer.",
                         "Installing PawnIO",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information
+                        "OK",
+                        ""
                     );
 
                     bool installed = Task.Run(async () =>
@@ -111,15 +112,16 @@ namespace PreySense
 
                     if (installed && PawnIO.IntelMsr.IsPawnIoAvailable(out _))
                     {
-                        MessageBox.Show("PawnIO has been successfully installed!", "PawnIO Installed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Dialogs.ConfirmDialog.Show(null, "PawnIO has been successfully installed!", "PawnIO Installed", "OK", "");
                     }
                     else
                     {
-                        var openUrl = MessageBox.Show(
+                        var openUrl = Dialogs.ConfirmDialog.Show(
+                            null,
                             "PawnIO automatic installation did not complete successfully.\n\nWould you like to open the website to download and install it manually?",
                             "Installation Failed",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Warning
+                            "Yes",
+                            "No"
                         );
                         if (openUrl == DialogResult.Yes)
                         {

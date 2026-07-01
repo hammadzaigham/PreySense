@@ -159,6 +159,29 @@ namespace PreySense
                 QueueStartupWork();
                 StartDeferredStartupInitialization();
                 _ = Task.Run(CheckForUpdatesAsync);
+
+                if (!PreySense.Overlay.AppConfig.Exists("HardwareControlMode"))
+                {
+                    var choice = PreySense.Dialogs.ConfirmDialog.Show(
+                        this,
+                        "Prey Sense can communicate with your Acer notebook using WMI calls or the default Acer background services.\n\n" +
+                        "Acer Services (Recommended): Maximum compatibility, relies on default Acer background services.\n" +
+                        "WMI Interface (Faster): Direct WMI calls. Faster execution but may not function on all notebook models.",
+                        "Hardware Control Mode",
+                        "WMI Interface",
+                        "Acer Services (Recommended)"
+                    );
+
+                    if (choice == DialogResult.Yes)
+                    {
+                        PreySense.Overlay.AppConfig.Set("HardwareControlMode", "wmi");
+                    }
+                    else
+                    {
+                        PreySense.Overlay.AppConfig.Set("HardwareControlMode", "service");
+                    }
+                }
+
                 if (Environment.CommandLine.Contains("-hidden"))
                 {
                     HideApp();
