@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 using PreySense.Gpu;
 using PreySense.Dialogs;
+using PreySense.Localization;
 using PreySense.Mode;
 using PreySense.UI;
 
@@ -164,7 +165,7 @@ namespace PreySense.Fan
 
             if (_buttonApplySettings != null)
             {
-                _buttonApplySettings.Text = tabIndex == 0 ? "Apply Limits" : "Apply Overclock";
+                _buttonApplySettings.Text = LocalizedText.Translate(tabIndex == 0 ? "Apply Limits" : "Apply Overclock");
                 _buttonApplySettings.Enabled = tabIndex == 0 || _mainForm.GpuMode != 0;
             }
         }
@@ -456,7 +457,7 @@ namespace PreySense.Fan
                 _activeMode = curMode;
                 _isUpdatingUi = true;
                 comboPerfMode.Items.Clear();
-                comboPerfMode.Items.AddRange(PerfModeNames);
+                comboPerfMode.Items.AddRange(LocalizedPerfModeNames);
                 comboPerfMode.SelectedIndex = IndexFromPerfMode(curMode);
                 _isUpdatingUi = false;
                 LoadProfileForMode(curMode);

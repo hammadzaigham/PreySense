@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
+using PreySense.Localization;
 using PreySense.Overlay;
 using PreySense.UI.Controls;
 
@@ -12,6 +14,15 @@ namespace PreySense.UI
         private readonly RCheckBox[] _graphs = new RCheckBox[8];
         private static readonly string[] MetricOptions = { "None", "Usage", "Temperature", "Clock", "Power", "Memory", "Fan Speed", "Voltage", "Memory Speed" };
 
+        private sealed class MetricOption
+        {
+            public MetricOption(string key) => Key = key;
+
+            public string Key { get; }
+
+            public override string ToString() => LocalizedText.Translate(Key);
+        }
+
         public MetricsSettingsForm()
         {
             InitTheme(true);
@@ -21,7 +32,7 @@ namespace PreySense.UI
             int height = (int)(350 * scale); // Fits 8 rows and header checkbox perfectly
 
             ClientSize = new Size(width, height);
-            UiTheme.ApplyFixedDialog(this, "Metrics Overlay Settings");
+            UiTheme.ApplyFixedDialog(this, LocalizedText.Translate("Metrics Overlay Settings"));
             ShowIcon = false;
 
             var builder = new UiBuilder(scale, width);
@@ -38,11 +49,11 @@ namespace PreySense.UI
                 new ColumnStyle(SizeType.Percent, 100F),
                 new ColumnStyle(SizeType.AutoSize));
 
-            var titleLabel = builder.Text("Overlay Settings", fontHeader, UiTheme.TextPrimary);
+            var titleLabel = builder.Text(LocalizedText.Translate("Overlay Settings"), fontHeader, UiTheme.TextPrimary);
 
             var chkShowFps = new RCheckBox
             {
-                Text = "Show FPS",
+                Text = LocalizedText.Translate("Show FPS"),
                 Font = fontRegular,
                 ForeColor = foreMain,
                 BackColor = buttonSecond,
@@ -85,7 +96,7 @@ namespace PreySense.UI
                 int defaultChecked = (colIdx == 4) ? 1 : 0;
                 var chkGraph = new RCheckBox
                 {
-                    Text = "Graph",
+                    Text = LocalizedText.Translate("Graph"),
                     Font = fontRegular,
                     ForeColor = foreMain,
                     BackColor = buttonSecond,
@@ -102,14 +113,15 @@ namespace PreySense.UI
 
                 _graphs[colIdx] = chkGraph;
 
-                var lbl = builder.Text($"Col {colIdx + 1}:", fontRegular, UiTheme.TextMuted);
+                var lbl = builder.Text(LocalizedText.ColumnLabel(colIdx + 1), fontRegular, UiTheme.TextMuted);
                 var combo = builder.Combo((int)(120 * scale), fontRegular, 28);
-                combo.Items.AddRange(MetricOptions);
+                // Store stable English keys in config; localize only the displayed text.
+                combo.Items.AddRange(MetricOptions.Select(key => new MetricOption(key)).ToArray());
                 int selIdx = Array.IndexOf(MetricOptions, currentVal);
                 combo.SelectedIndex = selIdx >= 0 ? selIdx : 0;
                 
                 combo.SelectedIndexChanged += (s, e) => {
-                    string selected = combo.SelectedItem?.ToString() ?? "None";
+                    string selected = combo.SelectedItem is MetricOption option ? option.Key : "None";
                     PreySense.Overlay.AppConfig.Set(configKey, selected);
                     Program.GetHardwareOverlay().RefreshDisplayFlags();
                 };

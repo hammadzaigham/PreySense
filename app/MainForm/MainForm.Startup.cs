@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using PreySense.Input;
+using PreySense.Localization;
 
 namespace PreySense
 {
@@ -29,15 +30,15 @@ namespace PreySense
             buttonTurboFanMode.Secondary = false;
             buttonTurboFanModePower.Secondary = false;
 
-            buttonEcoMode.Text = "Silent";
-            buttonBalancedMode.Text = "Balanced";
-            buttonPerformanceMode.Text = "Performance";
+            buttonEcoMode.Text = LocalizedText.Translate("Silent");
+            buttonBalancedMode.Text = LocalizedText.Translate("Balanced");
+            buttonPerformanceMode.Text = LocalizedText.Translate("Performance");
             buttonTurboFanMode.Text = "Turbo";
 
-            buttonEnduranceMode.Text = "Endurance";
-            buttonGpuStandardMode.Text = "Standard";
-            buttonGpuUltimateMode.Text = "Ultimate";
-            buttonTurboFanModePower.Text = "Fans + Power";
+            buttonEnduranceMode.Text = LocalizedText.Translate("Endurance");
+            buttonGpuStandardMode.Text = LocalizedText.Translate("Standard");
+            buttonGpuUltimateMode.Text = LocalizedText.Translate("Ultimate");
+            buttonTurboFanModePower.Text = LocalizedText.Translate("Fans + Power");
 
             buttonEcoMode.BorderColor = SilentModeOutlineColor;
             buttonBalancedMode.BorderColor = colorStandard;
@@ -53,7 +54,7 @@ namespace PreySense
             buttonAutoRefreshRate.BorderColor = colorGray;
             buttonRgbLighting.BorderColor = colorGray;
 
-            buttonColorProfiles.Text = "Display";
+            buttonColorProfiles.Text = LocalizedText.Translate("Display");
             buttonColorProfiles.TabStop = false;
             buttonColorProfiles.Borderless = false;
             buttonColorProfiles.Secondary = true;

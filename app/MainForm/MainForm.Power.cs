@@ -9,6 +9,7 @@ using PreySense.Helpers;
 using PreySense.Mode;
 using PreySense.Rgb;
 using PreySense.Input;
+using PreySense.Localization;
 
 namespace PreySense
 {
@@ -123,7 +124,7 @@ namespace PreySense
 
         private void LoadPersistedFanState(RegistryKey key)
         {
-            labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%";
+            labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value);
 
             int calibrated = GetRegistryInt(key, "Fan_Calibrated", 0);
             if (calibrated == 1)
@@ -311,9 +312,7 @@ namespace PreySense
 
         private void UpdatePerformanceModeLabel(string modeName, bool batteryAutoEco = false)
         {
-            labelPerformanceMode.Text = batteryAutoEco
-                ? $"Performance Mode: {modeName} (Battery)"
-                : $"Performance Mode: {modeName}";
+            labelPerformanceMode.Text = LocalizedText.PerformanceMode(modeName, batteryAutoEco);
         }
 
         private void ToggleTurboMode()
@@ -427,14 +426,7 @@ namespace PreySense
             buttonGpuStandardMode.Activated = (mode == 1);
             buttonGpuUltimateMode.Activated = (mode == 2);
 
-            string labelText = mode switch
-            {
-                0 => "GPU Mode: iGPU only",
-                1 => "GPU Mode: iGPU + dGPU",
-                2 => "GPU Mode: dGPU exclusive",
-                _ => "GPU Mode"
-            };
-            labelGpuMode.Text = labelText;
+            labelGpuMode.Text = LocalizedText.GpuMode(mode);
             labelGpuHint.Text = "";
 
             fansForm?.UpdateGpuOverclockAvailability();

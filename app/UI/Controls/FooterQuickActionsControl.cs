@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.UI.Controls
@@ -42,6 +43,12 @@ namespace PreySense.UI.Controls
             _layout.Controls.Add(_keyboardButton, 0, 0);
             _layout.Controls.Add(_metricsButton, 1, 0);
             Controls.Add(_layout);
+        }
+
+        public void ApplyText()
+        {
+            _keyboardButton.Text = LocalizedText.Translate("Keyboard");
+            _metricsButton.Text = LocalizedText.Translate("Metrics");
         }
 
         public Image? KeyboardIcon

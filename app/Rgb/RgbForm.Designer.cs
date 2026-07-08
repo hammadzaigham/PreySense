@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.Rgb
@@ -47,7 +48,7 @@ namespace PreySense.Rgb
             _formW = S(420);
             _ui = new UiBuilder(_dpiScale, _formW);
 
-            UiTheme.ApplyFixedDialog(this, "Keyboard Lighting");
+            UiTheme.ApplyFixedDialog(this, LocalizedText.Translate("Keyboard Lighting"));
             AutoScaleMode = AutoScaleMode.None;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -81,12 +82,12 @@ namespace PreySense.Rgb
             headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             headerRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            _titleLabel = _ui.Text("Keyboard", UiTheme.Font(_dpiScale, 8f, FontStyle.Bold), UiTheme.TextPrimary);
+            _titleLabel = _ui.Text(LocalizedText.Translate("Keyboard"), UiTheme.Font(_dpiScale, 8f, FontStyle.Bold), UiTheme.TextPrimary);
             _titleLabel.Anchor = AnchorStyles.Left;
             _titleLabel.Margin = Padding.Empty;
             headerRow.Controls.Add(_titleLabel, 0, 0);
 
-            _ledTimeoutButton = _ui.Button("30s Timeout", S(120), S(22), _fontBody, colorGray);
+            _ledTimeoutButton = _ui.Button(LocalizedText.Translate("30s Timeout"), S(120), S(22), _fontBody, colorGray);
             _ledTimeoutButton.BorderRadius = 2;
             _ledTimeoutButton.Secondary = true;
             _ledTimeoutButton.FlatStyle = FlatStyle.Flat;
@@ -107,12 +108,12 @@ namespace PreySense.Rgb
             body.RowCount++;
 
             // Effect dropdown.
-            AddComboRow(body, "Effect", controlWidth, out _effectDropdown);
+            AddComboRow(body, LocalizedText.Translate("Effect"), controlWidth, out _effectDropdown);
             foreach (var name in RgbModeNames) _effectDropdown.Items.Add(name);
             _effectDropdown.SelectedIndex = 0;
 
             // Speed slider (1-5).
-            _speedSettingRow = MakeSliderRow(body, "Speed", sliderWidth, valueWidth, 1, 5, 3, out _speedValueBox, val =>
+            _speedSettingRow = MakeSliderRow(body, LocalizedText.Translate("Speed"), sliderWidth, valueWidth, 1, 5, 3, out _speedValueBox, val =>
             {
                 if (!CanApplyHardware()) return;
                 _wmi.SetSpeed((byte)val);
@@ -121,16 +122,16 @@ namespace PreySense.Rgb
             ArmSliderInputs(_speedSettingRow, _speedValueBox);
 
             // Direction dropdown (only visible for wave mode).
-            _directionRow = AddComboRow(body, "Direction", controlWidth, out _directionDropdown);
-            _directionDropdown.Items.Add("Left");
-            _directionDropdown.Items.Add("Right");
+            _directionRow = AddComboRow(body, LocalizedText.Translate("Direction"), controlWidth, out _directionDropdown);
+            _directionDropdown.Items.Add(LocalizedText.Translate("Left"));
+            _directionDropdown.Items.Add(LocalizedText.Translate("Right"));
             _directionDropdown.SelectedIndex = 0;
             ArmDropdown(_directionDropdown);
             _directionRow.Visible = false;
 
             // Preset dropdown.
-            _presetRow = AddComboRow(body, "Preset", controlWidth, out _presetDropdown);
-            foreach (var name in CustomPresetNames) _presetDropdown.Items.Add(name);
+            _presetRow = AddComboRow(body, LocalizedText.Translate("Preset"), controlWidth, out _presetDropdown);
+            foreach (var name in LocalizedCustomPresetNames) _presetDropdown.Items.Add(name);
             _presetDropdown.SelectedIndex = 0;
             ArmDropdown(_presetDropdown);
             _presetRow.Visible = false;
@@ -143,7 +144,7 @@ namespace PreySense.Rgb
             zonesRow.Margin = Padding.Empty;
             int zoneBtnW = (controlWidth - S(UiTheme.ColumnGap) * 4) / 5;
             _zoneColorButtons = new RButton[5];
-            string[] zoneLabels = { "Z1", "Z2", "Z3", "Z4", "Sync" };
+            string[] zoneLabels = { "Z1", "Z2", "Z3", "Z4", LocalizedText.Translate("Sync") };
             for (int i = 0; i < 5; i++)
             {
                 bool isSync = i == 4;
@@ -156,10 +157,10 @@ namespace PreySense.Rgb
                 _zoneColorButtons[i].Margin = new Padding(0, 0, isSync ? 0 : S(UiTheme.ColumnGap), 0);
                 zonesRow.Controls.Add(_zoneColorButtons[i]);
             }
-            _zoneRow = AddControlRow(body, "Zones", zonesRow);
+            _zoneRow = AddControlRow(body, LocalizedText.Translate("Zones"), zonesRow);
             _zoneRow.Visible = false;
             // Brightness slider (1-5).
-            _brightnessSettingRow = MakeSliderRow(body, "Brightness", sliderWidth, valueWidth, 1, 5, 5, out _brightnessValueBox, val =>
+            _brightnessSettingRow = MakeSliderRow(body, LocalizedText.Translate("Brightness"), sliderWidth, valueWidth, 1, 5, 5, out _brightnessValueBox, val =>
             {
                 if (!CanApplyHardware()) return;
                 if (_effectDropdown.SelectedIndex == 0)

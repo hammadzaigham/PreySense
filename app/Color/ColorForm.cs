@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Runtime.Versioning;
 using PreySense.Helpers;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.Display;
@@ -23,9 +24,9 @@ public partial class ColorForm : RForm
         InitTheme(true);
 
         _blueLightCombo.Items.AddRange(new object[] {
-            "Off",
-            "Low (18% Reduction)",
-            "High (36% Reduction)"
+            LocalizedText.Translate("Off"),
+            LocalizedText.Translate("Low (18% Reduction)"),
+            LocalizedText.Translate("High (36% Reduction)")
         });
         _blueLightCombo.SelectedIndexChanged += (s, e) => { if (!_isLoading) RequestApply(); };
 

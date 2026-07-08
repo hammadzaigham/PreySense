@@ -19,6 +19,7 @@ using PreySense.Helpers;
 using PreySense.Input;
 using PreySense.Battery;
 using PreySense.Mode;
+using PreySense.Localization;
 
 namespace PreySense
 {
@@ -150,6 +151,7 @@ namespace PreySense
             Opacity = 0;
             _maxHz = 60;
             ConfigureStartupButtons();
+            LocalizedText.ApplyTo(this);
             ConfigureStartupPanels();
             WireUpEvents();
             ConfigureStartupActions();
@@ -216,6 +218,7 @@ namespace PreySense
             _footerQuickActions.KeyboardIcon = GetThemeIcon(ResizeImageToSize(Properties.Resources.icons8_keyboard_32, 18, 18));
             _footerQuickActions.MetricsIcon = GetThemeIcon(ResizeImageToSize(Properties.Resources.icons8_soonvibes_32, 18, 18));
             _footerQuickActions.ApplyTheme(buttonSecond, foreMain, borderSecond);
+            _footerQuickActions.ApplyText();
             _footerQuickActions.KeyboardClicked += (_, _) => OpenRgbForm();
             _footerQuickActions.MetricsClicked += (_, _) => OpenMetricsSettings();
 
@@ -229,7 +232,7 @@ namespace PreySense
             tableButtons.Controls.Add(_footerQuickActions, 0, 0);
             tableButtons.SetColumnSpan(_footerQuickActions, 2);
 
-            buttonQuit.Text = "Quit";
+            buttonQuit.Text = LocalizedText.Translate("Quit");
             buttonQuit.Image = GetThemeIcon(ResizeImageToSize(Properties.Resources.icons8_quit_32, 18, 18));
             buttonQuit.ImageAlign = ContentAlignment.MiddleLeft;
             buttonQuit.TextAlign = ContentAlignment.MiddleCenter;
@@ -333,8 +336,7 @@ namespace PreySense
             };
 
             // Keyboard lighting
-            comboRgbLightingMode.Items.Clear();
-            foreach (var name in RgbModeNames) comboRgbLightingMode.Items.Add(name);
+            ConfigureRgbModeDropdown();
             comboRgbLightingMode.SelectedIndex = 0;
             comboRgbLightingMode.SelectedIndexChanged += (s, e) => ApplyRgbModeFromDropdown(comboRgbLightingMode.SelectedIndex);
 
@@ -355,7 +357,7 @@ namespace PreySense
                     sliderBatteryChargeLimit.Value = val;
                     return;
                 }
-                labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%";
+                labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value);
                 UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
                 if (_isLoaded && !_isApplyingSavedBatteryLimit)
                 {
@@ -370,7 +372,7 @@ namespace PreySense
                     _pendingBatteryMode = -1;
                 }
             };
-            labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%"; // Show value at launch
+            labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value); // Show value at launch
             UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
             buttonBatteryFull.Click += (s, e) => {
                 int nextMode = sliderBatteryChargeLimit.Value == 80 ? 0 : 1;
@@ -1025,19 +1027,13 @@ namespace PreySense
             UpdatePowerButtonAccentForPowerSource(onBattery);
             if (onBattery)
             {
-                if (buttonEcoMode.Text != "Eco")
-                {
-                    buttonEcoMode.Text = "Eco";
-                }
+                buttonEcoMode.Text = LocalizedText.Translate("Eco");
                 buttonPerformanceMode.Enabled = true;
                 buttonTurboFanMode.Enabled = true;
             }
             else
             {
-                if (buttonEcoMode.Text != "Silent")
-                {
-                    buttonEcoMode.Text = "Silent";
-                }
+                buttonEcoMode.Text = LocalizedText.Translate("Silent");
                 buttonPerformanceMode.Enabled = true;
                 buttonTurboFanMode.Enabled = true;
             }
@@ -1121,7 +1117,8 @@ namespace PreySense
                 ImageScaling = ToolStripItemImageScaling.SizeToFit
             };
             _trayMenu.Items.Add(openItem);
-            _trayMenu.Items.Add("Quit", null, (_, _) => QuitApplication());
+            _trayMenu.Items.Add(BuildLanguageMenu());
+            _trayMenu.Items.Add(LocalizedText.Translate("Quit"), null, (_, _) => QuitApplication());
 
             _trayIcon = new NotifyIcon
             {
@@ -1131,6 +1128,26 @@ namespace PreySense
                 Visible = true
             };
             _trayIcon.DoubleClick += (_, _) => ShowApp();
+        }
+
+        private ToolStripMenuItem BuildLanguageMenu()
+        {
+            string current = LocalizedText.CurrentLanguageCode;
+            var languageMenu = new ToolStripMenuItem(LocalizedText.Translate("Language"));
+            AddLanguageMenuItem(languageMenu, LocalizedText.SystemLanguageCode, LocalizedText.Translate("System default"), current);
+            AddLanguageMenuItem(languageMenu, LocalizedText.EnglishLanguageCode, "English", current);
+            AddLanguageMenuItem(languageMenu, LocalizedText.ChineseLanguageCode, LocalizedText.Translate("Simplified Chinese"), current);
+            return languageMenu;
+        }
+
+        private void AddLanguageMenuItem(ToolStripMenuItem parent, string code, string text, string current)
+        {
+            var item = new ToolStripMenuItem(text, null, (_, _) => SaveLanguage(code))
+            {
+                Checked = current.Equals(code, StringComparison.Ordinal),
+                CheckOnClick = false
+            };
+            parent.DropDownItems.Add(item);
         }
 
         private Image GetThemeIcon(Image icon)

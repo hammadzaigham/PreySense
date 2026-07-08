@@ -1,8 +1,10 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
 using PreySense.Helpers;
+using PreySense.Localization;
 using PreySense.Mode;
 using PreySense.UI;
 
@@ -49,6 +51,9 @@ namespace PreySense.Fan
 
         private static readonly byte[] PerfModes = { 0x06, 0x00, 0x01, 0x04, 0x05 };
         private static readonly string[] PerfModeNames = { "Eco", "Silent", "Balanced", "Performance", "Turbo" };
+        private static readonly string[] LocalizedPerfModeNames = PerfModeNames
+            .Select(LocalizedText.Translate)
+            .ToArray();
 
         public Fans(MainForm mainForm, WmiController wmi)
         {
@@ -58,7 +63,7 @@ namespace PreySense.Fan
             InitializeComponent();
             CreateMaxFanCheck();
 
-            labelPowerModeTitle.Text = "Windows Power Mode";
+            labelPowerModeTitle.Text = LocalizedText.Translate("Windows Power Mode");
             panelCpuLimitsGraph.Visible = false;
             panelGpuOffsetsSection.Visible = false;
             panelPl1.Visible = true;
@@ -80,9 +85,15 @@ namespace PreySense.Fan
             CreateFanCurveCards();
 
             comboWindowsPowerMode.Items.Clear();
-            comboWindowsPowerMode.Items.AddRange(new object[] { "Best power efficiency", "Balanced", "Best performance" });
+            comboWindowsPowerMode.Items.AddRange(new object[]
+            {
+                LocalizedText.Translate("Best power efficiency"),
+                LocalizedText.Translate("Balanced"),
+                LocalizedText.Translate("Best performance")
+            });
 
             ConfigureFansLayout();
+            LocalizedText.ApplyTo(this);
 
             LoadStates();
             WireEvents();

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using PreySense.Helpers;
+using PreySense.Localization;
 using PreySense.Rgb;
 
 namespace PreySense
@@ -238,7 +239,7 @@ namespace PreySense
         {
             int currentHz = _currentRefreshRate;
             bool odActive = (currentHz == _maxHz) && (_maxHz > 60);
-            labelScreen.Text = $"Laptop Screen: {currentHz}Hz" + (odActive ? " + Overdrive" : "");
+            labelScreen.Text = LocalizedText.LaptopScreen(currentHz, odActive);
             SaveState("RefreshRate", currentHz);
             SaveState("LcdOverdrive", odActive ? 1 : 0);
         }

@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using PreySense.Battery;
+using PreySense.Localization;
 
 namespace PreySense
 {
@@ -49,26 +50,26 @@ namespace PreySense
                     (uint)sizeof(SYSTEM_BATTERY_STATE));
 
                 if (status != 0)
-                    return "Charge: --%";
+                    return LocalizedText.BatteryChargeUnavailable();
 
                 if (!state.BatteryPresent)
-                    return "Charge: --%";
+                    return LocalizedText.BatteryChargeUnavailable();
 
                 int rate = state.Rate;
                 if (rate > 0)
-                    return $"Charging: {rate / 1000.0:F1}W";
+                    return LocalizedText.BatteryCharging(rate / 1000.0);
 
                 if (!state.AcOnLine && rate < 0)
-                    return $"Discharging: {Math.Abs(rate) / 1000.0:F1}W";
+                    return LocalizedText.BatteryDischarging(Math.Abs(rate) / 1000.0);
 
                 if (state.AcOnLine && rate == 0)
-                    return "Plugged in";
+                    return LocalizedText.Translate("Plugged in");
 
-                return "Charge: --%";
+                return LocalizedText.BatteryChargeUnavailable();
             }
             catch
             {
-                return "Charge: --%";
+                return LocalizedText.BatteryChargeUnavailable();
             }
         }
 
@@ -88,7 +89,7 @@ namespace PreySense
             try
             {
                 sliderBatteryChargeLimit.Value = mode == 1 ? 80 : 100;
-                labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%";
+                labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value);
                 UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
             }
             finally
@@ -168,7 +169,7 @@ namespace PreySense
                                 sliderBatteryChargeLimit.Value = sliderValue;
                             }
 
-                            labelBatteryStatusLimitTitle.Text = $"Battery Charge Limit: {sliderBatteryChargeLimit.Value}%";
+                            labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value);
                             UpdateBatteryLimitButtonFromValue(sliderBatteryChargeLimit.Value);
                         }
                         finally

@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.Fan
@@ -64,7 +65,7 @@ namespace PreySense.Fan
             _cpuCurveCard = new SectionCardControl
             {
                 Dock = DockStyle.Fill,
-                SectionTitle = "CPU Fan",
+                SectionTitle = LocalizedText.Translate("CPU Fan"),
                 SectionIcon = GetSectionIcon(Properties.Resources.icons8_fan_48)
             };
             _cpuCurveCard.Body.Padding = new Padding(0);
@@ -74,7 +75,7 @@ namespace PreySense.Fan
             _gpuCurveCard = new SectionCardControl
             {
                 Dock = DockStyle.Fill,
-                SectionTitle = "GPU Fan",
+                SectionTitle = LocalizedText.Translate("GPU Fan"),
                 SectionIcon = GetSectionIcon(Properties.Resources.icons8_fan_48)
             };
             _gpuCurveCard.Body.Padding = new Padding(0);
@@ -111,7 +112,7 @@ namespace PreySense.Fan
 
             checkMaxFans = new RCheckBox
             {
-                Text = "Max Fans",
+                Text = LocalizedText.Translate("Max Fans"),
                 AutoSize = true,
                 Dock = DockStyle.None,
                 Margin = Padding.Empty,
@@ -280,7 +281,7 @@ namespace PreySense.Fan
 
             labelFanRampUp = new Label
             {
-                Text = "Ramp Up",
+                Text = LocalizedText.Translate("Ramp Up"),
                 ForeColor = foreMain,
                 Font = new Font("Segoe UI", 9f),
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -366,7 +367,7 @@ namespace PreySense.Fan
             var caption = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "Performance Mode",
+                Text = LocalizedText.Translate("Performance Mode"),
                 ForeColor = foreMain,
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -402,10 +403,10 @@ namespace PreySense.Fan
             buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             buttonRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-            _buttonSaveSettings = CreateFooterButton("Save Settings", S);
+            _buttonSaveSettings = CreateFooterButton(LocalizedText.Translate("Save Settings"), S);
             _buttonSaveSettings.Margin = new Padding(S(4), 0, 0, S(8));
 
-            _buttonApplySettings = CreateFooterButton("Apply Power Limits", S);
+            _buttonApplySettings = CreateFooterButton(LocalizedText.Translate("Apply Power Limits"), S);
             _buttonApplySettings.Margin = new Padding(0, 0, S(4), S(8));
 
             _buttonApplySettings.Click += (_, _) =>
@@ -428,7 +429,7 @@ namespace PreySense.Fan
             stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-            _buttonResetDefaults = CreateFooterButton("Factory Defaults", S);
+            _buttonResetDefaults = CreateFooterButton(LocalizedText.Translate("Factory Defaults"), S);
             _buttonSaveSettings.Click += (_, _) => SaveVisibleSettings();
             _buttonResetDefaults.Click += (_, _) => ResetDefaults();
 
@@ -536,14 +537,14 @@ namespace PreySense.Fan
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FormattingEnabled = true
             };
-            comboCpuBoost.Items.AddRange(new object[] { 
-                "Disabled", 
-                "Enabled", 
-                "Aggressive", 
-                "Efficient Enabled", 
-                "Efficient Aggressive", 
-                "Aggressive at Guaranteed", 
-                "Efficient Aggressive at Guaranteed" 
+            comboCpuBoost.Items.AddRange(new object[] {
+                LocalizedText.Translate("Disabled"),
+                LocalizedText.Translate("Enabled"),
+                LocalizedText.Translate("Aggressive"),
+                LocalizedText.Translate("Efficient Enabled"),
+                LocalizedText.Translate("Efficient Aggressive"),
+                LocalizedText.Translate("Aggressive at Guaranteed"),
+                LocalizedText.Translate("Efficient Aggressive at Guaranteed")
             });
             comboCpuBoost.Visible = true;
             comboCpuBoost.Dock = DockStyle.Fill;
@@ -565,7 +566,7 @@ namespace PreySense.Fan
             };
             labelCpuBoostTitle = new Label
             {
-                Text = "CPU Boost",
+                Text = LocalizedText.Translate("CPU Boost"),
                 AutoSize = true,
                 ForeColor = foreMain,
                 Font = labelPowerModeTitle.Font
@@ -606,8 +607,8 @@ namespace PreySense.Fan
             panelApplyCpuLimits.Padding = new Padding(S(4), S(6), S(4), S(6));
             panelCpuLimitsSection.AutoSize = true;
             SetTopDockOrder(panelCpuLimitsSection, cpuBoostHost, panelApplyCpuLimits, panelPl2, panelPl1, panelCpuLimitsTitle);
-            BuildSliderRow(panelGpuOffsetsSectionCore, labelGpuCoreTitle, "Core Offset (MHz)", labelGpuCoreValue, trackGpuCoreOffset, numGpuCoreOffset, S);
-            BuildSliderRow(panelGpuOffsetsSectionMemory, labelGpuMemoryTitle, "Memory Offset (MHz)", labelGpuMemoryValue, trackGpuMemoryOffset, numGpuMemoryOffset, S);
+            BuildSliderRow(panelGpuOffsetsSectionCore, labelGpuCoreTitle, LocalizedText.Translate("Core Offset (MHz)"), labelGpuCoreValue, trackGpuCoreOffset, numGpuCoreOffset, S);
+            BuildSliderRow(panelGpuOffsetsSectionMemory, labelGpuMemoryTitle, LocalizedText.Translate("Memory Offset (MHz)"), labelGpuMemoryValue, trackGpuMemoryOffset, numGpuMemoryOffset, S);
             panelGpuOffsetsSection.AutoSize = true;
             panelGpuOffsetsSection.Padding = new Padding(0, 0, 0, S(10));
             SetTopDockOrder(panelGpuOffsetsSection, panelGpuOffsetsSectionMemory, panelGpuOffsetsSectionCore, panelGpuOffsetsTitle);

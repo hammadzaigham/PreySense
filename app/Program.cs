@@ -44,6 +44,7 @@ namespace PreySense
             }
 
             ApplicationConfiguration.Initialize();
+            Localization.LocalizedText.SetLanguage(Overlay.AppConfig.GetString("Language", Localization.LocalizedText.SystemLanguageCode));
             RegisterUnhandledExceptionHandlers();
 
             if (TryRunHeadlessCommand(args))

@@ -5,7 +5,9 @@ using Microsoft.Win32;
 using PreySense.Battery;
 using PreySense.Fan;
 using PreySense.Helpers;
+using PreySense.Localization;
 using PreySense.Mode;
+using PreySense.Rgb;
 using PreySense.UI;
 using PreySense.UI.Controls;
 
@@ -139,6 +141,72 @@ namespace PreySense
         private void SetGpuBatteryAuto(bool enabled)
         {
             SaveState("GpuBatteryAuto", enabled ? 1 : 0);
+        }
+
+        private void SaveLanguage(string languageCode)
+        {
+            string normalized = LocalizedText.NormalizeLanguageCode(languageCode);
+            Overlay.AppConfig.Set("Language", normalized);
+            LocalizedText.SetLanguage(normalized);
+            RefreshLocalizedUi();
+            BeginInvoke(new Action(ConfigureTrayIcon));
+        }
+
+        private void RefreshLocalizedUi()
+        {
+            UpdatePowerUIForBatteryState(IsOnBatteryPower());
+            UpdatePerformanceModeLabel(GetPowerModeName(_lastKnownProfile));
+            MarkGpuMode(_gpuMode);
+            UpdateScreenCardTitle();
+            labelBatteryStatusLimitTitle.Text = LocalizedText.BatteryChargeLimit(sliderBatteryChargeLimit.Value);
+            RefreshBatteryRateLabel();
+
+            buttonBalancedMode.Text = LocalizedText.Translate("Balanced");
+            buttonPerformanceMode.Text = LocalizedText.Translate("Performance");
+            buttonTurboFanMode.Text = "Turbo";
+            buttonEnduranceMode.Text = LocalizedText.Translate("Endurance");
+            buttonGpuStandardMode.Text = LocalizedText.Translate("Standard");
+            buttonGpuUltimateMode.Text = LocalizedText.Translate("Ultimate");
+            buttonTurboFanModePower.Text = LocalizedText.Translate("Fans + Power");
+            buttonColorProfiles.Text = LocalizedText.Translate("Display");
+            buttonAutoRefreshRate.Text = LocalizedText.Translate("Auto");
+            buttonRgbLighting.Text = "RGB";
+            buttonRgbProfiles.Text = LocalizedText.Translate("Color Profiles");
+            buttonQuit.Text = LocalizedText.Translate("Quit");
+            labelRgb.Text = "RGB";
+            checkRunOnStartup.Text = LocalizedText.Translate("Run on startup");
+            checkAutoGpuBattery.Text = LocalizedText.Translate("iGPU on Battery");
+            _footerQuickActions.ApplyText();
+            ConfigureRgbModeDropdown();
+        }
+
+        private static string GetPowerModeName(byte mode) => mode switch
+        {
+            0x00 => "Silent",
+            0x04 => "Performance",
+            0x05 => "Turbo",
+            0x06 => "Eco",
+            _ => "Balanced"
+        };
+
+        private void ConfigureRgbModeDropdown()
+        {
+            int selectedIndex = comboRgbLightingMode.SelectedIndex;
+            bool wasApplyingSavedRgbState = _isApplyingSavedRgbState;
+            _isApplyingSavedRgbState = true;
+            try
+            {
+                comboRgbLightingMode.Items.Clear();
+                foreach (var name in RgbProfile.UiModeNames)
+                    comboRgbLightingMode.Items.Add(LocalizedText.Translate(name));
+
+                if (selectedIndex >= 0 && selectedIndex < comboRgbLightingMode.Items.Count)
+                    comboRgbLightingMode.SelectedIndex = selectedIndex;
+            }
+            finally
+            {
+                _isApplyingSavedRgbState = wasApplyingSavedRgbState;
+            }
         }
 
 

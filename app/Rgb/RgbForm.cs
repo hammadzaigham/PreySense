@@ -1,8 +1,10 @@
 using System.Drawing;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using PreySense.Helpers;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.Rgb
@@ -14,12 +16,18 @@ namespace PreySense.Rgb
         private readonly WmiController _wmi;
         private readonly ColorDialog _colorPicker = new() { FullOpen = true };
 
-        private static readonly string[] RgbModeNames = RgbProfile.UiModeNames;
+        private static readonly string[] RgbModeNames = RgbProfile.UiModeNames
+            .Select(LocalizedText.Translate)
+            .ToArray();
 
         private static readonly string[] CustomPresetNames =
         {
             "None / Custom", "Ice Cold", "Volcano", "Cyberpunk", "Sunset Glow", "Deep Space", "Nordic Aurora", "Magma Flow"
         };
+
+        private static readonly string[] LocalizedCustomPresetNames = CustomPresetNames
+            .Select(LocalizedText.Translate)
+            .ToArray();
 
         private static readonly Color[][] CustomPresetColors =
         {

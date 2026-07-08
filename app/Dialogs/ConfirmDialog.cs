@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using PreySense.Localization;
 using PreySense.UI;
 
 namespace PreySense.Dialogs
@@ -8,7 +9,11 @@ namespace PreySense.Dialogs
     {
         public ConfirmDialog(string message, string title, string yesText = "Apply && Restart Now", string noText = "Cancel")
         {
-            InitializeComponent(message, title, yesText, noText);
+            InitializeComponent(
+                LocalizedText.Translate(message),
+                LocalizedText.Translate(title),
+                LocalizedText.Translate(yesText),
+                LocalizedText.Translate(noText));
             InitTheme(true);
 
             BackColor = RForm.formBack;
