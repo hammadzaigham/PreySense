@@ -17,6 +17,8 @@ namespace PreySense.Frontend.ViewModels
         private const string SessionRegistryPath = @"SOFTWARE\PreySense\Session";
         private bool _sessionHooksAttached;
         private bool _isRestoringSession;
+        private readonly TaskCompletionSource _startupWindowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal void NotifyMainWindowLoaded() => _startupWindowReady.TrySetResult();
         private DateTime _lastSessionRestoreUtc = DateTime.MinValue;
 
         private void AttachSessionLifecycleHooks()
@@ -140,7 +142,7 @@ namespace PreySense.Frontend.ViewModels
             SaveCustomFanSpeeds();
         }
 
-        private async Task ValidateOpenCoreIntegrationAsync()
+        private async Task ValidateOpenCoreIntegrationAsync(bool promptForUpdate = true)
         {
             if (_disposed)
                 return;
@@ -162,16 +164,14 @@ namespace PreySense.Frontend.ViewModels
                     if (loadedMatches)
                         wmiReady = PreySenseWmiRepair.TryRegister(mofPath, out detail);
 
-                    bool installedCurrent = PreySenseWmiRepair.IsPending();
-                    if (!installedCurrent && knownVersion &&
-                        OpenCoreSecurityValidator.TryReadInstalledPreyDevRevision(out uint installedRevision))
-                    {
-                        installedCurrent = installedRevision == expected;
-                    }
+                    // A pending WMI registration flag does not prove the EFI files are current.
+                    bool installedRead = OpenCoreSecurityValidator.TryReadInstalledPreyDevRevision(out uint installedRevision);
+                    bool installedCurrent = knownVersion && installedRead && installedRevision == expected;
 
                     try { partitionPresent = OpenCoreSecurityValidator.IsPreySensePartitionPresent(); } catch { }
                     bool integrationPresent = partitionPresent || loaded || installedCurrent;
-                    state = OpenCoreSecurityValidator.DecideIntegrationState(loadedMatches, wmiReady, installedCurrent, integrationPresent);
+                    state = OpenCoreSecurityValidator.DecideIntegrationState(loadedMatches, wmiReady, installedCurrent, integrationPresent,
+                        installedPackageKnownOutdated: knownVersion && partitionPresent && installedRead && !installedCurrent);
                 }
                 catch (Exception ex)
                 {
@@ -199,12 +199,24 @@ namespace PreySense.Frontend.ViewModels
                     StatusMessage = detail;
             });
 
-            if (state == OpenCoreSecurityValidator.OpenCoreIntegrationState.UpdateRequired && !_disposed)
+            if (promptForUpdate && state == OpenCoreSecurityValidator.OpenCoreIntegrationState.UpdateRequired && !_disposed)
                 await _dispatcher.InvokeAsync(PromptOpenCoreReinstall, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
 
         private async Task InitializeSessionAsync()
         {
+            await _startupWindowReady.Task;
+            if (_disposed) return;
+            var pawnInstallation = await _dispatcher.InvokeAsync(() => PawnIoInstallService.EnsureInstalledAsync(
+                System.Windows.Application.Current.MainWindow, message => StatusMessage = message));
+            await pawnInstallation;
+            if (_disposed) return;
+            await ValidateOpenCoreIntegrationAsync();
+            if (_disposed) return;
+            // Migrate only the missing baseline metadata for already locked profiles.
+            if (IsOpenCoreLoaded && FactoryCalibrationIsLocked()) await CaptureGpuBaselineOnceAsync();
+            await PromptStartupFactoryCalibrationAsync();
+            if (_disposed || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
             await RestoreSessionSettingsAsync("startup");
             if (_disposed)
                 return;
@@ -236,12 +248,11 @@ namespace PreySense.Frontend.ViewModels
                     UsbChargingPercent = usbLevel;
             });
 
-            await ValidateOpenCoreIntegrationAsync();
         }
 
         public async Task RestoreSessionSettingsAsync(string reason)
         {
-            if (_disposed)
+            if (_disposed || IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete)
                 return;
 
             if ((DateTime.UtcNow - _lastSessionRestoreUtc).TotalSeconds < 3 &&
@@ -260,6 +271,7 @@ namespace PreySense.Frontend.ViewModels
                 AppLogger.Log($"Restoring PreySense session settings ({reason}).");
                 byte mode = ActivePowerMode;
                 PowerSourceKind source = PowerSourceKind.Ac;
+                string restoreWarning = string.Empty;
                 await Task.Run(() =>
                 {
                     try
@@ -279,7 +291,7 @@ namespace PreySense.Frontend.ViewModels
                     if (IsBatteryEnergySaverEnabled)
                         PowerLimitController.SetEnergySaverOnBattery(true);
 
-                    ApplyPersistedHardwareSettings(mode);
+                    restoreWarning = ApplyPersistedHardwareSettings(mode);
                     if (string.Equals(reason, "startup", StringComparison.OrdinalIgnoreCase))
                         ApplyStartupBatteryRefreshRate();
                 });
@@ -299,11 +311,17 @@ namespace PreySense.Frontend.ViewModels
                     StatusMessage = reason.Equals("startup", StringComparison.OrdinalIgnoreCase)
                         ? "Saved settings applied."
                         : "Saved settings reapplied after wake.";
+                    if (!string.IsNullOrEmpty(restoreWarning))
+                        StatusMessage = "Settings partially applied: " + restoreWarning;
                 });
             }
             catch (Exception ex)
             {
                 AppLogger.Log($"RestoreSessionSettingsAsync ({reason}): {ex.Message}");
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    if (!_disposed) StatusMessage = $"Settings restore failed: {ex.Message}";
+                });
             }
             finally
             {
@@ -316,12 +334,14 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        private void ApplyPersistedHardwareSettings(byte? modeOverride = null)
+        private string ApplyPersistedHardwareSettings(byte? modeOverride = null)
         {
             byte mode = modeOverride ?? ActivePowerMode;
+            var failures = new System.Collections.Generic.List<string>();
             ApplyKeyboardLightingNow();
             ApplyCoverLighting(saveSettings: false);
-            _hw.SetPowerMode(mode);
+            if (!_hw.SetPowerMode(mode))
+                throw new InvalidOperationException("The saved Acer mode could not be activated; its custom limits were not applied.");
 
             int pl1 = mode switch
             {
@@ -358,10 +378,16 @@ namespace PreySense.Frontend.ViewModels
 
             int limitedPl1 = LimitPl1ToPlatform(pl1);
             TauSeconds = TauForMode(mode);
-            PowerLimitController.SetCpuPowerLimits(limitedPl1, LimitPl2(limitedPl1, pl2), true, TauSeconds);
-            ApplyCpuBoostForMode(mode);
-            PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuPowerLimit((uint)gpuWatts);
-            PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)gpuTrip);
+            if (IsFactoryCalibrationComplete && IsOpenCoreLoaded && IsAcpiOverrideEnabled)
+            {
+                if (!PowerLimitController.SetCpuPowerLimits(limitedPl1, LimitPl2(limitedPl1, pl2), true, TauSeconds))
+                    failures.Add("CPU limits: " + PowerLimitController.LastCpuPowerLimitStatus);
+                ApplyCpuBoostForMode(mode);
+                if (!ApplyGpuModePower(mode, gpuWatts))
+                    failures.Add("GPU offsets could not be verified");
+                if (!PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)gpuTrip))
+                    failures.Add("GPU thermal trip point could not be applied");
+            }
 
             if (ActiveFanMode == 2)
                 _hw.SetFanSpeeds((byte)CustomCpuFanPercent, (byte)CustomGpuFanPercent);
@@ -374,6 +400,9 @@ namespace PreySense.Frontend.ViewModels
             _hw.SetUsbChargingLevel(UsbChargingPercent);
             _hw.SetBatteryChargeLimit(IsBatteryLimitEnabled ? 1 : 0);
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
+            string warning = string.Join("; ", failures);
+            if (failures.Count > 0) AppLogger.Log("Settings restore partial: " + warning);
+            return warning;
         }
 
         private void ApplyStartupBatteryRefreshRate()

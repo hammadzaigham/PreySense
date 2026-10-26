@@ -24,6 +24,9 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _selectedGamePl2 = 140;
         [ObservableProperty] private int _selectedGameTau = CpuPowerLimitConfiguration.FactoryTauSeconds;
         [ObservableProperty] private int _selectedGameGpuWatts = 130;
+        [ObservableProperty] private int _selectedGameGpuDelta;
+        [ObservableProperty] private int _selectedGameGpuDynamicBoost;
+        private bool _loadingGameProfile;
         [ObservableProperty] private int _selectedGameGpuTrip = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius;
         [ObservableProperty] private bool _selectedGameEnabled = true;
         [ObservableProperty] private bool _selectedGameCpuBoost = true;
@@ -65,14 +68,22 @@ namespace PreySense.Frontend.ViewModels
             OnPropertyChanged(nameof(HasSelectedGameProfile));
             if (value == null)
                 return;
-            SelectedGameModeName = value.ModeTitle;
-            SelectedGamePl1 = value.CpuPl1;
-            SelectedGamePl2 = value.CpuPl2;
-            SelectedGameTau = value.TauSeconds;
-            SelectedGameGpuWatts = value.GpuPowerWatts;
-            SelectedGameGpuTrip = value.GpuThermalTripCelsius;
-            SelectedGameCpuBoost = value.CpuBoostEnabled;
-            SelectedGameEnabled = value.Enabled;
+            _loadingGameProfile = true;
+            try
+            {
+                SelectedGameModeName = value.ModeTitle;
+                SelectedGamePl1 = value.CpuPl1;
+                SelectedGamePl2 = value.CpuPl2;
+                SelectedGameTau = value.TauSeconds;
+                var offsets = value.ResolveGpuOffsets(GpuBasePowerWatts);
+                SelectedGameGpuDelta = offsets.DeltaWatts;
+                SelectedGameGpuDynamicBoost = offsets.DynamicBoostWatts;
+                SelectedGameGpuWatts = offsets.NominalReferenceWatts(GpuBasePowerWatts);
+                SelectedGameGpuTrip = value.GpuThermalTripCelsius;
+                SelectedGameCpuBoost = value.CpuBoostEnabled;
+                SelectedGameEnabled = value.Enabled;
+            }
+            finally { _loadingGameProfile = false; }
         }
 
         partial void OnSelectedGameCpuBoostChanged(bool value)
@@ -119,11 +130,20 @@ namespace PreySense.Frontend.ViewModels
             SelectedGameProfile.TauSeconds = snapped;
         }
 
-        partial void OnSelectedGameGpuWattsChanged(int value)
+        partial void OnSelectedGameGpuDeltaChanged(int value) => UpdateSelectedGameGpuOffsets();
+        partial void OnSelectedGameGpuDynamicBoostChanged(int value) => UpdateSelectedGameGpuOffsets();
+
+        private void UpdateSelectedGameGpuOffsets()
         {
-            if (SelectedGameProfile == null)
-                return;
-            SelectedGameProfile.GpuPowerWatts = LimitGameGpuWatts(value);
+            if (_loadingGameProfile || SelectedGameProfile == null) return;
+            var offsets = new GpuPowerOffsets(Math.Clamp(SelectedGameGpuDelta, 0, 255),
+                Math.Clamp(SelectedGameGpuDynamicBoost, 0, 255));
+            SelectedGameGpuDelta = offsets.DeltaWatts;
+            SelectedGameGpuDynamicBoost = offsets.DynamicBoostWatts;
+            SelectedGameProfile.GpuDeltaWatts = offsets.DeltaWatts;
+            SelectedGameProfile.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
+            SelectedGameGpuWatts = offsets.NominalReferenceWatts(GpuBasePowerWatts);
+            SelectedGameProfile.GpuPowerWatts = SelectedGameGpuWatts;
         }
 
         partial void OnSelectedGameGpuTripChanged(int value)
@@ -160,6 +180,7 @@ namespace PreySense.Frontend.ViewModels
         {
             if (!IsAcpiOverrideEnabled || SelectedGameProfile == null)
                 return;
+            UpdateSelectedGameGpuOffsets();
             SaveGameProfiles();
             StatusMessage = $"Saved {SelectedGameProfile.DisplayName} profile.";
         }
@@ -204,6 +225,10 @@ namespace PreySense.Frontend.ViewModels
                     GpuThermalTripCelsius = LimitGameGpuTrip(GpuThermalTripPointCelsius),
                     Enabled = true
                 };
+                var offsets = GpuOffsetsForMode(GpuModeIndex(profile.PowerMode), profile.GpuPowerWatts);
+                profile.GpuDeltaWatts = offsets.DeltaWatts;
+                profile.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
+                profile.GpuPowerWatts = offsets.NominalReferenceWatts(GpuBasePowerWatts);
                 GameProfiles.Add(profile);
                 SelectedGameProfile = profile;
                 SaveGameProfiles();
@@ -228,37 +253,53 @@ namespace PreySense.Frontend.ViewModels
 
         internal async Task ApplyGameProfileAsync(GameProfile game)
         {
-            if (!IsAcpiOverrideEnabled)
+            if (!IsAcpiOverrideEnabled || !IsFactoryCalibrationComplete || IsFactoryCalibrationRunning)
                 return;
 
             int pl1 = LimitPl1ToPlatform(game.CpuPl1);
             int pl2 = LimitPl2(pl1, game.CpuPl2);
             int tau = LimitGameTau(game.TauSeconds);
-            int gpu = LimitGameGpuWatts(game.GpuPowerWatts);
+            var offsets = game.ResolveGpuOffsets(GpuBasePowerWatts);
+            int gpu = offsets.NominalReferenceWatts(GpuBasePowerWatts);
             int trip = LimitGameGpuTrip(game.GpuThermalTripCelsius);
             game.CpuPl1 = pl1;
             game.CpuPl2 = pl2;
             game.TauSeconds = tau;
             game.GpuPowerWatts = gpu;
+            game.GpuDeltaWatts = offsets.DeltaWatts;
+            game.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
             game.GpuThermalTripCelsius = trip;
 
             if (PeekPendingOrActiveMode() != game.PowerMode)
-                await ApplyModeSwitchAsync(game.PowerMode);
+                await ApplyModeSwitchAsync(game.PowerMode, applyCustomLimits: false);
+
+            if (!IsGpuHardwareModeActive(game.PowerMode))
+            {
+                StatusMessage = "Game profile mode switch failed; settings were not applied.";
+                return;
+            }
 
             Pl1Watts = pl1;
             Pl2Watts = pl2;
             TauSeconds = tau;
             GpuPowerTargetWatts = gpu;
             GpuThermalTripPointCelsius = trip;
+            bool cpuApplied = false;
+            bool gpuApplied = false;
+            bool tripApplied = false;
+            string cpuResult = string.Empty;
             await Task.Run(() =>
             {
-                PowerLimitController.SetCpuPowerLimits(pl1, pl2, true, tau);
+                cpuApplied = PowerLimitController.SetCpuPowerLimits(pl1, pl2, true, tau);
+                cpuResult = PowerLimitController.LastCpuPowerLimitStatus;
                 PowerLimitController.SetCpuBoost(game.CpuBoostEnabled ? 1 : 0);
-                PreySenseWmiDeviceClient.SetGpuPowerLimit((uint)gpu);
-                PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)trip);
+                gpuApplied = PreySenseWmiDeviceClient.SetGpuPowerOffsets(offsets);
+                tripApplied = PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)trip);
             });
             string boost = game.CpuBoostEnabled ? "on" : "off";
             StatusMessage = $"{game.DisplayName}: {game.ModeTitle}  PL1 {pl1}W / PL2 {pl2}W / Tau {CpuPowerLimitConfiguration.FormatTauSelection(tau)}  CPU Boost {boost}  GPU {gpu}W / {trip}°C";
+            if (!gpuApplied || !tripApplied) StatusMessage += " | GPU settings failed or readback differed.";
+            if (!cpuApplied) StatusMessage += $" | CPU limits partial: {cpuResult}";
         }
 
         private static int LimitGameTau(int tau) =>

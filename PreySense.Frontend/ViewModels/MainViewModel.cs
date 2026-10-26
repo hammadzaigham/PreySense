@@ -409,9 +409,11 @@ namespace PreySense.Frontend.ViewModels
         {
             if (_disposed) return;
             _disposed = true;
+            _startupWindowReady.TrySetResult();
             _telemetryTimer.Stop();
             _telemetryTimer.Elapsed -= OnTelemetryTimerElapsed;
             _telemetryTimer.Dispose();
+            PreySense.Mode.PawnCpuPowerControl.Dispose();
             PersistSessionSettings();
             DetachSessionLifecycleHooks();
             _hw.PowerModeChanged -= OnPowerModeChanged;

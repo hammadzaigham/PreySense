@@ -17,6 +17,7 @@ namespace PreySense.Frontend.Views
             new("Temperature", "CPU Temperature"),
             new("P-Core", "CPU P-Core"),
             new("E-Core", "CPU E-Core"),
+            new("Voltage", "CPU Voltage"),
             new("Power", "CPU Power"),
             new("Memory", "CPU Memory"),
             new("Memory Speed", "CPU Memory Speed"),

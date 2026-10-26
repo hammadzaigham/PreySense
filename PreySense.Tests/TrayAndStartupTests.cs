@@ -67,5 +67,25 @@ namespace PreySense.Tests
             Assert.Contains("QuitApplication()", cs);
             Assert.Contains("_isExplicitExit = true", cs);
         }
+
+        [TestMethod]
+        [DoNotParallelize]
+        public void TrayMenuFollowsThemeChangesWithoutPersistingTestSettings()
+        {
+            bool original = ThemeManager.IsLightTheme;
+            try
+            {
+                ThemeManager.Apply(true, persist: false);
+                Assert.IsTrue(ThemeManager.IsLightTheme);
+                ThemeManager.Apply(false, persist: false);
+                Assert.IsFalse(ThemeManager.IsLightTheme);
+            }
+            finally { ThemeManager.Apply(original, persist: false); }
+            string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string tray = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "Services", "TrayIconManager.cs"));
+            Assert.Contains("SetPreferredAppMode(isLight ? 3 : 2)", tray);
+            Assert.Contains("FlushMenuThemes();", tray);
+            Assert.DoesNotContain("SetPreferredAppMode(2);", tray);
+        }
     }
 }

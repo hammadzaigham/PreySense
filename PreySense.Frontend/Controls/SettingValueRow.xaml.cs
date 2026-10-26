@@ -131,7 +131,7 @@ namespace PreySense.Frontend.Controls
             double clamped = row.Clamp((double)e.NewValue);
             if (Math.Abs(clamped - (double)e.NewValue) > 0.0001)
             {
-                row.Value = clamped;
+                row.SetCurrentValue(ValueProperty, clamped);
                 return;
             }
 
@@ -162,7 +162,7 @@ namespace PreySense.Frontend.Controls
                 return;
             if (Math.Abs(Value - parsed) <= 0.0001)
                 return;
-            Value = parsed;
+            SetCurrentValue(ValueProperty, parsed);
             ValueCommitted?.Invoke(this, EventArgs.Empty);
         }
 
@@ -170,7 +170,7 @@ namespace PreySense.Frontend.Controls
         {
             if (!TryParse(InnerValueBox.Text, out double parsed))
                 parsed = double.IsFinite(Minimum) ? Minimum : 0;
-            Value = Clamp(parsed);
+            SetCurrentValue(ValueProperty, Clamp(parsed));
             SyncTextFromValue();
             if (notify)
                 ValueCommitted?.Invoke(this, EventArgs.Empty);

@@ -1,6 +1,6 @@
 #pragma classflags("forceupdate")
 #pragma namespace("\\\\.\\root\\wmi")
-// PreySenseInterfaceVersion=0x0103
+// PreySenseInterfaceVersion=0x0201
 
 [
     Dynamic,
@@ -26,7 +26,7 @@ class PreySenseControl
         Description("Get PreySense ACPI firmware interface version")
     ]
     void GetVersion(
-        [out, Description("Interface version in BCD/HEX (0x0103)")] uint32 Version
+        [out, Description("Interface version in BCD/HEX (0x0201)")] uint32 Version
     );
 
     [
@@ -73,7 +73,7 @@ class PreySenseControl
         Implemented,
         read,
         write,
-        Description("Set GPU target power limit in Watts (85W Base + Delta, 0 Dynamic Boost)")
+        Description("Legacy GPU target setter using the fixed 15W upper-tier boost split")
     ]
     void SetGpuPowerLimit(
         [in, Description("Target GPU Power Limit in Watts (e.g. 130, 140, 150)")] uint32 TargetWatts,
@@ -114,5 +114,20 @@ class PreySenseControl
     void GetGpuThermalTripPoint(
         [out, Description("Current GPU thermal trip point in degrees Celsius")] uint32 TempCelsius,
         [out, Description("Return code: 0 = Success")] uint32 ReturnCode
+    );
+    [WmiMethodId(11), Implemented, read, write,
+     Description("Set independent AC GPU power offsets in watts (0-255 each)")]
+    void SetGpuPowerOffsets(
+        [in] uint32 DeltaWatts,
+        [in] uint32 DynamicBoostWatts,
+        [out] uint32 ReturnCode
+    );
+
+    [WmiMethodId(12), Implemented, read, write,
+     Description("Read ACPI GPU offsets; these are requests, not measured GPU power")]
+    void GetGpuPowerOffsets(
+        [out] uint32 DeltaWatts,
+        [out] uint32 DynamicBoostWatts,
+        [out] uint32 ReturnCode
     );
 };

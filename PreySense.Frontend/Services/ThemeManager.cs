@@ -8,6 +8,7 @@ namespace PreySense.Frontend.Services;
 
 public static class ThemeManager
 {
+    public static bool IsLightTheme { get; private set; }
     private const string SettingsKey = @"SOFTWARE\PreySense\AdvancedSettings";
 
     private static readonly IReadOnlyDictionary<string, (Color Dark, Color Light)> Palette =
@@ -61,6 +62,8 @@ public static class ThemeManager
 
     public static void Apply(bool isLight, bool persist = true)
     {
+        IsLightTheme = isLight;
+        TrayIconManager.ApplyMenuTheme(isLight);
         if (Application.Current is not null)
         {
             foreach (var (key, colors) in Palette)

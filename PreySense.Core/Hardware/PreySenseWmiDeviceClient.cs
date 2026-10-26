@@ -106,7 +106,11 @@ namespace PreySense.Core.Hardware
                 using var cls = new ManagementClass($@"\\.\root\wmi:{WmiClassName}");
                 cls.Get();
                 if (!HasOutProperty(cls, "GetVersion", "Version") ||
-                    !HasOutProperty(cls, "GetCpuPowerLimits", "TauTimeWindow"))
+                    !HasOutProperty(cls, "GetCpuPowerLimits", "TauTimeWindow") ||
+                    (expectedVersion >= 0x0201 && !GpuOffsetSchemaMatches(
+                        ParameterNames(cls.Methods["GetGpuPowerOffsets"]?.OutParameters),
+                        ParameterNames(cls.Methods["SetGpuPowerOffsets"]?.InParameters),
+                        ParameterNames(cls.Methods["SetGpuPowerOffsets"]?.OutParameters))))
                 {
                     return PreySenseWmiSchemaState.Mismatched;
                 }
@@ -122,7 +126,9 @@ namespace PreySense.Core.Hardware
                         if (version != expectedVersion)
                             return PreySenseWmiSchemaState.SsdtVersionDiffers;
 
-                        return TryReadTau(obj);
+                        var cpuState = TryReadTau(obj);
+                        if (cpuState != PreySenseWmiSchemaState.Ready || expectedVersion < 0x0201) return cpuState;
+                        return GetGpuPowerOffsets() != null ? PreySenseWmiSchemaState.Ready : PreySenseWmiSchemaState.RuntimeFailure;
                     }
                 }
 
@@ -144,6 +150,25 @@ namespace PreySense.Core.Hardware
                 System.Diagnostics.Debug.WriteLine($"[PreySenseWmiDeviceClient] InspectInterface failed: {ex.Message}");
                 return PreySenseWmiSchemaState.RuntimeFailure;
             }
+        }
+
+        public static bool GpuOffsetSchemaMatches(string[] readOutputs, string[] writeInputs, string[] writeOutputs)
+        {
+            static bool Matches(string[] actual, params string[] expected) =>
+                actual.Length == expected.Length
+                && new System.Collections.Generic.HashSet<string>(actual, StringComparer.OrdinalIgnoreCase).SetEquals(expected);
+            return Matches(readOutputs, "DeltaWatts", "DynamicBoostWatts", "ReturnCode")
+                && Matches(writeInputs, "DeltaWatts", "DynamicBoostWatts")
+                && Matches(writeOutputs, "ReturnCode");
+        }
+
+        private static string[] ParameterNames(ManagementBaseObject? parameters)
+        {
+            if (parameters == null) return Array.Empty<string>();
+            var names = new System.Collections.Generic.List<string>();
+            foreach (PropertyData property in parameters.Properties)
+                if (!property.Name.Equals("ReturnValue", StringComparison.OrdinalIgnoreCase)) names.Add(property.Name);
+            return names.ToArray();
         }
 
         private static bool HasOutProperty(ManagementClass cls, string methodName, string propertyName)
@@ -374,29 +399,65 @@ namespace PreySense.Core.Hardware
         /// Takes effect immediately in software with zero reboot required.
         /// </summary>
         /// <param name="targetWatts">Target wattage (e.g. 130, 140, 150)</param>
-        public static bool SetGpuPowerLimit(uint targetWatts)
+        public static PreySense.Core.Acpi.GpuPowerOffsets? GetGpuPowerOffsets()
         {
             try
             {
                 using var searcher = new ManagementObjectSearcher(WmiNamespace, $"SELECT * FROM {WmiClassName}");
                 using var collection = searcher.Get();
-
                 foreach (ManagementObject obj in collection)
                 {
-                    using var inParams = obj.GetMethodParameters("SetGpuPowerLimit");
-                    inParams["TargetWatts"] = targetWatts;
+                    using var input = obj.GetMethodParameters("GetGpuPowerOffsets");
+                    using var versionInput = obj.GetMethodParameters("GetVersion");
+                    using var version = obj.InvokeMethod("GetVersion", versionInput, null);
+                    if (Convert.ToUInt32(version["Version"]) != 0x0201) return null;
+                    using var output = obj.InvokeMethod("GetGpuPowerOffsets", input, null);
+                    if (Convert.ToUInt32(output["ReturnCode"]) != 0) return null;
+                    var value = new PreySense.Core.Acpi.GpuPowerOffsets(
+                        Convert.ToInt32(output["DeltaWatts"]), Convert.ToInt32(output["DynamicBoostWatts"]));
+                    return value.IsValid ? value : null;
+                }
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"GPU offset read failed: {ex.Message}"); }
+            return null;
+        }
 
-                    using var outParams = obj.InvokeMethod("SetGpuPowerLimit", inParams, null);
-                    uint retCode = Convert.ToUInt32(outParams["ReturnCode"]);
-                    return retCode == 0;
+        public static bool SetGpuPowerOffsets(PreySense.Core.Acpi.GpuPowerOffsets offsets)
+        {
+            if (!offsets.IsValid) return false;
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(WmiNamespace, $"SELECT * FROM {WmiClassName}");
+                using var collection = searcher.Get();
+                foreach (ManagementObject obj in collection)
+                {
+                    using var versionInput = obj.GetMethodParameters("GetVersion");
+                    using var version = obj.InvokeMethod("GetVersion", versionInput, null);
+                    if (Convert.ToUInt32(version["Version"]) != 0x0201) return false;
+                    using var input = obj.GetMethodParameters("SetGpuPowerOffsets");
+                    input["DeltaWatts"] = (uint)offsets.DeltaWatts;
+                    input["DynamicBoostWatts"] = (uint)offsets.DynamicBoostWatts;
+                    using var output = obj.InvokeMethod("SetGpuPowerOffsets", input, null);
+                    if (Convert.ToUInt32(output["ReturnCode"]) != 0) return false;
+                    using var readInput = obj.GetMethodParameters("GetGpuPowerOffsets");
+                    using var read = obj.InvokeMethod("GetGpuPowerOffsets", readInput, null);
+                    return Convert.ToUInt32(read["ReturnCode"]) == 0
+                        && Convert.ToUInt32(read["DeltaWatts"]) == offsets.DeltaWatts
+                        && Convert.ToUInt32(read["DynamicBoostWatts"]) == offsets.DynamicBoostWatts;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[PreySenseWmiDeviceClient] SetGpuPowerLimit failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"GPU offset write/readback failed: {ex.Message}");
             }
-
             return false;
+        }
+
+        public static bool SetGpuPowerLimit(uint targetWatts)
+        {
+            if (targetWatts > int.MaxValue) return false;
+            int baseline = PreySense.Core.Acpi.GpuPowerBaseline.ReadWatts() ?? PreySense.Core.Acpi.GpuPowerBaseline.LegacyFallbackWatts;
+            return SetGpuPowerOffsets(PreySense.Core.Acpi.GpuPowerOffsets.FromLegacyTarget((int)targetWatts, baseline));
         }
 
         /// <summary>
@@ -404,6 +465,13 @@ namespace PreySense.Core.Hardware
         /// </summary>
         public static (bool success, uint targetWatts) GetGpuPowerLimit()
         {
+            int? baseline = PreySense.Core.Acpi.GpuPowerBaseline.ReadWatts();
+            if (baseline.HasValue)
+            {
+                var raw = GetGpuPowerOffsets();
+                if (raw != null) return (true, (uint)raw.NominalReferenceWatts(baseline.Value));
+                return (false, 0);
+            }
             try
             {
                 using var searcher = new ManagementObjectSearcher(WmiNamespace, $"SELECT * FROM {WmiClassName}");

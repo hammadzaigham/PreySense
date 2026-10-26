@@ -78,6 +78,30 @@ namespace PreySense.Frontend.Controls
 
         public event RoutedEventHandler? Click;
 
+        public static readonly DependencyProperty SecondaryActionTextProperty =
+            DependencyProperty.Register(nameof(SecondaryActionText), typeof(string), typeof(SettingActionRow), new PropertyMetadata(string.Empty));
+        public string SecondaryActionText
+        {
+            get => (string)GetValue(SecondaryActionTextProperty);
+            set => SetValue(SecondaryActionTextProperty, value);
+        }
+
+        public static readonly DependencyProperty SecondaryCommandProperty =
+            DependencyProperty.Register(nameof(SecondaryCommand), typeof(ICommand), typeof(SettingActionRow), new PropertyMetadata(null));
+        public ICommand? SecondaryCommand
+        {
+            get => (ICommand?)GetValue(SecondaryCommandProperty);
+            set => SetValue(SecondaryCommandProperty, value);
+        }
+
+        public static readonly DependencyProperty SecondaryActionVisibilityProperty =
+            DependencyProperty.Register(nameof(SecondaryActionVisibility), typeof(Visibility), typeof(SettingActionRow), new PropertyMetadata(Visibility.Collapsed));
+        public Visibility SecondaryActionVisibility
+        {
+            get => (Visibility)GetValue(SecondaryActionVisibilityProperty);
+            set => SetValue(SecondaryActionVisibilityProperty, value);
+        }
+
         private void InnerButton_Click(object sender, RoutedEventArgs e)
         {
             Click?.Invoke(this, e);

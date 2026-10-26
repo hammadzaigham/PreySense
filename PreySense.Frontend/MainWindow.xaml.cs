@@ -48,6 +48,7 @@ namespace PreySense.Frontend
             OverlayBridge.Configure(() => (hw as ProductionHardwareService)?.Wmi);
             Loaded += (_, _) =>
             {
+                vm.NotifyMainWindowLoaded();
                 OverlayBridge.Warmup();
                 OverlayBridge.StartIfNeeded();
             };

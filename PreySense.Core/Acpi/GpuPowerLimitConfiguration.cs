@@ -46,12 +46,14 @@ namespace PreySense.Core.Acpi
 
         /// <summary>
         /// Reads the live ACPI table to identify the Acer ERM4 profile layout.
-        /// Power bounds come from the ACPI profile and do not query VBIOS/NVML constraints.
+        /// The baseline uses the saved NVML default captured during calibration.
+        /// ACPI profile defaults remain fallbacks until the actual modes are captured.
         /// </summary>
         public static GpuPowerLimitConfiguration DetectFromHardware(byte[]? dsdtBytes = null)
         {
             var config = new GpuPowerLimitConfiguration();
-            int baseW = 85;
+            int baseW = GpuPowerBaseline.ReadWatts() ?? GpuPowerBaseline.LegacyFallbackWatts;
+            config.BasePowerWatts = baseW;
 
             // Inspect live DSDT for Acer ERM4 profile table in ACPI
             bool hasErm4 = false;

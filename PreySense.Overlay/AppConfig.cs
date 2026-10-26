@@ -94,7 +94,7 @@ namespace PreySense.Overlay
             1 => "Usage|Usage",
             2 => "Temperature|Temperature",
             3 => "P-Core|Clock",
-            4 => "E-Core|Voltage",
+            4 => "Voltage|Voltage",
             5 => "Power|Power",
             6 => "Memory|Memory",
             7 => "Memory Speed|Memory Speed",
@@ -116,7 +116,7 @@ namespace PreySense.Overlay
                 "Usage" => ("Usage", "Usage"),
                 "Temperature" => ("Temperature", "Temperature"),
                 "Clock" => ("P-Core", "Clock"),
-                "Voltage" => ("E-Core", "Voltage"),
+                "Voltage" => ("Voltage", "Voltage"),
                 "Power" => ("Power", "Power"),
                 "Memory" => ("Memory", "Memory"),
                 "Memory Speed" => ("Memory Speed", "Memory Speed"),
@@ -128,8 +128,16 @@ namespace PreySense.Overlay
 
         public static void EnsureDefaultOverlayColumns()
         {
-            if (Get("overlay_col_defaults", 0) >= 3)
+            int version = Get("overlay_col_defaults", 0);
+            if (version >= 4)
                 return;
+            if (version == 3)
+            {
+                string voltageColumn = GetString("overlay_col_4");
+                Set("overlay_col_4", UpgradeDefaultVoltageColumn(voltageColumn));
+                Set("overlay_col_defaults", 4);
+                return;
+            }
 
             bool untouched = true;
             var current = new string[8];
@@ -149,8 +157,12 @@ namespace PreySense.Overlay
                     Set(key, MigrateLegacyColumn(current[i - 1]));
             }
 
-            Set("overlay_col_defaults", 3);
+            Set("overlay_col_defaults", 4);
         }
+
+        public static string UpgradeDefaultVoltageColumn(string current) =>
+            string.IsNullOrEmpty(current) || current == "E-Core|Voltage"
+                ? DefaultOverlayColumn(4) : current;
 
         private static string LegacyDefaultColumn(int oneBasedIndex) => oneBasedIndex switch
         {
@@ -170,7 +182,7 @@ namespace PreySense.Overlay
             "Usage" => "Usage|Usage",
             "Temperature" => "Temperature|Temperature",
             "Clock" => "P-Core|Clock",
-            "Voltage" => "E-Core|Voltage",
+            "Voltage" => "Voltage|Voltage",
             "Power" => "Power|Power",
             "Memory" => "Memory|Memory",
             "Memory Speed" => "Memory Speed|Memory Speed",

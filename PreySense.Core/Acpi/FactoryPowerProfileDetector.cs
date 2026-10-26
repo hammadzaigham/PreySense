@@ -10,7 +10,12 @@ namespace PreySense.Core.Acpi
         bool CpuReadFromFirmware,
         bool GpuPowerReadFromFirmware,
         bool GpuTripReadFromFirmware,
-        bool TauReadFromFirmware);
+        bool TauReadFromFirmware)
+    {
+        public GpuPowerOffsets? GpuOffsets { get; init; }
+        public bool HasCompleteFirmwareReadback => CpuReadFromFirmware && GpuPowerReadFromFirmware
+            && GpuTripReadFromFirmware && TauReadFromFirmware;
+    }
 
     /// <summary>
     /// Captures the active firmware power profile before application settings are applied.
@@ -51,7 +56,15 @@ namespace PreySense.Core.Acpi
             }
 
             bool gpuPowerRead = false;
-            if (live.GpuTargetWatts >= GpuPowerLimitConfiguration.MinimumPowerLimitWatts)
+            int? baseline = GpuPowerBaseline.ReadWatts();
+            var offsets = baseline.HasValue ? PreySenseWmiDeviceClient.GetGpuPowerOffsets() : null;
+            if (baseline.HasValue && offsets != null)
+            {
+                gpu.BasePowerWatts = baseline.Value;
+                SetGpuModePower(gpu, activeMode, offsets.NominalReferenceWatts(baseline.Value));
+                gpuPowerRead = true;
+            }
+            else if (!baseline.HasValue && live.GpuTargetWatts >= GpuPowerLimitConfiguration.MinimumPowerLimitWatts)
             {
                 SetGpuModePower(gpu, activeMode, (int)live.GpuTargetWatts);
                 gpuPowerRead = true;
@@ -64,7 +77,10 @@ namespace PreySense.Core.Acpi
                 gpuTripRead = true;
             }
 
-            return new FactoryPowerProfileSnapshot(cpu, gpu, activeMode, cpuRead, gpuPowerRead, gpuTripRead, tauRead);
+            return new FactoryPowerProfileSnapshot(cpu, gpu, activeMode, cpuRead, gpuPowerRead, gpuTripRead, tauRead)
+            {
+                GpuOffsets = offsets
+            };
         }
 
         private static void SetCpuMode(CpuPowerLimitConfiguration config, byte mode, int pl1, int pl2, int? tauSeconds)

@@ -12,6 +12,7 @@ namespace PreySense.Gpu
         [DllImport(NvmlDll)] static extern int nvmlShutdown();
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetHandleByIndex_v2(uint index, out IntPtr device);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetPowerUsage(IntPtr device, out uint powerMilliWatts);
+        [DllImport(NvmlDll)] static extern int nvmlDeviceGetPowerManagementDefaultLimit(IntPtr device, out uint defaultMilliWatts);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetMemoryInfo(IntPtr device, out nvmlMemory_t memory);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetClockInfo(IntPtr device, int clockType, out uint clockMHz);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetTemperature(IntPtr device, int sensorType, out uint tempC);
@@ -43,6 +44,22 @@ namespace PreySense.Gpu
             catch (Exception e)
             {
                 AppLogger.Log($"NVML Init exception: {e.Message}");
+            }
+        }
+
+        public static int? GetGpuDefaultPowerLimitWatts(uint gpuIndex = 0)
+        {
+            lock (_lock)
+            {
+                Init();
+                if (!_init) return null;
+                try
+                {
+                    if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return null;
+                    if (nvmlDeviceGetPowerManagementDefaultLimit(device, out uint milliWatts) != NVML_SUCCESS) return null;
+                    return PreySense.Core.Acpi.GpuPowerBaseline.FromMilliwatts(milliWatts);
+                }
+                catch { return null; }
             }
         }
 

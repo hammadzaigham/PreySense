@@ -92,6 +92,7 @@ namespace PreySense.Overlay
         private readonly float[] _cpuFanHistory = new float[HistoryLength];
         private readonly float[] _gpuFanHistory = new float[HistoryLength];
         private readonly float[] _gpuVoltageHistory = new float[HistoryLength];
+        private readonly float[] _cpuVoltageHistory = new float[HistoryLength];
         private readonly float[] _ramSpeedHistory = new float[HistoryLength];
         private readonly float[] _vramSpeedHistory = new float[HistoryLength];
         private static readonly float[] EmptyHistory = new float[HistoryLength];
@@ -437,6 +438,7 @@ namespace PreySense.Overlay
             _gpuFanHistory[_historyHead] = Graphs("Fan Speed", true) && gpuActive ? (HardwareControl.gpuFanRPM ?? 0) : 0f;
 
             _gpuVoltageHistory[_historyHead] = Graphs("Voltage", true) && gpuActive ? (HardwareControl.gpuVoltage ?? 0f) : 0f;
+            _cpuVoltageHistory[_historyHead] = Graphs("Voltage", false) ? (HardwareControl.cpuVoltage ?? 0f) : 0f;
 
             _ramSpeedHistory[_historyHead] = Graphs("Memory Speed", false) ? (HardwareControl.ramSpeedMhz ?? 0) : 0f;
             _vramSpeedHistory[_historyHead] = Graphs("Memory Speed", true) && gpuActive ? (HardwareControl.vramSpeedMhz ?? 0) : 0f;
@@ -473,6 +475,7 @@ namespace PreySense.Overlay
                     HardwareControl.eCoreMhz,
                     HardwareControl.gpuVoltage,
                     _currentFps);
+                stamp = HashCode.Combine(stamp, HardwareControl.cpuVoltage);
                 if (stamp == _lastIdlePaintStamp)
                     return;
                 _lastIdlePaintStamp = stamp;
@@ -800,7 +803,8 @@ namespace PreySense.Overlay
                     DrawTextWithUnit(g, font, unitFont, $"{(HardwareControl.gpuMhz ?? 0)}MHz", brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Voltage":
-                    string volts = HardwareControl.gpuVoltage > 0 ? $"{HardwareControl.gpuVoltage.Value:F3}v" : "0.000v";
+                    float? voltage = gpu ? HardwareControl.gpuVoltage : HardwareControl.cpuVoltage;
+                    string volts = $"{Math.Max(0f, voltage ?? 0f):F3}v";
                     DrawTextWithUnit(g, font, unitFont, volts, brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Power":
@@ -868,7 +872,7 @@ namespace PreySense.Overlay
             "P-Core" => _cpuClockHistory,
             "E-Core" => _eCoreHistory,
             "Clock" => _gpuClockHistory,
-            "Voltage" => _gpuVoltageHistory,
+            "Voltage" => gpu ? _gpuVoltageHistory : _cpuVoltageHistory,
             "Power" => gpu ? _gpuPowerHistory : _cpuPowerHistory,
             "Memory" => gpu ? _vramHistory : _ramHistory,
             "Memory Speed" => gpu ? _vramSpeedHistory : _ramSpeedHistory,

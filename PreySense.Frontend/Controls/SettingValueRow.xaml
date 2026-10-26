@@ -10,24 +10,6 @@
 
         <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
             <TextBlock Text="{Binding Title, ElementName=RootValueRow}" Style="{DynamicResource SettingLabelStyle}" />
-            <TextBlock Text="{Binding Description, ElementName=RootValueRow}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
-                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                        <Setter Property="TextWrapping" Value="Wrap" />
-                        <Setter Property="Visibility" Value="Visible" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Description, ElementName=RootValueRow}" Value="">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding Description, ElementName=RootValueRow}" Value="{x:Null}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
         </StackPanel>
 
         <Grid Grid.Column="1" VerticalAlignment="Center">

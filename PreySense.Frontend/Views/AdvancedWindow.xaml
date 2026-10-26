@@ -71,14 +71,30 @@
 
                             <controls:SettingActionRow Title="Install to Boot Drive"
                                                        ActionText="{Binding BootDriveActionText}"
-                                                       Command="{Binding ToggleOpenCoreBootDriveCommand}"/>
+                                                       SecondaryActionText="Re-install"
+                                                       SecondaryActionVisibility="{Binding ReinstallOpenCoreVisibility}"
+                                                       SecondaryCommand="{Binding ReinstallOpenCoreCommand}"
+                                                       Command="{Binding ToggleOpenCoreBootDriveCommand}">
+                                <controls:SettingActionRow.Style>
+                                    <Style TargetType="controls:SettingActionRow">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </controls:SettingActionRow.Style>
+                            </controls:SettingActionRow>
+
+                            <TextBlock Text="{Binding AcpiFilesNotification}" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource WarningTextBrush}" Margin="0,4,0,8"
+                                       Visibility="{Binding AcpiFilesNotificationVisibility}"/>
 
                             <Separator Margin="0,12"/>
 
-                            <controls:SettingActionRow Title="Factory Profile Calibration"
-                                                       ActionText="Calibrate"
-                                                       Command="{Binding CalibrateFactoryProfilesCommand}"
-                                                       IsEnabled="{Binding IsOpenCoreLoaded}"/>
+                            <controls:SettingActionRow Title="Factory Defaults"
+                                                       ActionText="View"
+                                                       Command="{Binding ViewFactoryDefaultsCommand}"/>
 
                             <controls:SettingSwitchRow Title="Enable ACPI Override"
                                                       IsChecked="{Binding IsAcpiOverrideEnabled, Mode=TwoWay}"

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
         Title="PreySense • Games"
-        Width="460"
+        Width="500"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         Background="Transparent"
@@ -18,7 +18,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <controls:WindowTitleBar Grid.Row="0" Title="Games"/>
@@ -36,7 +36,8 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="2" Margin="{StaticResource WindowContentMargin}" IsEnabled="{Binding IsAcpiOverrideEnabled}">
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="{StaticResource WindowContentMargin}" IsEnabled="{Binding IsAcpiOverrideEnabled}">
                 <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
                     <StackPanel>
                         <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
@@ -74,7 +75,7 @@
                     <StackPanel>
                         <controls:SettingSwitchRow Title="Apply When Game Launches"
                                                    IsChecked="{Binding SelectedGameEnabled, Mode=TwoWay}"/>
-                        <controls:SettingDropdownRow Title="Performance Mode"
+                        <controls:SettingDropdownRow Title="Profile Mode"
                                                      ItemsSource="{Binding GameModeNames}"
                                                      SelectedItem="{Binding SelectedGameModeName, Mode=TwoWay}"
                                                      DropdownWidth="140"/>
@@ -95,7 +96,7 @@
                         <controls:SettingValueRow Title="Sustained Long Power [PL1]"
                                                   Value="{Binding SelectedGamePl1, Mode=TwoWay}"
                                                   Unit="W"/>
-                        <controls:SettingValueRow Title="Short Burst Power [PL2]"
+                        <controls:SettingValueRow Title="Burst Peak Power [PL2]"
                                                   Value="{Binding SelectedGamePl2, Mode=TwoWay}"
                                                   Unit="W"/>
                         <controls:SettingSliderRow Title="Burst Window [Tau]"
@@ -117,12 +118,17 @@
                                 <TextBlock Text="GPU Power Limits" Style="{StaticResource OriginalSectionTitleStyle}"/>
                             </StackPanel>
                         </Grid>
-                        <controls:SettingValueRow Title="GPU Power Limit"
-                                                  Value="{Binding SelectedGameGpuWatts, Mode=TwoWay}"
-                                                  Unit="W"
-                                                  Minimum="5"
+                        <controls:SettingValueRow Title="Baseline + Delta + Boost"
+                                                  Value="{Binding SelectedGameGpuWatts, Mode=OneWay}"
+                                                  IsEnabled="False" Unit="W"
                                                   ValueAutomationId="GameGpuPowerValue"/>
-                        <controls:SettingSliderRow Title="GPU Thermal Trip Point [WMG3]"
+                        <controls:SettingValueRow Title="Delta"
+                                                  Value="{Binding SelectedGameGpuDelta, Mode=TwoWay}"
+                                                  Minimum="0" Maximum="255" Unit="W"/>
+                        <controls:SettingValueRow Title="Dynamic Boost"
+                                                  Value="{Binding SelectedGameGpuDynamicBoost, Mode=TwoWay}"
+                                                  Minimum="0" Maximum="255" Unit="W"/>
+                        <controls:SettingSliderRow Title="GPU Thermal Trip Point"
                                                    Value="{Binding SelectedGameGpuTrip, Mode=TwoWay}"
                                                    ValueText="{Binding SelectedGameGpuTrip, StringFormat={}{0} °C}"
                                                    Minimum="70" Maximum="89"
@@ -139,6 +145,7 @@
                             Command="{Binding SaveSelectedGameProfileCommand}"/>
                 </UniformGrid>
             </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

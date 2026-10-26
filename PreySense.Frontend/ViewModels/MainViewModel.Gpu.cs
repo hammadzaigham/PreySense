@@ -18,7 +18,12 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _gpuPowerTargetWatts = 130;
         [ObservableProperty] private int _gpuPowerTargetMin = GpuPowerLimitConfiguration.MinimumPowerLimitWatts;
         [ObservableProperty] private int _gpuPowerTargetMax = GpuPowerLimitConfiguration.MaximumPowerLimitWatts;
-        [ObservableProperty] private int _gpuBasePowerWatts = 85;
+        [ObservableProperty] private int _gpuBasePowerWatts = GpuPowerBaseline.ReadWatts() ?? GpuPowerBaseline.LegacyFallbackWatts;
+
+        partial void OnGpuBasePowerWattsChanged(int value)
+        {
+            if (SelectedGameProfile != null) OnSelectedGameProfileChanged(SelectedGameProfile);
+        }
         [ObservableProperty] private int _customQuietGpuWatts = 85;
         [ObservableProperty] private int _customEcoGpuWatts = 85;
         [ObservableProperty] private int _customBalancedGpuWatts = 115;
@@ -169,13 +174,20 @@ namespace PreySense.Frontend.ViewModels
             try
             {
                 // Apply GPU power limit ceiling dynamically via dedicated ACPI-WMI device
-                bool pwrSuccess = await Task.Run(() => PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuPowerLimit((uint)GpuPowerTargetWatts));
+                var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode), GpuPowerTargetWatts);
+                bool pwrSuccess = await Task.Run(() => PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuPowerOffsets(offsets));
 
                 // Apply GPU thermal trip point dynamically via dedicated ACPI-WMI device
                 bool tripSuccess = await Task.Run(() => PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)GpuThermalTripPointCelsius));
 
-                ActiveGpuPowerCeiling = $"Max Power Limit: {GpuPowerTargetWatts}W (ACPI NVPCF, Trip: {GpuThermalTripPointCelsius}°C)";
-                StatusMessage = $"GPU Power Limit Applied: {GpuPowerTargetWatts}W (Trip: {GpuThermalTripPointCelsius}°C via ACPI-WMI)";
+                if (!pwrSuccess || !tripSuccess)
+                {
+                    StatusMessage = "GPU settings failed or ACPI readback differed. Independent offsets require PREYDEV 0x0201 and its WMI schema; update the OpenCore payload and reboot.";
+                    return;
+                }
+                ActiveGpuPowerCeiling = $"ACPI offsets: CT {offsets.DeltaWatts}W / DB {offsets.DynamicBoostWatts}W (verified)";
+                StatusMessage = $"ACPI offsets verified: Delta {offsets.DeltaWatts}W, Dynamic Boost {offsets.DynamicBoostWatts}W. Actual GPU power remains driver controlled.";
+                AppLogger.Log(StatusMessage);
             }
             catch (Exception ex)
             {
@@ -445,6 +457,7 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
+                SaveGpuOffsets();
                 using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\GpuLimits");
                 if (key != null)
                 {

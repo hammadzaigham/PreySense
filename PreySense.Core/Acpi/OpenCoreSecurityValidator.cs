@@ -276,8 +276,11 @@ namespace PreySense.Core.Acpi
             bool loadedSsdtMatches,
             bool wmiReady,
             bool currentPackageInstalled,
-            bool integrationPresent)
+            bool integrationPresent,
+            bool installedPackageKnownOutdated = false)
         {
+            if (installedPackageKnownOutdated)
+                return OpenCoreIntegrationState.UpdateRequired;
             if (loadedSsdtMatches && wmiReady)
                 return OpenCoreIntegrationState.Active;
             if (!loadedSsdtMatches && currentPackageInstalled)

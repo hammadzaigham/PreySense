@@ -5,6 +5,13 @@ namespace PreySense.Frontend.Views
     public partial class CustomModalDialog : Window
     {
         private bool? _result;
+        public bool AllowClose { get; set; } = true;
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            base.OnClosing(e);
+            if (!AllowClose) e.Cancel = true;
+        }
 
         public CustomModalDialog()
         {
@@ -72,6 +79,12 @@ namespace PreySense.Frontend.Views
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             _result = false;
+            Close();
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _result = null;
             Close();
         }
     }

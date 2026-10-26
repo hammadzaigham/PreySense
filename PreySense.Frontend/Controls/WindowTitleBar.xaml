@@ -20,7 +20,7 @@
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch">
             <ContentPresenter Content="{Binding Actions, ElementName=Root}"/>
             <Button AutomationProperties.AutomationId="BtnClose"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
+                    Style="{DynamicResource TitleBarCloseButtonStyle}"
                     Content="✕"
                     FontSize="{DynamicResource FontSizeTitle}"
                     Click="CloseButton_Click"/>

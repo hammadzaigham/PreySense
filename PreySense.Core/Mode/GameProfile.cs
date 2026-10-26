@@ -10,6 +10,17 @@ namespace PreySense.Mode
         public int CpuPl1 { get; set; } = 75;
         public int CpuPl2 { get; set; } = 140;
         public int TauSeconds { get; set; } = CpuPowerLimitConfiguration.FactoryTauSeconds;
+        // Nullable for migration of profiles that only stored a nominal total.
+        public int? GpuDeltaWatts { get; set; }
+        public int? GpuDynamicBoostWatts { get; set; }
+
+        public GpuPowerOffsets ResolveGpuOffsets(int baselineWatts)
+        {
+            if (GpuDeltaWatts is int delta && GpuDynamicBoostWatts is int boost)
+                return new(Math.Clamp(delta, 0, 255), Math.Clamp(boost, 0, 255));
+            return GpuPowerOffsets.FromLegacyTarget(GpuPowerWatts, baselineWatts);
+        }
+
         public int GpuPowerWatts { get; set; } = 130;
         public int GpuThermalTripCelsius { get; set; } = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius;
         public bool CpuBoostEnabled { get; set; } = true;

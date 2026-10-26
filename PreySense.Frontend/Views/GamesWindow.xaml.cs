@@ -7,6 +7,7 @@ namespace PreySense.Frontend.Views
         public GamesWindow()
         {
             InitializeComponent();
+            MaxHeight = System.Math.Max(300, SystemParameters.WorkArea.Height - 32);
         }
     }
 }

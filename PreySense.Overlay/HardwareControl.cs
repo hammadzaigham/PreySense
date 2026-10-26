@@ -42,6 +42,7 @@ namespace PreySense.Overlay
         public static int?   eCoreMhz;
         public static int?   gpuMhz;
         public static float? gpuVoltage;
+        public static float? cpuVoltage;
         public static int?   ramSpeedMhz;
         public static int?   vramSpeedMhz;
 
@@ -224,6 +225,10 @@ namespace PreySense.Overlay
             {
                 _lastSlowSensorTick = now;
                 cpuMhz = GetCpuMhz();
+                bool needsVoltage = false;
+                for (int column = 1; column <= 8; column++)
+                    needsVoltage |= AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}")).Cpu == "Voltage";
+                cpuVoltage = needsVoltage ? PreySense.Mode.PawnCpuPowerControl.ReadCoreVid() : null;
                 if (wmi != null)
                 {
                     var thermal = wmi.ReadThermalSensors();

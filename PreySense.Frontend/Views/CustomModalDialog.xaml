@@ -43,7 +43,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <controls:WindowTitleBar x:Name="HeaderBar" Grid.Row="0" CloseClick="CancelButton_Click"/>
+            <controls:WindowTitleBar x:Name="HeaderBar" Grid.Row="0" CloseClick="CloseButton_Click"/>
 
             <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
                 <TextBlock x:Name="MessageText"

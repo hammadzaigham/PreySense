@@ -132,18 +132,26 @@
 
                                 <!-- GPU Power Limit Target Value Box (No maximum clamp) -->
                                 <controls:SettingValueRow x:Name="RowGpuPower"
-                                                          Title="GPU Power Limit"
+                                                          Title="Baseline + Delta + Boost"
+                                                          IsEnabled="False"
                                                           Value="140"
                                                           Unit="W"
                                                           Minimum="1"
                                                           ValueAutomationId="ModeGpuPowerValue"
                                                           LostFocus="RowGpuPower_LostFocus"/>
 
+                                <controls:SettingValueRow x:Name="RowGpuDelta" Title="Delta"
+                                                          Unit="W" Minimum="0" Maximum="255"
+                                                          ValueAutomationId="ModeGpuDeltaValue" ValueCommitted="GpuOffsets_Committed"/>
+                                <controls:SettingValueRow x:Name="RowGpuDynamicBoost" Title="Dynamic Boost"
+                                                          Unit="W" Minimum="0" Maximum="255"
+                                                          ValueAutomationId="ModeGpuDynamicBoostValue" ValueCommitted="GpuOffsets_Committed"/>
+
                                 <!-- GPU Thermal Trip Point (WMG3 Dynamic Boost Choke) (70°C to 89°C, 1°C steps) -->
                                 <Grid Margin="{StaticResource StandardRowMargin}">
                                     <StackPanel Margin="0,6,0,0">
                                         <Grid>
-                                            <TextBlock Text="Thermal Trip Point [WMG3]" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="GPU Thermal Trip Point" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
                                             <TextBlock Text="{Binding GpuThermalTripPointCelsius, StringFormat='{}{0} °C'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                         </Grid>
                                         <Slider x:Name="SliderGpuTripPoint" Minimum="70" Maximum="89" Value="{Binding GpuThermalTripPointCelsius, Mode=TwoWay}" SmallChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="SliderGpuTripPoint_ValueChanged"/>

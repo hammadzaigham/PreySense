@@ -17,16 +17,79 @@ namespace PreySense.Frontend.ViewModels
     {
         private FactoryPowerProfileSnapshot? _factoryPowerProfile;
         private bool _hasPersistedPowerLimits;
-        private const string FactoryProfilesRegistryPath = @"SOFTWARE\PreySense\FactoryProfiles";
+        private const string FactoryProfilesRegistryPath = GpuPowerBaseline.RegistryPath;
         [ObservableProperty] private string _factoryCalibrationStatus = "Not calibrated";
         [ObservableProperty] private bool _isFactoryCalibrationRunning;
         [ObservableProperty] private bool _isPlatformLimitCalibrated;
         [ObservableProperty] private bool _isFactoryCalibrationComplete;
         public bool CanEnableAcpiOverride => IsOpenCoreLoaded && IsFactoryCalibrationComplete;
+        public bool CanCalibrateFactoryProfiles => IsOpenCoreLoaded && !IsFactoryCalibrationComplete && !IsFactoryCalibrationRunning;
+        private bool _startupCalibrationPrompted;
 
-        [RelayCommand(AllowConcurrentExecutions = false)]
+        private async Task PromptStartupFactoryCalibrationAsync()
+        {
+            // Startup does not continue with an incomplete factory capture.
+            var operation = await _dispatcher.InvokeAsync(async () =>
+            {
+                if (_disposed || _startupCalibrationPrompted || !IsOpenCoreLoaded || FactoryCalibrationIsLocked()) return;
+                if (Application.Current?.MainWindow is not Window owner || !owner.IsLoaded) return;
+                _startupCalibrationPrompted = true;
+                bool previous = App.SuppressAutoHide;
+                App.SuppressAutoHide = true;
+                try
+                {
+                    bool retry = false;
+                    while (!_disposed && !IsFactoryCalibrationComplete)
+                    {
+                        var dialog = new Views.CustomModalDialog
+                        {
+                            Owner = owner,
+                            Title = "PreySense • Factory Calibration",
+                            HeaderSubtitle = " • Factory Calibration",
+                            Message = retry
+                                ? FactoryCalibrationStatus + Environment.NewLine + Environment.NewLine
+                                    + "Calibration must finish before PreySense can continue. Retry to capture the missing profiles; saved defaults will be preserved."
+                                : "Factory calibration is required before PreySense can continue. Capture the missing factory profiles now. Saved defaults will be preserved.",
+                            ConfirmText = retry ? "Retry Calibration" : "Calibrate Now",
+                            CancelText = "Uninstall OpenCore",
+                            ShowCancelButton = true
+                        };
+                        bool? choice = dialog.ShowDialog();
+                        if (choice == false)
+                        {
+                            if (UninstallOpenCoreFromEsp())
+                            {
+                                Application.Current.Shutdown();
+                                return;
+                            }
+                            FactoryCalibrationStatus = StatusMessage;
+                            retry = true;
+                            continue;
+                        }
+                        if (choice != true)
+                        {
+                            Application.Current.Shutdown();
+                            return;
+                        }
+                        await CalibrateFactoryProfilesAsync();
+                        retry = true;
+                    }
+                }
+                finally { App.SuppressAutoHide = previous; }
+            });
+            await operation;
+        }
+
+        [RelayCommand(AllowConcurrentExecutions = false, CanExecute = nameof(CanCalibrateFactoryProfiles))]
         public async Task CalibrateFactoryProfilesAsync()
         {
+            // Check persisted state as well as the UI so direct invocation cannot
+            // replace defaults captured by an earlier app session.
+            if (FactoryCalibrationIsLocked())
+            {
+                LoadFactoryCalibrationFromRegistry();
+                return;
+            }
             if (IsFactoryCalibrationRunning)
                 return;
             if (!IsOpenCoreLoaded)
@@ -39,7 +102,6 @@ namespace PreySense.Frontend.ViewModels
             var cpu = CopyCpuConfiguration(_factoryPowerProfile?.Cpu ?? new CpuPowerLimitConfiguration());
             var gpu = CopyGpuConfiguration(_factoryPowerProfile?.Gpu ?? new GpuPowerLimitConfiguration());
             int calibratedMask = LoadFactoryCalibrationMask();
-            int readThisRun = 0;
             var completed = new List<string>();
             var unavailable = new List<string>();
             bool anyCpu = false, anyGpu = false, anyTrip = false, anyTau = false;
@@ -51,6 +113,7 @@ namespace PreySense.Frontend.ViewModels
 
             IsFactoryCalibrationRunning = true;
             FactoryCalibrationStatus = Services.LocalizationService.Format("Reading {0}...", Services.LocalizationService.Translate("Eco"));
+            bool previousAutoHide = App.SuppressAutoHide;
             App.SuppressAutoHide = true;
             var dialog = new Views.CustomModalDialog
             {
@@ -61,13 +124,30 @@ namespace PreySense.Frontend.ViewModels
                 Message = FactoryCalibrationStatus,
                 ConfirmText = "OK",
                 ConfirmEnabled = false,
-                ShowCancelButton = false
+                ShowCancelButton = false,
+                AllowClose = false
             };
-            dialog.Show();
+            Task? captureTask = null;
+            dialog.Loaded += (_, _) => captureTask = CaptureProfilesAsync();
             try
             {
+                dialog.ShowDialog();
+                if (captureTask != null) await captureTask;
+            }
+            finally { App.SuppressAutoHide = previousAutoHide; }
+
+            async Task CaptureProfilesAsync()
+            {
+            try
+            {
+                await CaptureGpuBaselineOnceAsync();
+                if (!GpuPowerBaseline.ReadWatts().HasValue)
+                    throw new InvalidOperationException("GPU baseline could not be detected. Calibration cannot save reliable GPU defaults.");
+                gpu.BasePowerWatts = GpuBasePowerWatts;
                 foreach (var entry in modes)
                 {
+                    // A partial retry may fill missing modes, never re-read saved ones.
+                    if ((calibratedMask & entry.Bit) != 0) continue;
                     string reading = Services.LocalizationService.Format("Reading {0}...", Services.LocalizationService.Translate(entry.Name));
                     FactoryCalibrationStatus = reading;
                     if (dialog.IsVisible)
@@ -75,7 +155,7 @@ namespace PreySense.Frontend.ViewModels
                     bool changed = await Task.Run(() => _hw.SetPowerMode(entry.Mode));
                     if (!changed)
                     {
-                        unavailable.Add(entry.Name);
+                        unavailable.Add(entry.Name + " (mode switch failed)");
                         continue;
                     }
 
@@ -88,7 +168,7 @@ namespace PreySense.Frontend.ViewModels
                     }
                     if (!confirmed)
                     {
-                        unavailable.Add(entry.Name);
+                        unavailable.Add(entry.Name + " (mode not confirmed)");
                         continue;
                     }
 
@@ -96,19 +176,26 @@ namespace PreySense.Frontend.ViewModels
                     // finished copying that profile into the live power registers.
                     await Task.Delay(2500);
                     FactoryPowerProfileSnapshot sample = await Task.Run(() => FactoryPowerProfileDetector.Capture(entry.Mode, null));
-                    if (!sample.CpuReadFromFirmware && !sample.GpuPowerReadFromFirmware && !sample.GpuTripReadFromFirmware && !sample.TauReadFromFirmware)
-                    {
-                        unavailable.Add(entry.Name);
-                        continue;
-                    }
-
-                    MergeFactoryMode(cpu, gpu, sample, entry.Mode);
                     anyCpu |= sample.CpuReadFromFirmware;
                     anyGpu |= sample.GpuPowerReadFromFirmware;
                     anyTrip |= sample.GpuTripReadFromFirmware;
                     anyTau |= sample.TauReadFromFirmware;
+                    if (!sample.HasCompleteFirmwareReadback || sample.GpuOffsets is null
+                        || !await Task.Run(() => _hw.CurrentPowerMode == entry.Mode))
+                    {
+                        var failedReads = new List<string>();
+                        if (!sample.CpuReadFromFirmware) failedReads.Add("CPU limits");
+                        if (!sample.GpuPowerReadFromFirmware || sample.GpuOffsets is null) failedReads.Add("GPU offsets");
+                        if (!sample.GpuTripReadFromFirmware) failedReads.Add("GPU trip point");
+                        if (!sample.TauReadFromFirmware) failedReads.Add("Tau");
+                        if (failedReads.Count == 0) failedReads.Add("mode changed during capture");
+                        unavailable.Add(entry.Name + " (" + string.Join(", ", failedReads) + ")");
+                        continue;
+                    }
+
+                    await Task.Run(() => CaptureFactoryGpuOffsets(entry.Mode, sample.GpuOffsets));
+                    MergeFactoryMode(cpu, gpu, sample, entry.Mode);
                     calibratedMask |= entry.Bit;
-                    readThisRun |= entry.Bit;
                     completed.Add(entry.Name);
                 }
 
@@ -116,23 +203,23 @@ namespace PreySense.Frontend.ViewModels
                 ClampCpuPl1ToPlatformLimit();
 
                 _factoryPowerProfile = new FactoryPowerProfileSnapshot(cpu, gpu, originalMode, anyCpu, anyGpu, anyTrip, anyTau);
-                IsFactoryCalibrationComplete = IsPlatformLimitCalibrated && calibratedMask == 0x1F;
                 SaveFactoryCalibrationToRegistry(calibratedMask);
+                IsFactoryCalibrationComplete = IsPlatformLimitCalibrated && calibratedMask == 0x1F;
                 string missing = unavailable.Count == 0
                     ? string.Empty
-                    : Services.LocalizationService.Format(
-                        " Unavailable: {0}; run again on the other power source.",
-                        string.Join(", ", unavailable.Select(Services.LocalizationService.Translate)));
+                    : Environment.NewLine + "Unavailable: " + string.Join("; ", unavailable) + ".";
                 string tau = anyTau
                     ? string.Empty
                     : Services.LocalizationService.Translate(" Tau is missing from the loaded PREYDEV schema; reinstall the current OpenCore package and reboot.");
-                FactoryCalibrationStatus = completed.Count == 0
-                    ? Services.LocalizationService.Translate("No firmware profiles could be read.")
+                FactoryCalibrationStatus = IsFactoryCalibrationComplete
+                    ? string.Empty
+                    : completed.Count == 0
+                    ? Services.LocalizationService.Translate("No complete firmware profiles could be read.") + missing + tau
                     : Services.LocalizationService.Format("Saved: {0}.", string.Join(", ", completed.Select(Services.LocalizationService.Translate))) + missing + tau;
-                StatusMessage = FactoryCalibrationStatus;
+                StatusMessage = IsFactoryCalibrationComplete ? "Factory defaults saved." : FactoryCalibrationStatus;
                 if (dialog.IsVisible && _factoryPowerProfile != null)
                 {
-                    dialog.Message = BuildFactoryLimitsMessage(_factoryPowerProfile, readThisRun, FactoryCalibrationStatus);
+                    dialog.Message = BuildFactoryLimitsMessage(_factoryPowerProfile, calibratedMask, FactoryCalibrationStatus);
                     dialog.ConfirmEnabled = true;
                 }
             }
@@ -148,51 +235,62 @@ namespace PreySense.Frontend.ViewModels
             }
             finally
             {
-                await Task.Run(() => _hw.SetPowerMode(originalMode));
+                try { await Task.Run(() => _hw.SetPowerMode(originalMode)); }
+                catch (Exception ex) { AppLogger.Log($"Calibration mode restore failed: {ex.Message}"); }
                 ActivePowerMode = originalMode;
                 UpdateModeName(originalMode);
                 NotifyModeSelectionsChanged();
                 IsFactoryCalibrationRunning = false;
-                if (!dialog.IsVisible)
-                    App.SuppressAutoHide = false;
-                else
-                    dialog.Closed += (_, _) => App.SuppressAutoHide = false;
+                dialog.AllowClose = true;
+                dialog.ConfirmEnabled = true;
             }
+            }
+        }
+
+        private bool FactoryCalibrationIsLocked()
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(FactoryProfilesRegistryPath);
+            return key?.GetValue("CalibrationLocked") is int locked && locked == 1
+                || key?.GetValue("CalibratedModes") is int mask && (mask & 0x1F) == 0x1F;
+        }
+
+        [RelayCommand]
+        public void ViewFactoryDefaults()
+        {
+            int mask = LoadFactoryCalibrationMask();
+            string message = _factoryPowerProfile != null && mask != 0
+                ? BuildFactoryLimitsMessage(_factoryPowerProfile, mask, string.Empty)
+                : "No factory defaults have been calibrated yet.";
+            var dialog = new Views.CustomModalDialog
+            {
+                Title = "PreySense • Factory Defaults",
+                HeaderSubtitle = " • Factory Defaults",
+                Message = message,
+                ConfirmText = "Close",
+                ShowCancelButton = false
+            };
+            if (Application.Current?.MainWindow is Window owner) dialog.Owner = owner;
+            bool previous = App.SuppressAutoHide;
+            App.SuppressAutoHide = true;
+            try { dialog.ShowDialog(); }
+            finally { App.SuppressAutoHide = previous; }
         }
 
         private string BuildFactoryLimitsMessage(FactoryPowerProfileSnapshot snapshot, int calibratedMask, string calibrationStatus)
         {
-            var cpu = snapshot.Cpu;
-            var gpu = snapshot.Gpu;
-            var lines = new List<string>();
-
-            AddFactoryLimitLine(lines, calibratedMask, 1, "Eco", cpu.EcoPl1, cpu.EcoPl2, cpu.EcoTauSeconds, gpu.EcoGpuWatts, gpu.EcoGpuTripPointCelsius, snapshot.TauReadFromFirmware);
-            AddFactoryLimitLine(lines, calibratedMask, 2, "Quiet", cpu.QuietPl1, cpu.QuietPl2, cpu.QuietTauSeconds, gpu.QuietGpuWatts, gpu.QuietGpuTripPointCelsius, snapshot.TauReadFromFirmware);
-            AddFactoryLimitLine(lines, calibratedMask, 4, "Balanced", cpu.BalancedPl1, cpu.BalancedPl2, cpu.BalancedTauSeconds, gpu.BalancedGpuWatts, gpu.BalancedGpuTripPointCelsius, snapshot.TauReadFromFirmware);
-            AddFactoryLimitLine(lines, calibratedMask, 8, "Performance", cpu.PerformancePl1, cpu.PerformancePl2, cpu.PerformanceTauSeconds, gpu.PerformanceGpuWatts, gpu.PerformanceGpuTripPointCelsius, snapshot.TauReadFromFirmware);
-            AddFactoryLimitLine(lines, calibratedMask, 16, "Turbo", cpu.TurboPl1, cpu.TurboPl2, cpu.TurboTauSeconds, gpu.TurboGpuWatts, gpu.TurboGpuTripPointCelsius, snapshot.TauReadFromFirmware);
-
-            if (!snapshot.TauReadFromFirmware)
+            var offsets = new Dictionary<int, GpuPowerOffsets>();
+            using var key = Registry.CurrentUser.OpenSubKey(FactoryProfilesRegistryPath);
+            for (int index = 0; index < GpuOffsetModes.Length; index++)
             {
-                lines.Add(string.Empty);
-                lines.Add(Services.LocalizationService.Translate("Tau: unavailable (loaded PREYDEV schema is outdated)"));
+                string name = GpuOffsetModes[index];
+                if (key?.GetValue(name + "GpuDelta") is int delta
+                    && key.GetValue(name + "GpuBoost") is int boost)
+                    offsets[index] = new GpuPowerOffsets(delta, boost);
             }
-
-            if (lines.Count > 0)
-                lines.Add(string.Empty);
-            lines.Add(calibrationStatus);
-            return string.Join(Environment.NewLine, lines);
-        }
-
-        private static void AddFactoryLimitLine(List<string> lines, int calibratedMask, int modeBit, string modeName,
-            int pl1, int pl2, int tauSeconds, int gpuWatts, int gpuTripCelsius, bool tauRead)
-        {
-            if ((calibratedMask & modeBit) == 0)
-                return;
-            string tau = tauRead ? CpuPowerLimitConfiguration.FormatTauSelection(tauSeconds) : Services.LocalizationService.Translate("n/a");
-            lines.Add(Services.LocalizationService.Format(
-                "{0}: CPU {1}/{2}W  •  Tau {3}  •  GPU {4}W  •  Trip Point {5}°C",
-                Services.LocalizationService.Translate(modeName), pl1, pl2, tau, gpuWatts, gpuTripCelsius));
+            string summary = FactoryCalibrationSummary.Build(snapshot, calibratedMask, GpuPowerBaseline.ReadWatts(), offsets,
+                Services.LocalizationService.Translate);
+            return string.IsNullOrWhiteSpace(calibrationStatus) ? summary
+                : summary + Environment.NewLine + Environment.NewLine + calibrationStatus.Trim();
         }
 
         private static CpuPowerLimitConfiguration CopyCpuConfiguration(CpuPowerLimitConfiguration source) => new()
@@ -338,6 +436,7 @@ namespace PreySense.Frontend.ViewModels
 
         public void ResetModeToCapturedFactoryDefaults(int modeIndex)
         {
+            ResetGpuOffsets(modeIndex);
             var cpu = _factoryPowerProfile?.Cpu ?? new CpuPowerLimitConfiguration();
             var gpu = _factoryPowerProfile?.Gpu ?? new GpuPowerLimitConfiguration();
 
@@ -479,8 +578,20 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private bool _isOpenCoreLoaded = false;
         [ObservableProperty] private bool _isOpenCorePartitionPresent;
 
-        partial void OnIsOpenCorePartitionPresentChanged(bool value) =>
+        partial void OnIsOpenCorePartitionPresentChanged(bool value)
+        {
             OnPropertyChanged(nameof(BootDriveActionText));
+            OnPropertyChanged(nameof(ReinstallOpenCoreVisibility));
+        }
+
+        public Visibility ReinstallOpenCoreVisibility => IsOpenCorePartitionPresent ? Visibility.Visible : Visibility.Collapsed;
+        public string AcpiFilesNotification => _openCoreIntegrationState switch
+        {
+            OpenCoreSecurityValidator.OpenCoreIntegrationState.UpdateRequired => Services.LocalizationService.Translate("Update ACPI files. The installed package is out of date."),
+            OpenCoreSecurityValidator.OpenCoreIntegrationState.RestartRequired => Services.LocalizationService.Translate("Updated ACPI files are installed. Restart through PreySense to load them."),
+            _ => string.Empty
+        };
+        public Visibility AcpiFilesNotificationVisibility => string.IsNullOrEmpty(AcpiFilesNotification) ? Visibility.Collapsed : Visibility.Visible;
 
         public Visibility OpenCoreNotLoadedWarningVisibility => IsOpenCoreLoaded ? Visibility.Collapsed : Visibility.Visible;
         public Visibility OpenCoreLoadedBannerVisibility => IsOpenCoreLoaded ? Visibility.Visible : Visibility.Collapsed;
@@ -556,6 +667,8 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnIsOpenCoreLoadedChanged(bool value)
         {
+            OnPropertyChanged(nameof(CanCalibrateFactoryProfiles));
+            CalibrateFactoryProfilesCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(OpenCoreNotLoadedWarningVisibility));
             OnPropertyChanged(nameof(OpenCoreLoadedBannerVisibility));
             OnPropertyChanged(nameof(AcpiOverrideDisabledBannerVisibility));
@@ -585,9 +698,17 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnIsFactoryCalibrationCompleteChanged(bool value)
         {
+            OnPropertyChanged(nameof(CanCalibrateFactoryProfiles));
+            CalibrateFactoryProfilesCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(CanEnableAcpiOverride));
             if (!value && IsAcpiOverrideEnabled)
                 IsAcpiOverrideEnabled = false;
+        }
+
+        partial void OnIsFactoryCalibrationRunningChanged(bool value)
+        {
+            OnPropertyChanged(nameof(CanCalibrateFactoryProfiles));
+            CalibrateFactoryProfilesCommand.NotifyCanExecuteChanged();
         }
 
         public void RefreshOpenCoreStatus()
@@ -604,6 +725,8 @@ namespace PreySense.Frontend.ViewModels
                 IsAcpiOverrideEnabled = false;
             AcpiOverrideStatus = Services.LocalizationService.Translate(OpenCoreSecurityValidator.GetAcpiOverrideLabel(state));
             OnPropertyChanged(nameof(AcpiOverrideDisabledBannerText));
+            OnPropertyChanged(nameof(AcpiFilesNotification));
+            OnPropertyChanged(nameof(AcpiFilesNotificationVisibility));
         }
 
         private void PromptOpenCoreReinstall()
@@ -619,8 +742,8 @@ namespace PreySense.Frontend.ViewModels
                 {
                     Title = "PreySense • OpenCore",
                     HeaderSubtitle = " • OpenCore",
-                    Message = "The installed OpenCore package is out of date. Reinstall it, then restart into the PreySense boot entry.",
-                    ConfirmText = "Reinstall OpenCore",
+                    Message = "Update ACPI files. The installed package is out of date.",
+                    ConfirmText = "Update OpenCore",
                     CancelText = "Later"
                 };
                 if (System.Windows.Application.Current?.MainWindow is System.Windows.Window owner)
@@ -633,7 +756,7 @@ namespace PreySense.Frontend.ViewModels
             }
 
             if (reinstall == true)
-                _ = InstallOpenCoreToEspAsync();
+                _ = ReinstallOpenCoreAsync();
         }
 
         private void RefreshOpenCorePartition()
@@ -648,6 +771,7 @@ namespace PreySense.Frontend.ViewModels
         public void RefreshLocalizedText()
         {
             AcpiOverrideStatus = Services.LocalizationService.Translate(OpenCoreSecurityValidator.GetAcpiOverrideLabel(_openCoreIntegrationState));
+            OnPropertyChanged(nameof(AcpiFilesNotification));
             OnPropertyChanged(nameof(AcpiOverrideDisabledBannerText));
             OnPropertyChanged(nameof(BootDriveActionText));
             OnPropertyChanged(nameof(EcoOrQuietModeName));
@@ -667,9 +791,10 @@ namespace PreySense.Frontend.ViewModels
                 {
                     int pl1 = LimitPl1ToPlatform(Pl1Watts);
                     int pl2 = LimitPl2(pl1, Pl2Watts);
-                    PowerLimitController.SetCpuPowerLimits(pl1, pl2, true, TauSeconds);
+                    if (!PowerLimitController.SetCpuPowerLimits(pl1, pl2, true, TauSeconds))
+                        throw new InvalidOperationException(PowerLimitController.LastCpuPowerLimitStatus);
                 });
-                StatusMessage = $"PL1: {Pl1Watts}W | PL2: {Pl2Watts}W | Tau: {CpuPowerLimitConfiguration.FormatTauSelection(TauSeconds)} Applied";
+                StatusMessage = PowerLimitController.LastCpuPowerLimitStatus;
             }
             catch (Exception ex)
             {
@@ -728,6 +853,7 @@ namespace PreySense.Frontend.ViewModels
                 ["PreySense.OpenCore.OC.Drivers.OpenRuntime.efi"] = Path.Combine("EFI", "OC", "Drivers", "OpenRuntime.efi"),
                 ["PreySense.OpenCore.Install-To-ESP.ps1"] = "Install-To-ESP.ps1",
                 ["PreySense.OpenCore.Uninstall-From-ESP.ps1"] = "Uninstall-From-ESP.ps1",
+                ["PreySense.OpenCore.Reinstall-To-ESP.ps1"] = "Reinstall-To-ESP.ps1",
                 ["PreySense.OpenCore.Repair-PreySenseWmi.ps1"] = "Repair-PreySenseWmi.ps1"
             };
 
@@ -873,6 +999,57 @@ namespace PreySense.Frontend.ViewModels
                 await InstallOpenCoreToEspAsync();
         }
 
+        [RelayCommand]
+        public async Task ReinstallOpenCoreAsync()
+        {
+            IsBusy = true;
+            string resultPath = Path.Combine(Path.GetTempPath(), "PreySense-Reinstall-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                StatusMessage = "Preparing ACPI files for in-place reinstall...";
+                string packageRoot = await Task.Run(PrepareOpenCorePackage);
+                string scriptPath = Path.Combine(packageRoot, "Reinstall-To-ESP.ps1");
+                using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NoExit -ExecutionPolicy Bypass -File \"{scriptPath}\" -ResultPath \"{resultPath}\"",
+                    Verb = "runas",
+                    UseShellExecute = true
+                });
+                if (process == null) throw new InvalidOperationException("The reinstall script could not be started.");
+                StatusMessage = "Updating the existing PreySense EFI files...";
+                while (!File.Exists(resultPath))
+                {
+                    if (_disposed) return;
+                    if (process.HasExited)
+                        throw new InvalidOperationException("The reinstall window closed before completion was reported.");
+                    await Task.Delay(250);
+                }
+                using var result = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(resultPath));
+                if (!result.RootElement.GetProperty("Success").GetBoolean())
+                {
+                    StatusMessage = "ACPI reinstall failed: " + result.RootElement.GetProperty("Message").GetString()
+                        + ". See the PowerShell window for details and backup location.";
+                    return;
+                }
+                await ValidateOpenCoreIntegrationAsync(promptForUpdate: false);
+                if (_openCoreIntegrationState != OpenCoreSecurityValidator.OpenCoreIntegrationState.Active)
+                    ApplyOpenCoreIntegrationState(OpenCoreSecurityValidator.OpenCoreIntegrationState.RestartRequired);
+                StatusMessage = "ACPI and OpenCore files updated and verified. Choose Y/N in PowerShell to restart now or later.";
+            }
+            catch (Exception ex) { StatusMessage = $"ACPI reinstall failed: {ex.Message}"; }
+            finally
+            {
+                IsBusy = false;
+                try
+                {
+                    File.Delete(resultPath);
+                    File.Delete(resultPath + ".pending");
+                }
+                catch (Exception ex) { AppLogger.Log($"Reinstall result cleanup failed: {ex.Message}"); }
+            }
+        }
+
         public async Task InstallOpenCoreToEspAsync()
         {
             IsBusy = true;
@@ -902,7 +1079,7 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        public void UninstallOpenCoreFromEsp()
+        public bool UninstallOpenCoreFromEsp()
         {
             try
             {
@@ -917,14 +1094,18 @@ namespace PreySense.Frontend.ViewModels
                         Verb = "runas",
                         UseShellExecute = true
                     };
-                    System.Diagnostics.Process.Start(psi);
+                    if (System.Diagnostics.Process.Start(psi) == null)
+                        throw new InvalidOperationException("The OpenCore uninstaller could not be started.");
                     StatusMessage = "Launched the OpenCore partition uninstaller (RunAs Administrator).";
+                    return true;
                 }
+                StatusMessage = "The OpenCore uninstaller is missing.";
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Failed to launch uninstaller: {ex.Message}";
             }
+            return false;
         }
 
         [RelayCommand]
@@ -1055,6 +1236,7 @@ namespace PreySense.Frontend.ViewModels
             cpu.TurboTauSeconds = Math.Clamp(ReadFactoryInt(key, "TurboTau", sharedFactoryTau), 0, CpuPowerLimitConfiguration.InfiniteTauSliderValue);
             var gpu = new GpuPowerLimitConfiguration
             {
+                BasePowerWatts = GpuPowerBaseline.ReadWatts() ?? GpuPowerBaseline.LegacyFallbackWatts,
                 EcoGpuWatts = ReadFactoryInt(key, "EcoGpuWatts", 85),
                 QuietGpuWatts = ReadFactoryInt(key, "QuietGpuWatts", 85),
                 BalancedGpuWatts = ReadFactoryInt(key, "BalancedGpuWatts", 100),
@@ -1067,12 +1249,15 @@ namespace PreySense.Frontend.ViewModels
                 TurboGpuTripPointCelsius = ReadFactoryInt(key, "TurboGpuTrip", GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius)
             };
             int mask = LoadFactoryCalibrationMask();
+            GpuBasePowerWatts = gpu.BasePowerWatts;
             IsPlatformLimitCalibrated = key.GetValue("PlatformLimitCalibrated") is int platformCalibrated && platformCalibrated != 0;
-            IsFactoryCalibrationComplete = IsPlatformLimitCalibrated && mask == 0x1F;
+            IsFactoryCalibrationComplete = (mask & 0x1F) == 0x1F || key.GetValue("CalibrationLocked") is int locked && locked == 1;
             if (!IsFactoryCalibrationComplete)
                 IsAcpiOverrideEnabled = false;
             _factoryPowerProfile = new FactoryPowerProfileSnapshot(cpu, gpu, 0x01, mask != 0, mask != 0, mask != 0, key.GetValue("TauRead") is int tauRead && tauRead != 0);
-            FactoryCalibrationStatus = $"Saved calibration loaded ({CountCalibratedModes(mask)}/5 modes).";
+            FactoryCalibrationStatus = IsFactoryCalibrationComplete
+                ? string.Empty
+                : $"Saved calibration loaded ({CountCalibratedModes(mask)}/5 modes).";
         }
 
         private static int ReadFactoryInt(RegistryKey key, string name, int fallback) =>
@@ -1095,28 +1280,36 @@ namespace PreySense.Frontend.ViewModels
             if (key == null)
                 return;
 
+            int savedMask = key.GetValue("CalibratedModes") is int saved ? saved : 0;
+            if (key.GetValue("CalibrationLocked") is int locked && locked == 1 || (savedMask & 0x1F) == 0x1F)
+                return;
+
             CpuPowerLimitConfiguration cpu = _factoryPowerProfile.Cpu;
             GpuPowerLimitConfiguration gpu = _factoryPowerProfile.Gpu;
-            key.SetValue("CalibratedModes", calibratedMask);
-            key.SetValue("PlatformLimitCalibrated", IsPlatformLimitCalibrated ? 1 : 0);
-            key.SetValue("TauRead", _factoryPowerProfile.TauReadFromFirmware ? 1 : 0);
-            key.SetValue("TauSeconds", cpu.TauSeconds);
-            key.SetValue("QuietTau", cpu.QuietTauSeconds);
-            key.SetValue("EcoTau", cpu.EcoTauSeconds);
-            key.SetValue("BalancedTau", cpu.BalancedTauSeconds);
-            key.SetValue("PerformanceTau", cpu.PerformanceTauSeconds);
-            key.SetValue("TurboTau", cpu.TurboTauSeconds);
-            key.SetValue("EcoPl1", cpu.EcoPl1); key.SetValue("EcoPl2", cpu.EcoPl2);
-            key.SetValue("QuietPl1", cpu.QuietPl1); key.SetValue("QuietPl2", cpu.QuietPl2);
-            key.SetValue("BalancedPl1", cpu.BalancedPl1); key.SetValue("BalancedPl2", cpu.BalancedPl2);
-            key.SetValue("PerformancePl1", cpu.PerformancePl1); key.SetValue("PerformancePl2", cpu.PerformancePl2);
-            key.SetValue("TurboPl1", cpu.TurboPl1); key.SetValue("TurboPl2", cpu.TurboPl2);
-            key.SetValue("EcoGpuWatts", gpu.EcoGpuWatts); key.SetValue("QuietGpuWatts", gpu.QuietGpuWatts);
-            key.SetValue("BalancedGpuWatts", gpu.BalancedGpuWatts); key.SetValue("PerformanceGpuWatts", gpu.PerformanceGpuWatts);
-            key.SetValue("TurboGpuWatts", gpu.TurboGpuWatts);
-            key.SetValue("EcoGpuTrip", gpu.EcoGpuTripPointCelsius); key.SetValue("QuietGpuTrip", gpu.QuietGpuTripPointCelsius);
-            key.SetValue("BalancedGpuTrip", gpu.BalancedGpuTripPointCelsius); key.SetValue("PerformanceGpuTrip", gpu.PerformanceGpuTripPointCelsius);
-            key.SetValue("TurboGpuTrip", gpu.TurboGpuTripPointCelsius);
+            (string Name, int Bit, int Pl1, int Pl2, int Tau, int Gpu, int Trip)[] modes =
+            {
+                ("Eco", 1, cpu.EcoPl1, cpu.EcoPl2, cpu.EcoTauSeconds, gpu.EcoGpuWatts, gpu.EcoGpuTripPointCelsius),
+                ("Quiet", 2, cpu.QuietPl1, cpu.QuietPl2, cpu.QuietTauSeconds, gpu.QuietGpuWatts, gpu.QuietGpuTripPointCelsius),
+                ("Balanced", 4, cpu.BalancedPl1, cpu.BalancedPl2, cpu.BalancedTauSeconds, gpu.BalancedGpuWatts, gpu.BalancedGpuTripPointCelsius),
+                ("Performance", 8, cpu.PerformancePl1, cpu.PerformancePl2, cpu.PerformanceTauSeconds, gpu.PerformanceGpuWatts, gpu.PerformanceGpuTripPointCelsius),
+                ("Turbo", 16, cpu.TurboPl1, cpu.TurboPl2, cpu.TurboTauSeconds, gpu.TurboGpuWatts, gpu.TurboGpuTripPointCelsius)
+            };
+            foreach (var mode in modes)
+            {
+                if ((savedMask & mode.Bit) != 0 || (calibratedMask & mode.Bit) == 0) continue;
+                key.SetValue(mode.Name + "Pl1", mode.Pl1);
+                key.SetValue(mode.Name + "Pl2", mode.Pl2);
+                key.SetValue(mode.Name + "Tau", mode.Tau);
+                key.SetValue(mode.Name + "GpuWatts", mode.Gpu);
+                key.SetValue(mode.Name + "GpuTrip", mode.Trip);
+            }
+            if (key.GetValue("TauSeconds") == null) key.SetValue("TauSeconds", cpu.TauSeconds);
+            if (_factoryPowerProfile.TauReadFromFirmware) key.SetValue("TauRead", 1);
+            if (IsPlatformLimitCalibrated) key.SetValue("PlatformLimitCalibrated", 1);
+            // Publish completion only after all defaults have been persisted.
+            int combinedMask = savedMask | calibratedMask;
+            key.SetValue("CalibratedModes", combinedMask);
+            if ((combinedMask & 0x1F) == 0x1F) key.SetValue("CalibrationLocked", 1);
         }
 
         public void InitializeDefaultsFromAcpi()

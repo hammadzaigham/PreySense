@@ -48,6 +48,7 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand(AllowConcurrentExecutions = true)]
         public async Task SetModeAsync(object? modeParam)
         {
+            if (IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
             byte mode = modeParam switch
             {
                 byte b => b,
@@ -140,8 +141,19 @@ namespace PreySense.Frontend.ViewModels
             };
         }
 
-        internal async Task ApplyModeSwitchAsync(byte mode)
+        internal async Task ApplyModeSwitchAsync(byte mode, bool applyCustomLimits = true)
         {
+            if (IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
+            if (!applyCustomLimits || !IsAcpiOverrideEnabled || !IsOpenCoreLoaded || !IsFactoryCalibrationComplete)
+            {
+                bool changed = await Task.Run(() => _hw.SetPowerMode(mode));
+                if (!changed) { StatusMessage = "The requested Acer mode could not be activated."; return; }
+                ActivePowerMode = mode;
+                UpdateModeName(mode);
+                NotifyModeSelectionsChanged();
+                PersistSessionSettings();
+                return;
+            }
             ActivePowerMode = mode;
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
@@ -181,25 +193,33 @@ namespace PreySense.Frontend.ViewModels
             };
             Pl1Watts = modePl1;
             Pl2Watts = modePl2;
-            TauSeconds = TauForMode(mode);
+            int modeTau = TauForMode(mode);
+            TauSeconds = modeTau;
             GpuPowerTargetWatts = modeGpu;
             GpuThermalTripPointCelsius = modeTrip;
             ActiveGpuPowerCeiling = $"GPU Power Ceiling: {GpuPowerTargetWatts}W (ACPI Max: {GpuPowerTargetMax}W, Trip: {GpuThermalTripPointCelsius}°C)";
 
             IsBusy = true;
+            bool cpuApplied = false;
+            string cpuResult = string.Empty;
             try
             {
                 await Task.Run(() =>
                 {
                     if (_hw.CurrentPowerMode != mode)
-                        _hw.SetPowerMode(mode);
-                    PowerLimitController.SetCpuPowerLimits(modePl1, modePl2, true, TauSeconds);
-                    PowerLimitController.SetCpuBoost(CpuBoostForMode(mode) ? 1 : 0);
-                    PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuPowerLimit((uint)modeGpu);
-                    PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)modeTrip);
+                    {
+                        if (!_hw.SetPowerMode(mode))
+                            throw new InvalidOperationException("The requested Acer mode could not be activated.");
+                    }
+                    cpuApplied = PowerLimitController.SetCpuPowerLimits(modePl1, modePl2, true, modeTau);
+                    cpuResult = PowerLimitController.LastCpuPowerLimitStatus;
+                    if (!ApplyGpuModePower(mode, modeGpu))
+                        throw new InvalidOperationException("GPU offsets could not be verified. Update PREYDEV to 0x0201 and reboot.");
+                    if (!PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)modeTrip))
+                        throw new InvalidOperationException("GPU thermal trip point could not be applied.");
                 });
                 ApplyCpuBoostForMode(mode);
-                StatusMessage = $"{PowerModeName} Mode Activated";
+                StatusMessage = cpuApplied ? $"{PowerModeName} Mode Activated (MSR + MMIO verified)" : $"{PowerModeName} Mode Activated; CPU limits partial: {cpuResult}";
                 ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
             }
             catch (Exception ex)
@@ -215,7 +235,8 @@ namespace PreySense.Frontend.ViewModels
 
         internal void ApplyPowerProfileForSource(PowerSourceKind source)
         {
-            if (_suppressPowerProfile || _isRestoringSession || _disposed)
+            if (_suppressPowerProfile || _isRestoringSession || _disposed || IsFactoryCalibrationRunning
+                || IsOpenCoreLoaded && !IsFactoryCalibrationComplete)
                 return;
 
             byte mode = ProfileManager.SourceProfileMode(ProfileIndexFor(source));

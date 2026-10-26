@@ -21,15 +21,16 @@
     <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\EFI\OC\Drivers\OpenRuntime.efi" LogicalName="PreySense.OpenCore.OC.Drivers.OpenRuntime.efi" />
     <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Install-To-ESP.ps1" LogicalName="PreySense.OpenCore.Install-To-ESP.ps1" />
     <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Uninstall-From-ESP.ps1" LogicalName="PreySense.OpenCore.Uninstall-From-ESP.ps1" />
+    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Reinstall-To-ESP.ps1" LogicalName="PreySense.OpenCore.Reinstall-To-ESP.ps1" />
     <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Repair-PreySenseWmi.ps1" LogicalName="PreySense.OpenCore.Repair-PreySenseWmi.ps1" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>PreySense</AssemblyName>
-    <Version>2.3.5</Version>
-    <AssemblyVersion>2.3.5.0</AssemblyVersion>
-    <FileVersion>2.3.5.0</FileVersion>
+    <Version>2.4.0</Version>
+    <AssemblyVersion>2.4.0.0</AssemblyVersion>
+    <FileVersion>2.4.0.0</FileVersion>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

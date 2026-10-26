@@ -174,6 +174,20 @@ namespace PreySense.Frontend.Services
         [DllImport("uxtheme.dll", EntryPoint = "#135", SetLastError = true)]
         private static extern int SetPreferredAppMode(int appMode);
 
+        [DllImport("uxtheme.dll", EntryPoint = "#136")]
+        private static extern void FlushMenuThemes();
+
+        internal static void ApplyMenuTheme(bool isLight)
+        {
+            try
+            {
+                SetPreferredAppMode(isLight ? 3 : 2); // ForceLight / ForceDark, matching the app rather than Windows.
+                FlushMenuThemes();
+            }
+            catch (DllNotFoundException) { }
+            catch (EntryPointNotFoundException) { }
+        }
+
         private readonly IntPtr _hWnd;
         private readonly Action _onOpen;
         private readonly Action _onQuit;
@@ -190,11 +204,7 @@ namespace PreySense.Frontend.Services
             _onQuit = onQuit;
             _taskbarCreatedMsg = RegisterWindowMessage("TaskbarCreated");
 
-            try
-            {
-                SetPreferredAppMode(2); // Enable dark popup menus on Windows 10/11
-            }
-            catch { }
+            ApplyMenuTheme(ThemeManager.IsLightTheme);
 
             InitTrayIcon();
         }
@@ -322,6 +332,7 @@ namespace PreySense.Frontend.Services
 
         private void ShowContextMenu(IntPtr hwnd)
         {
+            ApplyMenuTheme(ThemeManager.IsLightTheme);
             GetCursorPos(out POINT pt);
             SetForegroundWindow(hwnd);
 

@@ -928,8 +928,9 @@ namespace PreySense.Tests
             Assert.IsTrue(dsl.Contains("Case (0x05) // SetGpuPowerLimit"), "SSDT-PREYDEV must implement SetGpuPowerLimit (method 5)");
             Assert.IsTrue(dsl.Contains("Case (0x06) // GetGpuPowerLimit"), "SSDT-PREYDEV must implement GetGpuPowerLimit (method 6)");
             Assert.IsTrue(dsl.Contains("Notify (\\_SB.NPCF, 0xC0)"), "Must trigger NPCF 0xC0 notification to live NVIDIA driver");
-            Assert.IsTrue(dsl.Contains("ACBT = (Local2 * 0x08)"), "Must write Configurable TGP offset to ACBT");
-            Assert.IsTrue(dsl.Contains("ATPP = (Local4 * 0x08)"), "Must write unconstrained platform headroom to ATPP");
+            Assert.Contains("ACBT = (Arg0 * 0x08)", dsl, "Must write independent Configurable TGP offset to ACBT");
+            Assert.Contains("AMAT = (Arg1 * 0x08)", dsl, "Must write independent Dynamic Boost offset to AMAT");
+            Assert.Contains("ATPP = (Arg2 * 0x08)", dsl, "Must write independent platform offset to ATPP");
 
             string iaslPath = @"d:\Development\PreySense\docs\acpi_tables\iasl.exe";
             if (File.Exists(iaslPath))
@@ -1096,10 +1097,10 @@ namespace PreySense.Tests
             Assert.Contains("VerticalAlignment=\"Top\"", xaml);
 
             string modeCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml.cs"));
-            int resetIdx = modeCs.IndexOf("private void ResetButton_Click", StringComparison.Ordinal);
+            int resetIdx = modeCs.IndexOf("private async void ResetButton_Click", StringComparison.Ordinal);
             Assert.IsTrue(resetIdx >= 0);
             string resetBody = modeCs.Substring(resetIdx, Math.Min(5000, modeCs.Length - resetIdx));
-            Assert.Contains("ApplyButton_Click(sender, e)", resetBody);
+            Assert.Contains("await ApplySelectedModeAsync()", resetBody);
             Assert.Contains("SaveCpuLimitsToRegistry", resetBody);
             Assert.Contains("ResetModeToCapturedFactoryDefaults", resetBody);
 
@@ -1112,10 +1113,10 @@ namespace PreySense.Tests
             Assert.Contains("Task.Run", acpiVm);
 
             string advancedXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "AdvancedWindow.xaml"));
-            Assert.Contains("Factory Profile Calibration", advancedXaml);
-            Assert.Contains("CalibrateFactoryProfilesCommand", advancedXaml);
+            Assert.Contains("Factory Defaults", advancedXaml);
+            Assert.DoesNotContain("CalibrateFactoryProfilesCommand", advancedXaml);
             Assert.Contains("IsEnabled=\"{Binding CanEnableAcpiOverride}\"", advancedXaml);
-            Assert.Contains("IsEnabled=\"{Binding IsOpenCoreLoaded}\"", advancedXaml);
+            Assert.Contains("ViewFactoryDefaultsCommand", advancedXaml);
             Assert.DoesNotContain("PL1 Platform Power Limit", advancedXaml);
             Assert.DoesNotContain("CanEditPlatformPowerLimit", advancedXaml);
             Assert.DoesNotContain("Text=\"{Binding FactoryCalibrationStatus}\"", advancedXaml);
@@ -1683,12 +1684,12 @@ namespace PreySense.Tests
             string dsl = File.ReadAllText(Path.Combine(root, "acpi_staging", "SSDT-PREYDEV.dsl"));
             string efiDsl = File.ReadAllText(Path.Combine(root, "tools", "OpenCore_PreyBoost_EFI", "EFI", "OC", "ACPI", "SSDT-PREYDEV.dsl"));
             string repairCode = File.ReadAllText(Path.Combine(root, "PreySense.Core", "Hardware", "PreySenseWmiRepair.cs"));
-            Assert.Contains("// PreySenseInterfaceVersion=0x0103", mof);
-            Assert.Contains("DefinitionBlock (\"\", \"SSDT\", 2, \"PREY\", \"PREYDEV\", 0x00000103)", dsl);
-            Assert.Contains("PKG1 [Zero] = 0x0103", dsl);
+            Assert.Contains("// PreySenseInterfaceVersion=0x0201", mof);
+            Assert.Contains("DefinitionBlock (\"\", \"SSDT\", 2, \"PREY\", \"PREYDEV\", 0x00000201)", dsl);
+            Assert.Contains("PKG1 [Zero] = 0x0201", dsl);
             Assert.AreEqual(dsl, efiDsl);
             Assert.IsTrue(PreySenseWmiRepair.TryParseInterfaceVersion(mof, out uint version));
-            Assert.AreEqual(0x0103u, version);
+            Assert.AreEqual(0x0201u, version);
             Assert.IsTrue(PreySenseWmiRepair.ShouldRebuild(PreySenseWmiSchemaState.Missing));
             Assert.IsTrue(PreySenseWmiRepair.ShouldRebuild(PreySenseWmiSchemaState.Mismatched));
             Assert.IsFalse(PreySenseWmiRepair.ShouldRebuild(PreySenseWmiSchemaState.Ready));
@@ -1706,7 +1707,7 @@ namespace PreySense.Tests
             int registerIdx = session.IndexOf("TryRegister", StringComparison.Ordinal);
             Assert.IsTrue(matchIdx >= 0 && registerIdx > matchIdx);
             Assert.Contains("if (loadedMatches)", session);
-            Assert.Contains("ConfirmText = \"Reinstall OpenCore\"", acpiUi);
+            Assert.Contains("ConfirmText = \"Update OpenCore\"", acpiUi);
             Assert.Contains("CancelText = \"Later\"", acpiUi);
             Assert.Contains("if (reinstall == true)", acpiUi);
             Assert.Contains("InstallOpenCoreToEspAsync", acpiUi);

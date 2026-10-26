@@ -10,31 +10,20 @@
 
         <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
             <TextBlock Text="{Binding Title, ElementName=RootActionRow}" Style="{DynamicResource SettingLabelStyle}" />
-            <TextBlock Text="{Binding Description, ElementName=RootActionRow}"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       FontFamily="{StaticResource AppFontFamily}"
-                       FontSize="{DynamicResource FontSizeCaption}"
-                       TextWrapping="Wrap"
-                       Margin="0,2,0,0">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Visible"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Description, ElementName=RootActionRow}" Value="">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
         </StackPanel>
 
-        <Button x:Name="InnerButton" Grid.Column="1" VerticalAlignment="Center"
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button Style="{DynamicResource OriginalRButtonActionStyle}" Height="28" Padding="12,0" Margin="0,0,6,0"
+                Content="{Binding SecondaryActionText, ElementName=RootActionRow}"
+                Command="{Binding SecondaryCommand, ElementName=RootActionRow}"
+                Visibility="{Binding SecondaryActionVisibility, ElementName=RootActionRow}"/>
+        <Button x:Name="InnerButton" VerticalAlignment="Center"
                 Style="{DynamicResource OriginalRButtonActionStyle}"
                 Height="28" Padding="12,0"
                 Content="{Binding ActionText, ElementName=RootActionRow}"
                 Command="{Binding Command, ElementName=RootActionRow}"
                 CommandParameter="{Binding CommandParameter, ElementName=RootActionRow}"
                 Click="InnerButton_Click" />
+        </StackPanel>
     </Grid>
 </UserControl>

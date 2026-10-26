@@ -46,11 +46,13 @@ namespace PreySense.Frontend.Views
             LoadModeData();
         }
 
-        private void ComboModeSelect_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        private async void ComboModeSelect_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (ComboModeSelect == null || _isUpdatingUi) return;
+            if (ComboModeSelect == null || _isUpdatingUi || !IsLoaded || ComboModeSelect.SelectedIndex < 0) return;
             _selectedModeIndex = ComboModeSelect.SelectedIndex;
             LoadModeData();
+            if (DataContext is MainViewModel vm)
+                await vm.SetModeAsync(ModeIndexToByte(_selectedModeIndex));
         }
 
         private static string FormatTau(int seconds) => CpuPowerLimitConfiguration.FormatTauSelection(seconds);
@@ -120,6 +122,10 @@ namespace PreySense.Frontend.Views
             };
             if (RowGpuPower != null)
             {
+                var offsets = vm.GpuOffsetsForMode(_selectedModeIndex, gpuWatts);
+                RowGpuDelta.Value = offsets.DeltaWatts;
+                RowGpuDynamicBoost.Value = offsets.DynamicBoostWatts;
+                gpuWatts = offsets.NominalReferenceWatts(vm.GpuBasePowerWatts);
                 RowGpuPower.Value = gpuWatts;
             }
             vm.GpuPowerTargetWatts = gpuWatts;
@@ -211,13 +217,28 @@ namespace PreySense.Frontend.Views
 
         private int ReadGpuWatts()
         {
-            int val = (int)Math.Round(RowGpuPower?.Value ?? 140);
-            return Math.Max(1, val);
+            int baseWatts = (DataContext as MainViewModel)?.GpuBasePowerWatts ?? 85;
+            return ReadGpuOffsets().NominalReferenceWatts(baseWatts);
+        }
+
+        private GpuPowerOffsets ReadGpuOffsets() => new(
+            Math.Clamp((int)Math.Round(RowGpuDelta.Value), 0, 255),
+            Math.Clamp((int)Math.Round(RowGpuDynamicBoost.Value), 0, 255));
+
+        private void GpuOffsets_Committed(object? sender, EventArgs e)
+        {
+            if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
+            var offsets = ReadGpuOffsets();
+            RowGpuDelta.Value = offsets.DeltaWatts;
+            RowGpuDynamicBoost.Value = offsets.DynamicBoostWatts;
+            RowGpuPower.Value = offsets.NominalReferenceWatts(vm.GpuBasePowerWatts);
+            StoreGpuWatts((int)RowGpuPower.Value);
         }
 
         private void StoreGpuWatts(int watts)
         {
             if (DataContext is not MainViewModel vm) return;
+            vm.StoreGpuOffsets(_selectedModeIndex, ReadGpuOffsets());
             switch (_selectedModeIndex)
             {
                 case 0: vm.CustomEcoGpuWatts = watts; break;
@@ -263,7 +284,7 @@ namespace PreySense.Frontend.Views
             }
         }
 
-        private void ResetButton_Click(object sender, RoutedEventArgs e)
+        private async void ResetButton_Click(object sender, RoutedEventArgs e)
         {
             if (DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
 
@@ -287,13 +308,18 @@ namespace PreySense.Frontend.Views
 
             _isUpdatingUi = false;
             LoadModeData();
-            ApplyButton_Click(sender, e);
+            await ApplySelectedModeAsync();
+            string applyStatus = vm.StatusMessage;
             vm.SaveCpuLimitsToRegistry();
-
-            vm.StatusMessage = $"Reset {modeName} to ACPI factory defaults and applied to hardware.";
+            vm.StatusMessage = applyStatus;
         }
 
-        private void ApplyButton_Click(object sender, RoutedEventArgs e)
+        private async void ApplyButton_Click(object sender, RoutedEventArgs e)
+        {
+            await ApplySelectedModeAsync();
+        }
+
+        private async System.Threading.Tasks.Task ApplySelectedModeAsync()
         {
             if (DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
 
@@ -304,7 +330,6 @@ namespace PreySense.Frontend.Views
             StoreModeLimits(pl1, pl2);
             vm.SetTauForModeIndex(_selectedModeIndex, tau);
             vm.SetCpuBoostForModeIndex(_selectedModeIndex, SwitchCpuBoost?.IsChecked == true);
-            vm.ApplyCpuBoostForMode(ModeIndexToByte(_selectedModeIndex));
             vm.Pl1Watts = pl1;
             vm.Pl2Watts = pl2;
 
@@ -327,14 +352,22 @@ namespace PreySense.Frontend.Views
             }
 
             // Apply CPU limits to hardware
-            vm.ApplyPowerLimitsCommand.Execute(null);
+            // Select the edited mode before writing its mode-table entries.
+            byte selectedMode = ModeIndexToByte(_selectedModeIndex);
+            if (vm.ActivePowerMode != selectedMode)
+                await vm.SetModeAsync(selectedMode);
+            if (!await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(selectedMode)))
+            {
+                vm.StatusMessage = "The selected Acer mode could not be confirmed; limits were not applied.";
+                return;
+            }
+            vm.ApplyCpuBoostForMode(selectedMode);
+            await vm.ApplyPowerLimitsCommand.ExecuteAsync(null);
+            string cpuApplyStatus = vm.StatusMessage;
 
             // Apply GPU settings to hardware
-            vm.ApplyGpuClocksCommand.Execute(null);
-
-            string modeName = GetSelectedModeName();
-            string boost = SwitchCpuBoost?.IsChecked == true ? "on" : "off";
-            vm.StatusMessage = $"Applied {modeName}: PL1 {pl1}W, PL2 {pl2}W, Tau {FormatTau(tau)}, CPU Boost {boost}, GPU {vm.GpuPowerTargetWatts}W, Trip {vm.GpuThermalTripPointCelsius}°C to hardware.";
+            await vm.ApplyGpuClocksCommand.ExecuteAsync(null);
+            vm.StatusMessage = cpuApplyStatus + " | " + vm.StatusMessage;
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
