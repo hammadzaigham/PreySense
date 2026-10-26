@@ -255,6 +255,17 @@ namespace PreySense.Frontend.ViewModels
         {
             if (!IsAcpiOverrideEnabled || !IsFactoryCalibrationComplete || IsFactoryCalibrationRunning)
                 return;
+            if (!ProfileManager.IsSupportedMode(game.PowerMode))
+            {
+                StatusMessage = "Game profile has an unsupported performance mode.";
+                return;
+            }
+
+            CancelPendingModeSwitch();
+            await _modeSwitchGate.WaitAsync();
+            try
+            {
+            if (_disposed || !IsAcpiOverrideEnabled || !IsFactoryCalibrationComplete || IsFactoryCalibrationRunning) return;
 
             int pl1 = LimitPl1ToPlatform(game.CpuPl1);
             int pl2 = LimitPl2(pl1, game.CpuPl2);
@@ -270,8 +281,8 @@ namespace PreySense.Frontend.ViewModels
             game.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
             game.GpuThermalTripCelsius = trip;
 
-            if (PeekPendingOrActiveMode() != game.PowerMode)
-                await ApplyModeSwitchAsync(game.PowerMode, applyCustomLimits: false);
+            if (!IsGpuHardwareModeActive(game.PowerMode))
+                await ApplyModeSwitchCoreAsync(game.PowerMode, applyCustomLimits: false);
 
             if (!IsGpuHardwareModeActive(game.PowerMode))
             {
@@ -300,6 +311,8 @@ namespace PreySense.Frontend.ViewModels
             StatusMessage = $"{game.DisplayName}: {game.ModeTitle}  PL1 {pl1}W / PL2 {pl2}W / Tau {CpuPowerLimitConfiguration.FormatTauSelection(tau)}  CPU Boost {boost}  GPU {gpu}W / {trip}°C";
             if (!gpuApplied || !tripApplied) StatusMessage += " | GPU settings failed or readback differed.";
             if (!cpuApplied) StatusMessage += $" | CPU limits partial: {cpuResult}";
+            }
+            finally { _modeSwitchGate.Release(); }
         }
 
         private static int LimitGameTau(int tau) =>
@@ -335,7 +348,9 @@ namespace PreySense.Frontend.ViewModels
                 _modeBeforeGame = 0xFF;
                 if (applied == null || restore == 0xFF || !IsAcpiOverrideEnabled)
                     return;
-                await SetModeAsync(restore);
+                CancelPendingModeSwitch();
+                // Game limits can differ even when the original Acer mode is unchanged.
+                await ApplyModeSwitchAsync(restore);
                 StatusMessage = $"{Path.GetFileNameWithoutExtension(applied)} closed. Restored {GetModeTitle(restore)}.";
             }).Task.Unwrap();
         }

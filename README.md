@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v2.4.0** adds PawnIO CPU power control and voltage telemetry, independent GPU Delta and Dynamic Boost controls, protected factory calibration, and in-place OpenCore updates. See the [release notes](docs/releases/v2.4.0.md).
+**v2.4.5** adds interactive custom CPU & GPU fan curves, factory fan table presets, fan ramp-up delay, emergency cooling protection, and serialized power/game mode policy fixes. See the [release notes](docs/releases/v2.4.5.md).
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 
@@ -43,7 +43,7 @@ Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)*
 - **Performance modes** — Quiet (AC) / Eco (battery), Balanced, Performance, and Turbo. The Predator key next to Num Lock opens PreySense from the tray, or hides it when it is already open. Hold that key and press 1–5 to change mode: 1 Eco, 2 Quiet, 3 Balanced, 4 Performance, 5 Turbo. The chassis Mode / Turbo key still cycles modes.
 - **Per-mode CPU and GPU power** — CPU PL1, PL2, and Tau; separate GPU Delta and Dynamic Boost controls; GPU thermal trip point (requires OpenCore and factory calibration). PawnIO writes CPU static MSR limits alongside the dynamic MMIO limits, with readback checks.
 - **GPU display switching** — Optimus, Automatic, Advanced Optimus (no reboot), and dGPU Only (reboot)
-- **Fans** — Auto, Max, or custom CPU/GPU speed, independent of the performance mode
+- **Fans** — The footer Fans button opens per-mode Auto, Max, or Custom choices for Eco, Quiet, Balanced, Performance, and Turbo. Max is independent of Custom; Custom offers separate CPU/GPU percentage curves that follow the hotter sensor, with 5°C editing points and one 0–5-second Fan Control Delay for speed increases and decreases. Curve speeds cannot decrease at higher temperatures, and dragging locks the selected temperature. Curves keep running in the tray with one-second checks and writes only when targets change. See [fan control](docs/fan_control.md).
 - **Lighting** — four-zone keyboard and cover logo, hardware effects, custom animations (Rainbow Cycle, Police Strobe, Fire Ember, Matrix Cascade, Cylon Scanner, Aurora Drift, Ocean Tide, Heartbeat, Lightning Storm, Starlight, Ice Crystal), optional logo sync
 - **Game profiles** — apply a mode and CPU/GPU limits when a watched game starts; restore when it exits. Games uses the same separate Delta and Dynamic Boost controls as Tuning.
 - **Hardware overlay** — always-on-top CPU/GPU stats, optional graphs, and FPS. CPU voltage (VID) through PawnIO replaces E-core frequency in the default layout. Unavailable voltage displays as 0.000 V.

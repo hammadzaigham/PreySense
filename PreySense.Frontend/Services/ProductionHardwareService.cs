@@ -36,6 +36,7 @@ namespace PreySense.Frontend.Services
         }
 
         private NvidiaGpuControl Gpu => _gpu.Value;
+        public bool TryGetPowerMode(out byte mode) => _wmi.TryGetPowerProfile(out mode);
         private EnekRgbClient Enek => _enek.Value;
         public CustomLightingEffectsEngine LightingEngine => _lightingEngine.Value;
         public WmiController Wmi => _wmi;
@@ -112,13 +113,15 @@ namespace PreySense.Frontend.Services
 
         public bool SetFanMode(byte cpuMode, byte gpuMode)
         {
-            return _wmi.SetFanBehavior(cpuMode);
+            return _wmi.SetFanControl(cpuMode);
         }
 
         public bool SetFanSpeeds(byte cpuPercentage, byte gpuPercentage)
         {
             return _wmi.SetFanControl(2, cpuPercentage, gpuPercentage);
         }
+
+        public void InvalidateFanTargets() => _wmi.InvalidateFanTargets();
 
         public int GetBatteryChargeLimit()
         {

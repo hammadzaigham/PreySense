@@ -1,148 +1,161 @@
 using System;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
-using PreySense.Frontend.Services;
+using PreySense.Core.Services;
 using PreySense.Mode;
 
-namespace PreySense.Frontend.ViewModels
+namespace PreySense.Frontend.ViewModels;
+
+public partial class MainViewModel
 {
-    public partial class MainViewModel
+    private readonly object _fanControlGate = new();
+    private readonly FanCurveFollower _cpuFanFollower = new();
+    private readonly FanCurveFollower _gpuFanFollower = new();
+    private readonly FanCoolingSafety _fanCoolingSafety = new();
+    private FanCurveProfile? _runningFanProfile;
+    private byte _runningFanProfileMode = 0xFF;
+    private int? _sentCpuFan, _sentGpuFan;
+    private bool _sentMaxFanMode, _fanOverrideActive, _fanFallbackActive;
+    private long _fanRetryAfter, _fanModeSettlesAt;
+
+    public int? AppliedCpuFanPercent
     {
-        private const string CustomFanRegistryPath = @"SOFTWARE\PreySense";
-        private readonly UiDebouncer _customFanDebouncer = new(TimeSpan.FromMilliseconds(250));
-        private bool _loadingCustomFanSpeeds;
-
-        // Fan Control (0 = Auto, 1 = Max, 2 = Custom)
-        [ObservableProperty] private int _activeFanMode = 0; // 0=Auto, 1=Max, 2=Custom
-        public bool IsAutoFanActive => ActiveFanMode == 0;
-        public bool IsMaxFanActive => ActiveFanMode == 1;
-        public bool IsCustomFanActive => ActiveFanMode == 2;
-        [ObservableProperty] private bool _isFanMaxActive = false;
-        [ObservableProperty] private int _customCpuFanPercent = 50;
-        [ObservableProperty] private int _customGpuFanPercent = 50;
-
-        private void NotifyFanSelectionsChanged()
+        get { lock (_fanControlGate) return !_fanOverrideActive || _fanFallbackActive ? null : _sentMaxFanMode ? 100 : _sentCpuFan; }
+    }
+    public int? AppliedGpuFanPercent
+    {
+        get { lock (_fanControlGate) return !_fanOverrideActive || _fanFallbackActive ? null : _sentMaxFanMode ? 100 : _sentGpuFan; }
+    }
+    public FanCurveProfile LoadFanProfile(byte mode) => FanCurveStorage.Load(mode);
+    public void SaveFanProfile(byte mode, FanCurveProfile profile)
+    {
+        FanCurveStorage.Save(mode, profile);
+        lock (_fanControlGate)
         {
-            OnPropertyChanged(nameof(IsAutoFanActive));
-            OnPropertyChanged(nameof(IsMaxFanActive));
-            OnPropertyChanged(nameof(IsCustomFanActive));
+            if (_runningFanProfileMode == mode) ResetFanFollower();
         }
-
-        private void LoadCustomFanSpeeds()
+        StatusMessage = $"{ProfileManager.ModeToProfileName(mode)} fan settings saved.";
+    }
+    private void ResetFanFollower()
+    {
+        _cpuFanFollower.Reset(); _gpuFanFollower.Reset();
+        _runningFanProfile = null;
+        _runningFanProfileMode = 0xFF;
+        _sentCpuFan = _sentGpuFan = null;
+        _sentMaxFanMode = false;
+        _fanRetryAfter = 0;
+        _fanFallbackActive = false;
+        // Keep override ownership until hardware successfully returns to Auto.
+    }
+    private void ProcessFanCurves(HardwareTelemetry telemetry)
+    {
+        if (_disposed || IsFactoryCalibrationRunning) return;
+        lock (_fanControlGate)
         {
-            _loadingCustomFanSpeeds = true;
-            try
+            if (_disposed || IsFactoryCalibrationRunning || Environment.TickCount64 < _fanRetryAfter) return;
+            if (!_hw.TryGetPowerMode(out byte mode)) { ReleaseCustomFans(); return; }
+            if (_runningFanProfileMode != mode || _runningFanProfile == null)
             {
-                using var key = Registry.CurrentUser.OpenSubKey(CustomFanRegistryPath);
-                if (key?.GetValue("CustomCpuFanPercent") is int cpu)
-                    CustomCpuFanPercent = EcFanPolicy.SnapDuty(cpu);
-                if (key?.GetValue("CustomGpuFanPercent") is int gpu)
-                    CustomGpuFanPercent = EcFanPolicy.SnapDuty(gpu);
+                ResetFanFollower();
+                _runningFanProfile = FanCurveStorage.Load(mode);
+                _runningFanProfileMode = mode;
+                _hw.InvalidateFanTargets();
+                _fanModeSettlesAt = Environment.TickCount64 + 3000;
             }
-            catch { }
-            finally
+            if (_runningFanProfile.ControlMode == FanControlMode.Auto)
             {
-                _loadingCustomFanSpeeds = false;
-            }
-        }
-
-        private void SaveCustomFanSpeeds()
-        {
-            try
-            {
-                using var key = Registry.CurrentUser.CreateSubKey(CustomFanRegistryPath);
-                key?.SetValue("CustomCpuFanPercent", EcFanPolicy.SnapDuty(CustomCpuFanPercent), RegistryValueKind.DWord);
-                key?.SetValue("CustomGpuFanPercent", EcFanPolicy.SnapDuty(CustomGpuFanPercent), RegistryValueKind.DWord);
-            }
-            catch { }
-        }
-
-        partial void OnCustomCpuFanPercentChanged(int value) => OnCustomFanPercentChanged();
-
-        partial void OnCustomGpuFanPercentChanged(int value) => OnCustomFanPercentChanged();
-
-        private void OnCustomFanPercentChanged()
-        {
-            if (_loadingCustomFanSpeeds)
-                return;
-
-            int cpu = EcFanPolicy.SnapDuty(CustomCpuFanPercent);
-            int gpu = EcFanPolicy.SnapDuty(CustomGpuFanPercent);
-            if (cpu != CustomCpuFanPercent)
-            {
-                CustomCpuFanPercent = cpu;
-                return;
-            }
-            if (gpu != CustomGpuFanPercent)
-            {
-                CustomGpuFanPercent = gpu;
-                return;
-            }
-
-            SaveCustomFanSpeeds();
-            if (ActiveFanMode != 2)
-                return;
-
-            _customFanDebouncer.Debounce(() =>
-            {
-                _ = Task.Run(() => _hw.SetFanSpeeds((byte)CustomCpuFanPercent, (byte)CustomGpuFanPercent));
-                StatusMessage = $"Custom Fan Speed ({CustomCpuFanPercent}% CPU / {CustomGpuFanPercent}% GPU)";
-            });
-        }
-
-        [RelayCommand]
-        public async Task SetFanModeAsync(object? fanModeParam)
-        {
-            int fanMode = fanModeParam switch
-            {
-                int i => i,
-                byte b => (int)b,
-                string s when int.TryParse(s, out int parsed) => parsed,
-                _ => -1
-            };
-            if (fanMode < 0) return;
-
-            ActiveFanMode = fanMode;
-            IsFanMaxActive = fanMode == 1;
-            SetTelemetryPollingActive(App.Current?.MainWindow?.IsVisible == true);
-            NotifyFanSelectionsChanged();
-            byte modeByte = (byte)fanMode;
-            StatusMessage = fanMode switch
-            {
-                1 => "Max Fans Engaged (100% RPM)",
-                2 => $"Custom Fan Speed ({CustomCpuFanPercent}% CPU / {CustomGpuFanPercent}% GPU)",
-                _ => "Auto Fan Speed (Firmware EC Curve)"
-            };
-
-            IsBusy = true;
-            try
-            {
-                if (fanMode == 2)
+                if (!_fanFallbackActive)
                 {
-                    await Task.Run(() => _hw.SetFanSpeeds((byte)CustomCpuFanPercent, (byte)CustomGpuFanPercent));
+                    if (!_hw.SetFanMode(0, 0)) { FanWriteFailed(); return; }
+                    _fanOverrideActive = false;
+                    _fanFallbackActive = true;
+                    _sentCpuFan = _sentGpuFan = null;
                 }
-                else
+                return;
+            }
+            if (_runningFanProfile.ControlMode == FanControlMode.Max)
+            {
+                if (!_sentMaxFanMode)
                 {
-                    await Task.Run(() => _hw.SetFanMode(modeByte, modeByte));
+                    _fanOverrideActive = true;
+                    if (_hw.SetFanMode(1, 1))
+                    {
+                        _sentMaxFanMode = _fanOverrideActive = true;
+                        _fanFallbackActive = false;
+                        _sentCpuFan = _sentGpuFan = null;
+                    }
+                    else FanWriteFailed();
                 }
+                return;
             }
-            catch (Exception ex)
+            bool emergency = _fanCoolingSafety.Evaluate(telemetry.CpuTemp, telemetry.GpuTemp);
+            bool valid = FanCurveProfile.ValidTemperatures(telemetry.CpuTemp, telemetry.GpuTemp);
+            if (!emergency && Environment.TickCount64 < _fanModeSettlesAt) return;
+            if (!emergency && !valid)
             {
-                StatusMessage = $"Fan error: {ex.Message}";
+                if (!_fanFallbackActive)
+                {
+                    if (!_hw.SetFanMode(0, 0)) { FanWriteFailed(); return; }
+                    _fanFallbackActive = true;
+                    _fanOverrideActive = false;
+                    _sentCpuFan = _sentGpuFan = null;
+                    _cpuFanFollower.Reset(); _gpuFanFollower.Reset();
+                }
+                return;
             }
-            finally
+            int temperature = FanCurveProfile.CoolingTemperature(telemetry.CpuTemp, telemetry.GpuTemp);
+            long now = Environment.TickCount64;
+            int cpu = _cpuFanFollower.Evaluate(temperature, _runningFanProfile.Cpu, _runningFanProfile.RampUpSeconds, now, emergency);
+            int gpu = _gpuFanFollower.Evaluate(temperature, _runningFanProfile.Gpu, _runningFanProfile.RampUpSeconds, now, emergency);
+            if (_sentCpuFan == cpu && _sentGpuFan == gpu && !_fanFallbackActive) return;
+            _fanOverrideActive = true;
+            if (_hw.SetFanSpeeds((byte)cpu, (byte)gpu))
             {
-                IsBusy = false;
-                PersistSessionSettings();
+                _sentCpuFan = cpu; _sentGpuFan = gpu;
+                _fanOverrideActive = true;
+                _fanFallbackActive = _sentMaxFanMode = false;
             }
+            else FanWriteFailed();
         }
-
-        [RelayCommand]
-        public async Task ToggleMaxFansAsync()
+    }
+    private void FanWriteFailed()
+    {
+        bool released = _hw.SetFanMode(0, 0);
+        ResetFanFollower();
+        if (released) _fanOverrideActive = false;
+        _fanFallbackActive = released;
+        _fanRetryAfter = Environment.TickCount64 + 5000;
+        _dispatcher.InvokeAsync(() => StatusMessage = released
+            ? "Fan update failed; using firmware Auto." : "Fan update failed; could not restore firmware Auto.");
+    }
+    private void RestoreFanMode()
+    {
+        lock (_fanControlGate)
         {
-            await SetFanModeAsync(ActiveFanMode == 1 ? "0" : "1");
+            ResetFanFollower();
+            ProcessFanCurves(_hw.GetCurrentTelemetry());
         }
+    }
+    private void ReleaseCustomFans()
+    {
+        lock (_fanControlGate)
+        {
+            if (!_fanOverrideActive) return;
+            try
+            {
+                _fanFallbackActive = _hw.SetFanMode(0, 0);
+                if (_fanFallbackActive) { _fanOverrideActive = _sentMaxFanMode = false; _sentCpuFan = _sentGpuFan = null; }
+            }
+            catch (Exception ex) { AppLogger.Log($"Could not return fans to Auto: {ex.Message}"); }
+        }
+    }
+    public async Task ApplyFanProfileAsync()
+    {
+        await Task.Run(RestoreFanMode);
+        lock (_fanControlGate)
+        {
+            if (_runningFanProfile == null || _fanRetryAfter > Environment.TickCount64)
+                throw new InvalidOperationException("Fan settings could not be applied.");
+        }
+        StatusMessage = "Fan settings saved; following the selected mode.";
     }
 }

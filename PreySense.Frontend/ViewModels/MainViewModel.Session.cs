@@ -62,9 +62,6 @@ namespace PreySense.Frontend.ViewModels
                     }
                 }
 
-                if (key.GetValue("FanMode") is int fanMode)
-                    ActiveFanMode = Math.Clamp(fanMode, 0, 2);
-
                 if (key.GetValue("AutoRefreshRate") is int autoHz)
                     IsAutoRefreshRateEnabled = autoHz == 1;
 
@@ -119,7 +116,6 @@ namespace PreySense.Frontend.ViewModels
                     return;
 
                 key.SetValue("PowerMode", (int)ActivePowerMode, RegistryValueKind.DWord);
-                key.SetValue("FanMode", ActiveFanMode, RegistryValueKind.DWord);
                 key.SetValue("AutoRefreshRate", IsAutoRefreshRateEnabled ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue("UsbChargingPercent", UsbChargingPercent, RegistryValueKind.DWord);
                 key.SetValue("BatteryLimit", IsBatteryLimitEnabled ? 1 : 0, RegistryValueKind.DWord);
@@ -139,7 +135,6 @@ namespace PreySense.Frontend.ViewModels
 
             SaveRgbSettings();
             SaveCoverLightingSettings();
-            SaveCustomFanSpeeds();
         }
 
         private async Task ValidateOpenCoreIntegrationAsync(bool promptForUpdate = true)
@@ -307,7 +302,6 @@ namespace PreySense.Frontend.ViewModels
                     ActivePowerMode = mode;
                     UpdateModeName(mode);
                     NotifyModeSelectionsChanged();
-                    NotifyFanSelectionsChanged();
                     StatusMessage = reason.Equals("startup", StringComparison.OrdinalIgnoreCase)
                         ? "Saved settings applied."
                         : "Saved settings reapplied after wake.";
@@ -389,10 +383,7 @@ namespace PreySense.Frontend.ViewModels
                     failures.Add("GPU thermal trip point could not be applied");
             }
 
-            if (ActiveFanMode == 2)
-                _hw.SetFanSpeeds((byte)CustomCpuFanPercent, (byte)CustomGpuFanPercent);
-            else
-                _hw.SetFanMode((byte)ActiveFanMode, (byte)ActiveFanMode);
+            RestoreFanMode();
 
             if (IsLcdOverdriveEnabled)
                 _hw.SetLcdOverdrive(true);

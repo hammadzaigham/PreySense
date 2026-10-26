@@ -174,13 +174,11 @@ namespace PreySense.Frontend.ViewModels
             LoadCoverLightingSettings();
             LoadRgbSettings();
             LoadCpuLimitsFromRegistry();
-            LoadCustomFanSpeeds();
             LoadSessionPreferences();
             UpdateModeName(ActivePowerMode);
 
             NotifyModeSelectionsChanged();
             NotifyGpuSelectionsChanged();
-            NotifyFanSelectionsChanged();
             NotifyRefreshRateChanged();
             PersistSessionSettings();
 
@@ -289,6 +287,7 @@ namespace PreySense.Frontend.ViewModels
             try
             {
                 var telemetry = _hw.GetCurrentTelemetry();
+                ProcessFanCurves(telemetry);
                 if (_hasPushedTelemetry && telemetry.Equals(_lastPolledTelemetry))
                     return;
 
@@ -299,6 +298,11 @@ namespace PreySense.Frontend.ViewModels
                     if (!_disposed)
                         UpdateTelemetry(telemetry);
                 });
+            }
+            catch (Exception ex)
+            {
+                ReleaseCustomFans();
+                AppLogger.Log($"Fan/telemetry read failed: {ex.Message}");
             }
             finally
             {
@@ -351,8 +355,9 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed)
                 return;
 
-            _telemetryPollingActive = isVisible;
-            if (isVisible)
+            // Keep following external profile changes, including Auto -> Max/Custom in the tray.
+            _telemetryPollingActive = true;
+            if (_telemetryPollingActive)
             {
                 _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
                 if (!_telemetryTimer.Enabled)
@@ -413,6 +418,7 @@ namespace PreySense.Frontend.ViewModels
             _telemetryTimer.Stop();
             _telemetryTimer.Elapsed -= OnTelemetryTimerElapsed;
             _telemetryTimer.Dispose();
+            ReleaseCustomFans();
             PreySense.Mode.PawnCpuPowerControl.Dispose();
             PersistSessionSettings();
             DetachSessionLifecycleHooks();
@@ -433,7 +439,6 @@ namespace PreySense.Frontend.ViewModels
             _modeSwitchGate.Dispose();
             Dts.DisposeManager();
             _usbChargingDebouncer.Dispose();
-            _customFanDebouncer.Dispose();
             _lightingDebouncer.Dispose();
             if (_coverSyncFrameHooked && _hw is ProductionHardwareService hooked)
             {

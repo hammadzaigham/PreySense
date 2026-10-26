@@ -18,6 +18,7 @@ namespace PreySense.Frontend
         private bool _isExplicitExit = false;
         private readonly List<Window> _autoHiddenWindows = new();
         private Window? _autoHiddenActiveWindow;
+        private Views.FanCurveWindow? _fanCurveWindow;
 
         public MainWindow()
         {
@@ -326,6 +327,21 @@ namespace PreySense.Frontend
                 vm.EnsureGpuHardwareInitialized();
 
             ShowModeSettingsWindow();
+        }
+
+        private void FansButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fanCurveWindow is { } existing)
+            {
+                if (!existing.IsVisible) existing.Show();
+                if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+                existing.Activate();
+                return;
+            }
+            var window = new Views.FanCurveWindow { Owner = this, DataContext = DataContext };
+            _fanCurveWindow = window;
+            window.Closed += (_, _) => _fanCurveWindow = null;
+            window.ShowDialog();
         }
 
         private void AdvancedButton_Click(object sender, RoutedEventArgs e)

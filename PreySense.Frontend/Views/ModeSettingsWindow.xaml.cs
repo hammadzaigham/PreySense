@@ -354,8 +354,8 @@ namespace PreySense.Frontend.Views
             // Apply CPU limits to hardware
             // Select the edited mode before writing its mode-table entries.
             byte selectedMode = ModeIndexToByte(_selectedModeIndex);
-            if (vm.ActivePowerMode != selectedMode)
-                await vm.SetModeAsync(selectedMode);
+            if (vm.ActivePowerMode != selectedMode || !vm.IsGpuHardwareModeActive(selectedMode))
+                await vm.ApplyModeSwitchAsync(selectedMode);
             if (!await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(selectedMode)))
             {
                 vm.StatusMessage = "The selected Acer mode could not be confirmed; limits were not applied.";

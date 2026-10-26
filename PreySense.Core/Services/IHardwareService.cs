@@ -39,12 +39,14 @@ namespace PreySense.Core.Services
 
         // Power Profiles
         byte CurrentPowerMode { get; }
+        bool TryGetPowerMode(out byte mode) { mode = CurrentPowerMode; return true; }
         bool SetPowerMode(byte mode);
         event EventHandler<byte>? PowerModeChanged;
 
         // Fan Control
         bool SetFanMode(byte cpuMode, byte gpuMode);
         bool SetFanSpeeds(byte cpuPercentage, byte gpuPercentage);
+        void InvalidateFanTargets() { }
 
         // Battery Control
         int GetBatteryChargeLimit();

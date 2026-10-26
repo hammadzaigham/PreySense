@@ -37,7 +37,6 @@ namespace PreySense.Helpers
         private int _lastSetFanMode = -1;
         private int _lastSetCpuSpeed = -1;
         private int _lastSetGpuSpeed = -1;
-        private long _lastSetFanTick = 0;
         private Color[] _zoneColors = new Color[4] { 
             Color.FromArgb(0, 150, 255), 
             Color.FromArgb(0, 150, 255), 
@@ -542,6 +541,7 @@ namespace PreySense.Helpers
             if (!success)
                 return false;
 
+            lock (_lock) { _lastSetFanMode = -1; }
             SyncWindowsPowerMode(mode);
             if (TryGetPowerProfileWmi(out byte postMode) && postMode == mode)
                 AppLogger.Log($"[SetPowerMode-Diag] SUCCESS via WMI verified: mode=0x{mode:X2}");
@@ -597,85 +597,43 @@ namespace PreySense.Helpers
             return EcFanPolicy.ClampDuty(percent);
         }
 
-        public void SetCpuFanSpeed(int percent)
+        public void InvalidateFanTargets()
         {
-            lock (_lock)
-            {
-                try
-                {
-                    var obj = GetWmiObject();
-                    if (obj == null) return;
-                    using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.SetFanSpeed);
-                    int wmiPercent = ScalePercentToWmi(percent);
-                    ulong val = (ulong)(((wmiPercent * 25600) / 100) & 0xFF00) + 1;
-                    inParams["gmInput"] = val;
-                    obj.InvokeMethod(AcerWmi.GamingMethods.SetFanSpeed, inParams, null);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Log($"[FanControl] CPU SetFanSpeed Exception: {ex.Message}");
-                    InvalidateCache();
-                }
-            }
+            lock (_lock) { _lastSetFanMode = -1; }
         }
 
-        public void SetGpuFanSpeed(int percent)
+        public bool SetCpuFanSpeed(int percent) => SetFanDuty(1, percent);
+        public bool SetGpuFanSpeed(int percent) => SetFanDuty(4, percent);
+
+        private bool SetFanDuty(int fan, int percent)
         {
-            lock (_lock)
-            {
-                try
-                {
-                    var obj = GetWmiObject();
-                    if (obj == null) return;
-                    using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.SetFanSpeed);
-                    int wmiPercent = ScalePercentToWmi(percent);
-                    ulong val = (ulong)(((wmiPercent * 25600) / 100) & 0xFF00) + 4;
-                    inParams["gmInput"] = val;
-                    obj.InvokeMethod(AcerWmi.GamingMethods.SetFanSpeed, inParams, null);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Log($"[FanControl] GPU SetFanSpeed Exception: {ex.Message}");
-                    InvalidateCache();
-                }
-            }
+            int duty = EcFanPolicy.ClampDuty(percent);
+            ulong payload = (ulong)(((duty * 25600) / 100) & 0xFF00) + (uint)fan;
+            return SendCommand(AcerWmi.GamingMethods.SetFanSpeed, payload).success;
         }
 
         public bool SetFanControlWmi(int mode, int cpuSpeed = 50, int gpuSpeed = 50)
         {
-            long now = Environment.TickCount64;
-            bool force = (mode != _lastSetFanMode);
-            
-            if (mode == 2 && !force)
+            lock (_lock)
             {
-                // Never rewrite the same PWM. The old 1 Hz keep-alive made the EC
-                // restart the duty cycle and produced audible coil hiss.
-                if (cpuSpeed == _lastSetCpuSpeed && gpuSpeed == _lastSetGpuSpeed)
+                cpuSpeed = EcFanPolicy.ClampDuty(cpuSpeed);
+                gpuSpeed = EcFanPolicy.ClampDuty(gpuSpeed);
+                bool force = mode != _lastSetFanMode;
+                if (!force && (mode != 2 || cpuSpeed == _lastSetCpuSpeed && gpuSpeed == _lastSetGpuSpeed))
                     return true;
+                // Only enter Custom once. Re-entering it for every band change can
+                // restart the EC's fan control cycle and produce audible pulses.
+                if (force && !SetFanBehavior((byte)mode)) return false;
+                if (mode == 2)
+                {
+                    if ((force || cpuSpeed != _lastSetCpuSpeed) && !SetCpuFanSpeed(cpuSpeed)) return false;
+                    if ((force || gpuSpeed != _lastSetGpuSpeed) && !SetGpuFanSpeed(gpuSpeed)) return false;
+                }
+                _lastSetFanMode = mode;
+                _lastSetCpuSpeed = cpuSpeed;
+                _lastSetGpuSpeed = gpuSpeed;
+                return true;
             }
-            else if (mode == _lastSetFanMode && mode != 2)
-            {
-                return true; // No mode change, not custom mode, skip
-            }
-
-            bool success = SetFanBehavior((byte)mode);
-            if (!success)
-            {
-                AppLogger.Log($"[FanControl] SetFanBehavior failed for mode={mode}");
-                return false;
-            }
-
-            if (mode == 2)
-            {
-                SetCpuFanSpeed(EcFanPolicy.ClampDuty(cpuSpeed));
-                SetGpuFanSpeed(EcFanPolicy.ClampDuty(gpuSpeed));
-            }
-
-            _lastSetFanMode = mode;
-            _lastSetCpuSpeed = cpuSpeed;
-            _lastSetGpuSpeed = gpuSpeed;
-            _lastSetFanTick = now;
-            return true;
         }
 
         private static int RoundToNearest100(int value) => (int)(Math.Round(value / 100.0) * 100);

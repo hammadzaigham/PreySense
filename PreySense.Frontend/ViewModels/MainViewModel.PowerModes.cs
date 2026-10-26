@@ -52,11 +52,11 @@ namespace PreySense.Frontend.ViewModels
             byte mode = modeParam switch
             {
                 byte b => b,
-                int i => (byte)i,
+                int i when i is >= 0 and <= 255 => (byte)i,
                 string s when byte.TryParse(s, out byte parsed) => parsed,
                 _ => 0xFF
             };
-            if (mode == 0xFF) return;
+            if (!ProfileManager.IsSupportedMode(mode)) return;
             if (mode == PeekPendingOrActiveMode())
                 return;
 
@@ -89,12 +89,13 @@ namespace PreySense.Frontend.ViewModels
             await _modeSwitchGate.WaitAsync();
             try
             {
+                if (debounceToken.IsCancellationRequested) return;
                 byte toApply;
                 lock (_modeSwitchDebounceLock)
                     toApply = _pendingHardwareMode;
                 if (toApply == 0xFF)
                     return;
-                await ApplyModeSwitchAsync(toApply);
+                await ApplyModeSwitchCoreAsync(toApply);
                 lock (_modeSwitchDebounceLock)
                 {
                     if (_pendingHardwareMode == toApply)
@@ -143,6 +144,26 @@ namespace PreySense.Frontend.ViewModels
 
         internal async Task ApplyModeSwitchAsync(byte mode, bool applyCustomLimits = true)
         {
+            CancelPendingModeSwitch();
+            await _modeSwitchGate.WaitAsync();
+            try { await ApplyModeSwitchCoreAsync(mode, applyCustomLimits); }
+            finally { _modeSwitchGate.Release(); }
+        }
+
+        private void CancelPendingModeSwitch()
+        {
+            lock (_modeSwitchDebounceLock)
+            {
+                _modeSwitchDebounceCts?.Cancel();
+                _modeSwitchDebounceCts?.Dispose();
+                _modeSwitchDebounceCts = null;
+                _pendingHardwareMode = 0xFF;
+            }
+        }
+
+        private async Task ApplyModeSwitchCoreAsync(byte mode, bool applyCustomLimits = true)
+        {
+            if (!ProfileManager.IsSupportedMode(mode)) return;
             if (IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
             if (!applyCustomLimits || !IsAcpiOverrideEnabled || !IsOpenCoreLoaded || !IsFactoryCalibrationComplete)
             {
@@ -240,9 +261,16 @@ namespace PreySense.Frontend.ViewModels
                 return;
 
             byte mode = ProfileManager.SourceProfileMode(ProfileIndexFor(source));
+            if (_appliedGameExe != null)
+            {
+                _modeBeforeGame = mode;
+                return;
+            }
+
             if (PeekPendingOrActiveMode() == mode)
                 return;
 
+            CancelPendingModeSwitch();
             _ = ApplyModeSwitchAsync(mode);
         }
 
@@ -255,7 +283,7 @@ namespace PreySense.Frontend.ViewModels
 
         private void RememberSourceProfile(byte mode)
         {
-            if (_suppressPowerProfile)
+            if (_suppressPowerProfile || _appliedGameExe != null)
                 return;
 
             int index = ProfileManager.SourceProfileIndex(mode);

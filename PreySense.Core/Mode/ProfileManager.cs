@@ -13,6 +13,7 @@ namespace PreySense.Mode
     public static class ProfileManager
     {
         private const string RegistryBase = @"SOFTWARE\PreySense\Profiles";
+        public static bool IsSupportedMode(byte mode) => mode is 0 or 1 or 4 or 5 or 6;
 
         /// <summary>
         /// Maps a WMI power mode code to a registry-safe profile name.
@@ -67,7 +68,7 @@ namespace PreySense.Mode
                 profile.ApplyCpuLimits = (int)key.GetValue("ApplyCpuLimits", 0) == 1;
                 profile.ApplyGpuLimits = (int)key.GetValue("ApplyGpuLimits", 0) == 1;
                 profile.ApplyFanCurve = (int)key.GetValue("ApplyFanCurve", 0) == 1;
-                profile.FanRampUp = Math.Clamp((int)key.GetValue("FanRampUp", 1), 0, 5);
+                profile.FanRampUp = Math.Clamp((int)key.GetValue("FanRampUp", 1), 0, 10);
             }
             catch { }
 

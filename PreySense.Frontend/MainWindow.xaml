@@ -7,7 +7,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.0">
+      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.5">
         <controls:WindowTitleBar.Actions>
           <Button AutomationProperties.AutomationId="BtnSettings" Style="{StaticResource TitleBarButtonStyle}" Click="SettingsButton_Click">
             <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-settings-32.png" Width="14" Height="14" />
@@ -275,81 +275,7 @@
             </Grid>
           </StackPanel>
         </Border>
-        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
-          <StackPanel>
-            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-fan-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                <TextBlock Text="Fans" Style="{StaticResource OriginalSectionTitleStyle}" />
-              </StackPanel>
-            </Grid>
-            <UniformGrid Columns="3" Rows="1" Margin="0,2,0,8">
-              <Button AutomationProperties.AutomationId="BtnFanAuto" Height="38" Margin="3,0" CommandParameter="0" Command="{Binding SetFanModeCommand}">
-                <FrameworkElement.Style>
-                  <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
-                    <Style.Triggers>
-                      <DataTrigger Value="True" Binding="{Binding IsAutoFanActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </FrameworkElement.Style>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-automation-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                  <TextBlock Text="Auto" FontSize="{DynamicResource FontSizeTile}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-              <Button AutomationProperties.AutomationId="BtnFanMax" Height="38" Margin="3,0" CommandParameter="1" Command="{Binding SetFanModeCommand}">
-                <FrameworkElement.Style>
-                  <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
-                    <Style.Triggers>
-                      <DataTrigger Value="True" Binding="{Binding IsMaxFanActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource ModeTurboBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </FrameworkElement.Style>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-fan-48.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                  <TextBlock Text="Max" FontSize="{DynamicResource FontSizeTile}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-              <Button AutomationProperties.AutomationId="BtnFanCustom" Height="38" Margin="3,0" CommandParameter="2" Command="{Binding SetFanModeCommand}">
-                <FrameworkElement.Style>
-                  <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
-                    <Style.Triggers>
-                      <DataTrigger Value="True" Binding="{Binding IsCustomFanActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </FrameworkElement.Style>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-controls-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                  <TextBlock Text="Custom" FontSize="{DynamicResource FontSizeTile}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-            </UniformGrid>
-            <StackPanel Margin="0,4,0,0" Visibility="{Binding IsCustomFanActive, Converter={StaticResource BoolToVis}}">
-              <controls:SettingSliderRow Title="CPU Fan"
-                                         Margin="0,0,0,8"
-                                         Value="{Binding CustomCpuFanPercent, Mode=TwoWay}"
-                                         ValueText="{Binding CustomCpuFanPercent, StringFormat={}{0}%}"
-                                         Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5"/>
-              <controls:SettingSliderRow Title="GPU Fan"
-                                         Margin="0"
-                                         Value="{Binding CustomGpuFanPercent, Mode=TwoWay}"
-                                         ValueText="{Binding CustomGpuFanPercent, StringFormat={}{0}%}"
-                                         Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="5"/>
-            </StackPanel>
-          </StackPanel>
-        </Border>
+
       </StackPanel>
       <Grid Grid.Row="2" Margin="{StaticResource WindowFooterMargin}">
         <Grid.RowDefinitions>
@@ -357,7 +283,7 @@
           <RowDefinition Height="6"/>
           <RowDefinition Height="34"/>
         </Grid.RowDefinitions>
-        <UniformGrid Grid.Row="0" Columns="3" HorizontalAlignment="Stretch">
+        <UniformGrid Grid.Row="0" Columns="4" HorizontalAlignment="Stretch">
           <Button AutomationProperties.AutomationId="BtnNavLighting" Style="{StaticResource WindowFooterButtonStyle}" Click="KeyboardButton_Click">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
               <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-color-32.png" Width="14" Height="14" Margin="0,0,5,0" VerticalAlignment="Center" />
@@ -374,6 +300,12 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
               <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-soonvibes-32.png" Width="14" Height="14" Margin="0,0,5,0" VerticalAlignment="Center" />
               <TextBlock Text="Overlay" FontSize="{DynamicResource FontSizeBody}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button AutomationProperties.AutomationId="BtnNavFans" Style="{StaticResource WindowFooterButtonStyle}" Click="FansButton_Click">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-fan-32.png" Width="14" Height="14" Margin="0,0,5,0" VerticalAlignment="Center" />
+              <TextBlock Text="Fans" FontSize="{DynamicResource FontSizeBody}" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
         </UniformGrid>
