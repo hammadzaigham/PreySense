@@ -28,9 +28,9 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>PreySense</AssemblyName>
-    <Version>2.4.5</Version>
-    <AssemblyVersion>2.4.5.0</AssemblyVersion>
-    <FileVersion>2.4.5.0</FileVersion>
+    <Version>2.4.6</Version>
+    <AssemblyVersion>2.4.6.0</AssemblyVersion>
+    <FileVersion>2.4.6.0</FileVersion>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

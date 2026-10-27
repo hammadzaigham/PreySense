@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v2.4.5** adds interactive custom CPU & GPU fan curves, factory fan table presets, fan ramp-up delay, emergency cooling protection, and serialized power/game mode policy fixes. See the [release notes](docs/releases/v2.4.5.md).
+**v2.4.6** adds interactive custom CPU & GPU fan curves, factory fan table presets, fan ramp-up delay, emergency cooling protection, and serialized power/game mode policy fixes. See the [release notes](docs/releases/v2.4.5.md).
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 
