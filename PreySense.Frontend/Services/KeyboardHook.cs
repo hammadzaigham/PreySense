@@ -102,6 +102,10 @@ namespace PreySense.Frontend.Services
 
         public static bool IsChassisModeKey(uint vkCode, uint scanCode)
         {
+            // Acer Copilot firmware may expose this as the unknown 0x6E
+            // keyboard usage. It is not the chassis/Turbo key.
+            if (scanCode == 0x6E)
+                return false;
             if (scanCode == SC_PREDATOR)
                 return false;
             if (TryGetBrightnessDelta(vkCode, scanCode, out _))
@@ -150,6 +154,8 @@ namespace PreySense.Frontend.Services
                 {
                     var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
+                    bool isPhysicalPredatorKey = hookStruct.scanCode == SC_PREDATOR;
+
                     if (TryGetBrightnessDelta(hookStruct.vkCode, hookStruct.scanCode, out int brightnessDelta) &&
                         _onBrightnessDelta != null)
                     {
@@ -182,7 +188,6 @@ namespace PreySense.Frontend.Services
                     }
 
                     bool isPredatorKey = hookStruct.scanCode == SC_PREDATOR;
-
                     if (isPredatorKey)
                     {
                         if (isKeyDown)
@@ -196,25 +201,13 @@ namespace PreySense.Frontend.Services
                         else if (isKeyUp)
                         {
                             if (!_predatorUsedInCombo && !_suppressPredatorReleaseAction)
-                            {
-                                _onPredatorSensePressed();
-                            }
+                                SafeInvoke(_onPredatorSensePressed);
                             _isPredatorKeyPressed = false;
                             _predatorUsedInCombo = false;
                             _predatorRComboDown = false;
                             _suppressPredatorReleaseAction = false;
                             _activePredatorNumber = null;
                         }
-                        return (IntPtr)1; // Consume key
-                    }
-
-                    if (isKeyUp && _isPredatorKeyPressed && hookStruct.scanCode == SC_PREDATOR)
-                    {
-                        _isPredatorKeyPressed = false;
-                        _predatorUsedInCombo = false;
-                        _predatorRComboDown = false;
-                        _suppressPredatorReleaseAction = false;
-                        _activePredatorNumber = null;
                         return (IntPtr)1;
                     }
 
@@ -234,7 +227,7 @@ namespace PreySense.Frontend.Services
                                 _predatorUsedInCombo = true;
                                 _suppressPredatorReleaseAction = true;
                                 _activePredatorNumber = number;
-                                _onPredatorNumberPressed(number);
+                            _onPredatorNumberPressed(number);
                             }
                         }
                         else if (isKeyUp && _activePredatorNumber == number)
@@ -265,6 +258,12 @@ namespace PreySense.Frontend.Services
                 }
             }
             return CallNextHookEx(_hookId, nCode, wParam, lParam);
+        }
+
+        private static void SafeInvoke(Action? action)
+        {
+            try { action?.Invoke(); }
+            catch (Exception ex) { PreySense.AppLogger.Error($"Keyboard shortcut callback failed: {ex}"); }
         }
 
         #region Win32 API Imports

@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Management;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PreySense;
 using PreySense.Mode;
 
 namespace PreySense.Frontend.Services
@@ -13,13 +16,50 @@ namespace PreySense.Frontend.Services
         private readonly Func<IReadOnlyList<GameProfile>> _getProfiles;
         private readonly Func<GameProfile, Task> _onLaunch;
         private readonly Func<Task> _onExit;
-        private readonly System.Timers.Timer _timer;
         private readonly object _tickLock = new();
-        private ManagementEventWatcher? _processStartWatcher;
-        private ManagementEventWatcher? _processStopWatcher;
+        private uint _activeProcessId;
         private string? _activeExe;
+        private Process? _activeProcess;
         private int _tickRunning;
         private int _disposed;
+        private readonly WinEventDelegate _foregroundEventHandler;
+        private IntPtr _foregroundEventHook;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint flags, StringBuilder lpExeName, ref uint lpdwSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const uint STILL_ACTIVE = 259;
+        private const uint EventSystemForeground = 0x0003;
+        private const uint WinEventOutOfContext = 0x0000;
+        private const uint WinEventSkipOwnProcess = 0x0002;
+
+        private delegate void WinEventDelegate(
+            IntPtr hook, uint eventType, IntPtr window, int objectId, int childId,
+            uint eventThreadId, uint eventTime);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWinEventHook(
+            uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate callback,
+            uint processId, uint threadId, uint flags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool UnhookWinEvent(IntPtr hook);
 
         public GameLaunchWatcher(
             Func<IReadOnlyList<GameProfile>> getProfiles,
@@ -29,64 +69,24 @@ namespace PreySense.Frontend.Services
             _getProfiles = getProfiles;
             _onLaunch = onLaunch;
             _onExit = onExit;
-            _timer = new System.Timers.Timer(2000) { AutoReset = true };
-            _timer.Elapsed += (_, _) => Tick();
-            _timer.Start();
-            TryStartProcessWatchers();
+            _foregroundEventHandler = OnForegroundWindowChanged;
+            _foregroundEventHook = SetWinEventHook(
+                EventSystemForeground,
+                EventSystemForeground,
+                IntPtr.Zero,
+                _foregroundEventHandler,
+                0,
+                0,
+                WinEventOutOfContext | WinEventSkipOwnProcess);
+            Tick();
         }
 
-        private void TryStartProcessWatchers()
+        private void OnForegroundWindowChanged(
+            IntPtr hook, uint eventType, IntPtr window, int objectId, int childId,
+            uint eventThreadId, uint eventTime)
         {
-            try
-            {
-                _processStartWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT ProcessName FROM Win32_ProcessStartTrace"));
-                _processStopWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT ProcessName FROM Win32_ProcessStopTrace"));
-                _processStartWatcher.EventArrived += ProcessEventArrived;
-                _processStopWatcher.EventArrived += ProcessEventArrived;
-                _processStartWatcher.Start();
-                _processStopWatcher.Start();
-
-                // Events provide immediate detection. Keep a slow poll to recover
-                // from sleep/resume or a dropped WMI notification.
-                _timer.Interval = 15000;
-            }
-            catch
-            {
-                StopProcessWatchers();
-                _timer.Interval = 2000;
-            }
-        }
-
-        private void ProcessEventArrived(object sender, EventArrivedEventArgs e)
-        {
-            try
-            {
-                string eventName = e.NewEvent["ProcessName"]?.ToString() ?? string.Empty;
-                if (eventName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                    eventName = eventName[..^4];
-
-                foreach (GameProfile profile in _getProfiles())
-                {
-                    if (profile.Enabled && string.Equals(profile.ProcessName, eventName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Tick();
-                        return;
-                    }
-                }
-            }
-            catch { }
-        }
-
-        private void StopProcessWatchers()
-        {
-            foreach (ManagementEventWatcher? watcher in new[] { _processStartWatcher, _processStopWatcher })
-            {
-                if (watcher == null) continue;
-                try { watcher.Stop(); } catch { }
-                watcher.Dispose();
-            }
-            _processStartWatcher = null;
-            _processStopWatcher = null;
+            if (window != IntPtr.Zero)
+                Tick();
         }
 
         private void Tick()
@@ -98,69 +98,65 @@ namespace PreySense.Frontend.Services
 
             try
             {
-                GameProfile? match = null;
-                List<KeyValuePair<string, GameProfile>>? watchedProfiles = null;
-                foreach (GameProfile profile in _getProfiles())
+                lock (_tickLock)
                 {
-                    string processName = profile.ProcessName;
-                    if (profile.Enabled && !string.IsNullOrWhiteSpace(processName))
+                    // 1. If a game is currently active, verify its process is still alive.
+                    // Games remain active even when temporarily alt-tabbed or running borderless.
+                    if (_activeProcessId != 0)
                     {
-                        watchedProfiles ??= new List<KeyValuePair<string, GameProfile>>(4);
-                        watchedProfiles.Add(new KeyValuePair<string, GameProfile>(processName, profile));
-                    }
-                }
-
-                // Take one process snapshot per tick. Calling GetProcessesByName for
-                // every profile repeatedly walks the system process table and also
-                // leaves the returned Process wrappers to finalization.
-                if (watchedProfiles is { Count: > 0 })
-                {
-                    var runningNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (Process process in Process.GetProcesses())
-                    {
-                        using (process)
+                        if (IsProcessAlive(_activeProcessId))
                         {
-                            try
-                            {
-                                runningNames.Add(process.ProcessName);
-                            }
-                            catch
-                            {
-                                // Processes can exit (or become inaccessible) while
-                                // the snapshot is being inspected.
-                            }
+                            return; // Game is still running normally, zero work needed.
                         }
+
+                        // The active game process has terminated.
+                        _activeProcessId = 0;
+                        _activeExe = null;
+                        DetachActiveProcess();
+                        _ = RunCallbackAsync(_onExit, "game exit");
+                        return;
                     }
 
-                    foreach (KeyValuePair<string, GameProfile> watched in watchedProfiles)
+                    // 2. No game currently active; check if the foreground window matches any game profile.
+                    IntPtr hWnd = GetForegroundWindow();
+                    if (hWnd == IntPtr.Zero)
+                        return;
+
+                    GetWindowThreadProcessId(hWnd, out uint pid);
+                    if (pid == 0 || pid == 4) // 0 = Idle, 4 = System
+                        return;
+
+                    string? foregroundExe = GetProcessExeName(pid);
+                    if (string.IsNullOrEmpty(foregroundExe))
+                        return;
+
+                    string foregroundProcessName = foregroundExe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                        ? foregroundExe[..^4]
+                        : foregroundExe;
+
+                    foreach (GameProfile profile in _getProfiles())
                     {
-                        if (runningNames.Contains(watched.Key))
+                        if (!profile.Enabled)
+                            continue;
+
+                        bool match = string.Equals(profile.ProcessName, foregroundProcessName, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(profile.ExeName, foregroundExe, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(profile.ProcessName, foregroundExe, StringComparison.OrdinalIgnoreCase);
+
+                        if (match)
                         {
-                            match = watched.Value;
+                            _activeProcessId = pid;
+                            _activeExe = profile.ExeName;
+                            AttachActiveProcess(pid);
+                            _ = RunCallbackAsync(() => _onLaunch(profile), $"game launch ({profile.ExeName})");
                             break;
                         }
                     }
                 }
-
-                string? nextExe = match?.ExeName;
-                bool changed;
-                lock (_tickLock)
-                {
-                    changed = !string.Equals(_activeExe, nextExe, StringComparison.OrdinalIgnoreCase);
-                    if (changed)
-                        _activeExe = nextExe;
-                }
-
-                if (!changed)
-                    return;
-
-                if (match != null)
-                    _ = _onLaunch(match);
-                else
-                    _ = _onExit();
             }
-            catch
+            catch (Exception ex)
             {
+                AppLogger.Error($"Game launch watcher tick failed: {ex.Message}");
             }
             finally
             {
@@ -168,13 +164,112 @@ namespace PreySense.Frontend.Services
             }
         }
 
+        private static async Task RunCallbackAsync(Func<Task> callback, string operation)
+        {
+            try
+            {
+                await callback().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Hardware/profile application runs asynchronously from the timer.
+                // Observe failures here so they do not become unobserved task errors.
+                AppLogger.Error($"Game launch watcher {operation} callback failed: {ex}");
+            }
+        }
+
+        private void AttachActiveProcess(uint pid)
+        {
+            DetachActiveProcess();
+            try
+            {
+                var process = Process.GetProcessById((int)pid);
+                process.EnableRaisingEvents = true;
+                process.Exited += ActiveProcessExited;
+                _activeProcess = process;
+            }
+            catch
+            {
+                // The process can exit between foreground detection and attachment.
+            }
+        }
+
+        private void ActiveProcessExited(object? sender, EventArgs e) => Tick();
+
+        private void DetachActiveProcess()
+        {
+            if (_activeProcess == null)
+                return;
+            try
+            {
+                _activeProcess.Exited -= ActiveProcessExited;
+                _activeProcess.Dispose();
+            }
+            catch { }
+            _activeProcess = null;
+        }
+
+        private static bool IsProcessAlive(uint pid)
+        {
+            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                if (GetExitCodeProcess(hProcess, out uint exitCode))
+                {
+                    return exitCode == STILL_ACTIVE;
+                }
+                return false;
+            }
+            finally
+            {
+                CloseHandle(hProcess);
+            }
+        }
+
+        private static string? GetProcessExeName(uint pid)
+        {
+            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess != IntPtr.Zero)
+            {
+                try
+                {
+                    var sb = new StringBuilder(1024);
+                    uint size = (uint)sb.Capacity;
+                    if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
+                    {
+                        return Path.GetFileName(sb.ToString());
+                    }
+                }
+                finally
+                {
+                    CloseHandle(hProcess);
+                }
+            }
+
+            try
+            {
+                using var proc = Process.GetProcessById((int)pid);
+                return proc.ProcessName;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
-            _timer.Stop();
-            _timer.Dispose();
-            StopProcessWatchers();
+            DetachActiveProcess();
+            if (_foregroundEventHook != IntPtr.Zero)
+            {
+                UnhookWinEvent(_foregroundEventHook);
+                _foregroundEventHook = IntPtr.Zero;
+            }
         }
     }
 }

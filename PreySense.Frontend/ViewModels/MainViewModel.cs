@@ -26,6 +26,7 @@ namespace PreySense.Frontend.ViewModels
         private int _pendingBrightnessDelta;
         private int _telemetryPollInProgress;
         private bool _telemetryPollingActive;
+        private bool _telemetryWindowVisible;
         private bool _hasPushedTelemetry;
         private HardwareTelemetry _lastPolledTelemetry;
         private bool _disposed;
@@ -98,7 +99,8 @@ namespace PreySense.Frontend.ViewModels
             _turboKeyWatcher.BrightnessKeyPressed += OnBrightnessKeyPressed;
             StartGameLaunchWatcher();
 
-            // 1-second telemetry only while a PreySense window is visible.
+            // The timer also supports tray Custom fan control. Full sensor reads
+            // are skipped once Auto or Max has been applied.
             _telemetryTimer = new System.Timers.Timer(VisibleTelemetryIntervalMs) { AutoReset = true };
             _telemetryTimer.Elapsed += OnTelemetryTimerElapsed;
             SetTelemetryPollingActive(true);
@@ -275,6 +277,12 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed || !_telemetryPollingActive)
                 return;
 
+            // Game detection, hotkeys, power-source events, firmware Auto, and
+            // firmware Max fan control do not require a full telemetry packet
+            // while hidden.
+            if (!_telemetryWindowVisible && !RequiresFanTelemetry)
+                return;
+
             if (_dispatcher.CheckAccess())
             {
                 Task.Run(PollTelemetry);
@@ -355,11 +363,13 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed)
                 return;
 
-            // Keep following external profile changes, including Auto -> Max/Custom in the tray.
+            _telemetryWindowVisible = isVisible;
             _telemetryPollingActive = true;
             if (_telemetryPollingActive)
             {
-                _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
+                _telemetryTimer.Interval = isVisible || RequiresFanTelemetry
+                    ? VisibleTelemetryIntervalMs
+                    : 5000;
                 if (!_telemetryTimer.Enabled)
                     _telemetryTimer.Start();
             }
@@ -383,6 +393,9 @@ namespace PreySense.Frontend.ViewModels
                     || (DateTime.UtcNow - _lastPhysicalModeKeyUtc).TotalMilliseconds < 1500
                     || ActivePowerMode == mode)
                     return;
+                lock (_fanControlGate)
+                    ResetFanFollower();
+                UpdateFanTelemetryInterval();
                 ActivePowerMode = mode;
                 UpdateModeName(mode);
                 NotifyModeSelectionsChanged();

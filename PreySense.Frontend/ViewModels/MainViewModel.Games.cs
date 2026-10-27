@@ -168,21 +168,17 @@ namespace PreySense.Frontend.ViewModels
         }
 
         [RelayCommand]
-        private async Task ApplySelectedGameProfileAsync()
-        {
-            if (!IsAcpiOverrideEnabled || SelectedGameProfile == null)
-                return;
-            await ApplyGameProfileAsync(SelectedGameProfile);
-        }
-
-        [RelayCommand]
-        private void SaveSelectedGameProfile()
+        private async Task SaveSelectedGameProfileAsync()
         {
             if (!IsAcpiOverrideEnabled || SelectedGameProfile == null)
                 return;
             UpdateSelectedGameGpuOffsets();
             SaveGameProfiles();
             StatusMessage = $"Saved {SelectedGameProfile.DisplayName} profile.";
+            if (string.Equals(_appliedGameExe, SelectedGameProfile.ExeName, StringComparison.OrdinalIgnoreCase))
+            {
+                await ApplyGameProfileAsync(SelectedGameProfile);
+            }
         }
 
         [RelayCommand]

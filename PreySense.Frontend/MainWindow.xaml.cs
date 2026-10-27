@@ -313,12 +313,7 @@ namespace PreySense.Frontend
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            var win = new Views.AdvancedSettingsWindow
-            {
-                Owner = this,
-                DataContext = DataContext
-            };
-            win.ShowDialog();
+            ShowDialog<Views.AdvancedSettingsWindow>();
         }
 
         private void ModeSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -346,12 +341,7 @@ namespace PreySense.Frontend
 
         private void AdvancedButton_Click(object sender, RoutedEventArgs e)
         {
-            var window = new Views.AdvancedWindow
-            {
-                Owner = this,
-                DataContext = DataContext
-            };
-            window.ShowDialog();
+            ShowDialog<Views.AdvancedWindow>();
         }
 
         private Views.ModeSettingsWindow CreateModeSettingsWindow()
@@ -371,43 +361,29 @@ namespace PreySense.Frontend
             dialog.ShowDialog();
         }
 
-        private void CenterOnOwner(Window child)
-        {
-            child.WindowStartupLocation = WindowStartupLocation.Manual;
-            double width = child.ActualWidth > 1 ? child.ActualWidth : child.Width;
-            double height = child.ActualHeight > 1 ? child.ActualHeight : 480;
-            child.Left = Left + (ActualWidth - width) / 2;
-            child.Top = Top + Math.Max(0, (ActualHeight - height) / 2);
-        }
-
         private void GamesButton_Click(object sender, RoutedEventArgs e)
         {
-            var win = new Views.GamesWindow
-            {
-                Owner = this,
-                DataContext = DataContext
-            };
-            win.ShowDialog();
+            ShowDialog<Views.GamesWindow>();
         }
 
         private void KeyboardButton_Click(object sender, RoutedEventArgs e)
         {
-            var win = new Views.KeyboardWindow
-            {
-                Owner = this,
-                DataContext = DataContext
-            };
-            win.ShowDialog();
+            ShowDialog<Views.KeyboardWindow>();
         }
 
         private void MetricsButton_Click(object sender, RoutedEventArgs e)
         {
-            var win = new Views.MetricsWindow
+            ShowDialog<Views.MetricsWindow>();
+        }
+
+        private void ShowDialog<TWindow>() where TWindow : Window, new()
+        {
+            var window = new TWindow
             {
                 Owner = this,
                 DataContext = DataContext
             };
-            win.ShowDialog();
+            window.ShowDialog();
         }
 
         private void QuitButton_Click(object sender, RoutedEventArgs e)

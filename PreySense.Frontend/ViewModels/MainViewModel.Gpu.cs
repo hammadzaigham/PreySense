@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,6 +14,7 @@ namespace PreySense.Frontend.ViewModels
         private const string GpuModeRegistryPath = @"SOFTWARE\PreySense";
         private const string GpuModeRegistryValue = "GpuModePreference";
         private const int DefaultGpuMode = 1;
+        private int _gpuProcessRefreshInProgress;
 
         // GPU Power Target & ACPI Hardware Controls
         [ObservableProperty] private int _gpuPowerTargetWatts = 130;
@@ -483,23 +485,44 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task RefreshGpuProcessesAsync()
         {
-            var procs = await Task.Run(() => _hw.GetActiveGpuProcesses());
-            for (int i = ActiveGpuProcesses.Count - 1; i >= 0; i--)
+            // Process enumeration can be expensive (NVML + Process APIs). Do not
+            // allow a second refresh to start while one is already in flight.
+            if (System.Threading.Interlocked.Exchange(ref _gpuProcessRefreshInProgress, 1) != 0)
+                return;
+
+            try
             {
-                if (!procs.Any(p => p.ProcessId == ActiveGpuProcesses[i].ProcessId))
-                    ActiveGpuProcesses.RemoveAt(i);
+                var processes = await Task.Run(() => _hw.GetActiveGpuProcesses());
+                var byPid = new Dictionary<uint, PreySense.Gpu.GpuProcessInfo>(processes.Count);
+                foreach (var process in processes)
+                    byPid[process.ProcessId] = process;
+
+                for (int i = ActiveGpuProcesses.Count - 1; i >= 0; i--)
+                {
+                    if (!byPid.ContainsKey(ActiveGpuProcesses[i].ProcessId))
+                        ActiveGpuProcesses.RemoveAt(i);
+                }
+
+                var existingByPid = new Dictionary<uint, PreySense.Gpu.GpuProcessInfo>(ActiveGpuProcesses.Count);
+                foreach (var existing in ActiveGpuProcesses)
+                    existingByPid[existing.ProcessId] = existing;
+
+                foreach (var process in processes)
+                {
+                    if (!existingByPid.TryGetValue(process.ProcessId, out var existing))
+                        ActiveGpuProcesses.Add(process);
+                    else if (!string.Equals(existing.ProcessName, process.ProcessName, StringComparison.Ordinal))
+                        existing.ProcessName = process.ProcessName;
+                }
+
+                StatusMessage = ActiveGpuProcesses.Count > 0
+                    ? $"{ActiveGpuProcesses.Count} process(es) holding discrete GPU active"
+                    : "No background processes keeping discrete GPU awake (0W D3Cold ready)";
             }
-            foreach (var process in procs)
+            finally
             {
-                var existing = ActiveGpuProcesses.FirstOrDefault(p => p.ProcessId == process.ProcessId);
-                if (existing == null)
-                    ActiveGpuProcesses.Add(process);
-                else if (!string.Equals(existing.ProcessName, process.ProcessName, StringComparison.Ordinal))
-                    existing.ProcessName = process.ProcessName;
+                System.Threading.Interlocked.Exchange(ref _gpuProcessRefreshInProgress, 0);
             }
-            StatusMessage = ActiveGpuProcesses.Count > 0 
-                ? $"{ActiveGpuProcesses.Count} process(es) holding discrete GPU active"
-                : "No background processes keeping discrete GPU awake (0W D3Cold ready)";
         }
 
         [RelayCommand]

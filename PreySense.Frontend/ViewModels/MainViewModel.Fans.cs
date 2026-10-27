@@ -17,6 +17,22 @@ public partial class MainViewModel
     private bool _sentMaxFanMode, _fanOverrideActive, _fanFallbackActive;
     private long _fanRetryAfter, _fanModeSettlesAt;
 
+    internal bool RequiresFanTelemetry
+    {
+        get
+        {
+            lock (_fanControlGate)
+                return _runningFanProfile == null || _runningFanProfile.ControlMode == FanControlMode.Custom;
+        }
+    }
+
+    private void UpdateFanTelemetryInterval()
+    {
+        _telemetryTimer.Interval = _telemetryWindowVisible || RequiresFanTelemetry
+            ? VisibleTelemetryIntervalMs
+            : 5000;
+    }
+
     public int? AppliedCpuFanPercent
     {
         get { lock (_fanControlGate) return !_fanOverrideActive || _fanFallbackActive ? null : _sentMaxFanMode ? 100 : _sentCpuFan; }
@@ -60,6 +76,7 @@ public partial class MainViewModel
                 _runningFanProfileMode = mode;
                 _hw.InvalidateFanTargets();
                 _fanModeSettlesAt = Environment.TickCount64 + 3000;
+                UpdateFanTelemetryInterval();
             }
             if (_runningFanProfile.ControlMode == FanControlMode.Auto)
             {
@@ -70,6 +87,7 @@ public partial class MainViewModel
                     _fanFallbackActive = true;
                     _sentCpuFan = _sentGpuFan = null;
                 }
+                UpdateFanTelemetryInterval();
                 return;
             }
             if (_runningFanProfile.ControlMode == FanControlMode.Max)

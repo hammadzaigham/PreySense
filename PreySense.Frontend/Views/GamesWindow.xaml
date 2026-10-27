@@ -137,10 +137,8 @@
                     </StackPanel>
                 </Border>
 
-                <UniformGrid Columns="2" Style="{StaticResource WindowFooterPanelStyle}" Margin="0,0,0,8"
+                <UniformGrid Columns="1" Rows="1" Style="{StaticResource WindowFooterPanelStyle}" Margin="0,0,0,8"
                              IsEnabled="{Binding HasSelectedGameProfile}">
-                    <Button Content="Apply" Style="{StaticResource WindowFooterButtonStyle}"
-                            Command="{Binding ApplySelectedGameProfileCommand}"/>
                     <Button Content="Save" Style="{StaticResource WindowFooterButtonStyle}"
                             Command="{Binding SaveSelectedGameProfileCommand}"/>
                 </UniformGrid>

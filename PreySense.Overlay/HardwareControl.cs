@@ -50,6 +50,8 @@ namespace PreySense.Overlay
         private static readonly PdhCpuPowerMonitor _pdhPowerMonitor = new();
 
         private static int? _lastCpuUsage;
+        private static int _lastCpuMhz;
+        private static int _lastECoreMhz;
         private static long _lastSlowSensorTick;
         private const int SlowSensorIntervalMs = 1000;
 
@@ -125,20 +127,30 @@ namespace PreySense.Overlay
         {
             try
             {
-                eCoreMhz = 0;
                 if (_pdhMonitor.TrySampleFrequencies(out int pdhMaxMhz, out _, out _, out int eCoreMaxMhz))
                 {
                     if (eCoreMaxMhz > 0)
+                    {
+                        _lastECoreMhz = eCoreMaxMhz;
                         eCoreMhz = eCoreMaxMhz;
+                    }
                     if (pdhMaxMhz > 0)
+                    {
+                        _lastCpuMhz = pdhMaxMhz;
                         return pdhMaxMhz;
+                    }
                 }
             }
             catch (Exception ex)
             {
                 AppLogger.Log("GetCpuMhz failed: " + ex.Message);
             }
-            return 0;
+
+            // PDH can briefly fail during resume, topology changes, or a counter
+            // refresh. Keep the last valid reading so the overlay does not flash
+            // misleading 0 MHz values while the next sample is collected.
+            eCoreMhz = _lastECoreMhz > 0 ? _lastECoreMhz : null;
+            return _lastCpuMhz;
         }
 
         public static float? GetCPUPower()

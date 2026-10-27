@@ -74,11 +74,15 @@ namespace PreySense.Mode
             AppLogger.Log($"Windows Energy Saver on battery: {(enabled ? "on" : "off")} (threshold {threshold}).");
         }
 
+        private static int? _lastAppliedCpuBoost;
         public static void SetCpuBoost(int value)
         {
+            if (_lastAppliedCpuBoost.HasValue && _lastAppliedCpuBoost.Value == value)
+                return;
             RunPowerCfg($"-setacvalueindex scheme_current sub_processor perfboostmode {value}");
             RunPowerCfg($"-setdcvalueindex scheme_current sub_processor perfboostmode {value}");
             RunPowerCfg("-setactive scheme_current");
+            _lastAppliedCpuBoost = value;
         }
 
         private static void RunPowerCfg(string args)

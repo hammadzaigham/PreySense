@@ -35,7 +35,33 @@ namespace PreySense.Mode
         {
             Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
             string json = JsonSerializer.Serialize(profiles, JsonOptions);
-            File.WriteAllText(StorePath, json);
+        string tempPath = StorePath + $".{Environment.ProcessId}.tmp";
+        try
+        {
+            // Write and flush a complete replacement first. A power loss or
+            // process crash must not leave the user with a truncated profile file.
+            using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream))
+            {
+                writer.Write(json);
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(tempPath, StorePath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+                // Cleanup failure does not invalidate a successful replacement.
+            }
+        }
         }
 
         public static string NormalizeExeName(string pathOrName)

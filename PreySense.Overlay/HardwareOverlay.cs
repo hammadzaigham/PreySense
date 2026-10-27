@@ -337,6 +337,12 @@ namespace PreySense.Overlay
 
         private void TickCore()
         {
+            // A timer callback may already be queued when StopOverlay stops the
+            // timer. Do not allow that stale callback to perform another sensor,
+            // NVML, or render update after the overlay has been disabled.
+            if (!_active)
+                return;
+
             bool mouseOver = new Rectangle(Location, Size).Contains(Cursor.Position);
             bool keysDown = mouseOver && AreDragKeysDown();
             if (keysDown != _dragModeActive && !_dragging)
