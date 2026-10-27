@@ -24,6 +24,7 @@ namespace PreySense.Frontend.ViewModels
         private readonly HidModeKeyWatcher _hidModeKeyWatcher;
         private DateTime _lastPhysicalModeKeyUtc;
         private int _pendingBrightnessDelta;
+        private int _powerSourceUpdateQueued;
         private int _telemetryPollInProgress;
         private bool _telemetryPollingActive;
         private bool _telemetryWindowVisible;
@@ -56,29 +57,35 @@ namespace PreySense.Frontend.ViewModels
 
         private void OnPowerSourceChanged(object? sender, EventArgs e)
         {
-            if (_disposed)
+            if (_disposed || Interlocked.Exchange(ref _powerSourceUpdateQueued, 1) != 0)
                 return;
 
             _dispatcher.BeginInvoke(() =>
             {
-                if (_disposed)
-                    return;
-
-                PowerSourceKind source = _hw.GetPowerSource();
-                bool onAc = source != PowerSourceKind.Battery;
-                _currentPowerSource = source;
-                if (_lastAcState.HasValue && _lastAcState.Value != onAc)
+                try
                 {
-                    IsAcConnected = onAc;
-                    NotifyModeSelectionsChanged();
-                    ApplyAutoRefreshForPower(onAc);
+                    if (_disposed)
+                        return;
 
-                    ApplyGpuBatteryAuto(onAc);
+                    PowerSourceKind source = _hw.GetPowerSource();
+                    bool onAc = source != PowerSourceKind.Battery;
+                    _currentPowerSource = source;
+                    if (_lastAcState.HasValue && _lastAcState.Value != onAc)
+                    {
+                        IsAcConnected = onAc;
+                        NotifyModeSelectionsChanged();
+                        ApplyAutoRefreshForPower(onAc);
+                        ApplyGpuBatteryAuto(onAc);
+                    }
+
+                    _lastAcState = onAc;
+                    _lastPowerSource = source;
+                    ApplyPowerProfileForSource(source);
                 }
-
-                _lastAcState = onAc;
-                _lastPowerSource = source;
-                ApplyPowerProfileForSource(source);
+                finally
+                {
+                    Volatile.Write(ref _powerSourceUpdateQueued, 0);
+                }
             });
         }
 
@@ -365,11 +372,9 @@ namespace PreySense.Frontend.ViewModels
 
             _telemetryWindowVisible = isVisible;
             _telemetryPollingActive = true;
-            if (_telemetryPollingActive)
+            if (_telemetryPollingActive && (isVisible || RequiresFanTelemetry))
             {
-                _telemetryTimer.Interval = isVisible || RequiresFanTelemetry
-                    ? VisibleTelemetryIntervalMs
-                    : 5000;
+                _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
                 if (!_telemetryTimer.Enabled)
                     _telemetryTimer.Start();
             }

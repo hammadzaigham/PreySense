@@ -10,7 +10,7 @@ using PreySense.Rgb;
 namespace PreySense.Helpers
 {
     [SupportedOSPlatform("windows")]
-    public class WmiController : IDisposable
+    public partial class WmiController : IDisposable
     {
 
         private ManagementObject? _cachedObj;
@@ -231,63 +231,6 @@ namespace PreySense.Helpers
                 return;
 
             Interlocked.CompareExchange(ref _pluggedSource, (int)kind, -1);
-        }
-
-        public void StartPowerSourceWatch()
-        {
-            try
-            {
-                var watcher = new ManagementEventWatcher(new ManagementScope(@"root\wmi"), new WqlEventQuery("SELECT * FROM APGeEvent"));
-                watcher.EventArrived += OnAcerPowerEvent;
-                watcher.Start();
-                _powerSourceWatcher = watcher;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"Power source watch: {ex.Message}");
-            }
-        }
-
-        public static bool TryParseAcerPowerEvent(byte[]? detail, out PowerSourceKind source)
-        {
-            source = default;
-            if (detail == null || detail.Length < 2 || detail[0] != 8)
-                return false;
-
-            switch (detail[1])
-            {
-                case 0:
-                    source = PowerSourceKind.Battery;
-                    return true;
-                case 1:
-                    source = PowerSourceKind.Ac;
-                    return true;
-                case 4:
-                    source = PowerSourceKind.UsbC;
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private void OnAcerPowerEvent(object sender, EventArrivedEventArgs e)
-        {
-            try
-            {
-                if (e.NewEvent?["EventDetail"] is not byte[] detail ||
-                    !TryParseAcerPowerEvent(detail, out PowerSourceKind source))
-                    return;
-
-                if (source is PowerSourceKind.Ac or PowerSourceKind.UsbC)
-                    Volatile.Write(ref _pluggedSource, (int)source);
-
-                AppLogger.Log($"Acer power source event: {source}.");
-                PowerSourceChanged?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"Acer power source event: {ex.Message}");
-            }
         }
 
         public void SetRgbMode(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction)
@@ -576,64 +519,6 @@ namespace PreySense.Helpers
 
             AppLogger.Log($"TryGetPowerProfileWmi: invalid mode 0x{mode:X2} (success={success}, output=0x{output:X}).");
             return false;
-        }
-
-        public bool SetFanBehavior(byte mode)
-        {
-            ulong value = mode switch
-            {
-                0 => 0x410009ul, // Auto
-                1 => 0x820009ul, // Max
-                2 => 0xC30009ul, // Custom
-                _ => 0x410009ul
-            };
-
-            var (success, _) = SendCommand(AcerWmi.GamingMethods.SetFanBehavior, value);
-            return success;
-        }
-
-        public static int ScalePercentToWmi(int percent)
-        {
-            return EcFanPolicy.ClampDuty(percent);
-        }
-
-        public void InvalidateFanTargets()
-        {
-            lock (_lock) { _lastSetFanMode = -1; }
-        }
-
-        public bool SetCpuFanSpeed(int percent) => SetFanDuty(1, percent);
-        public bool SetGpuFanSpeed(int percent) => SetFanDuty(4, percent);
-
-        private bool SetFanDuty(int fan, int percent)
-        {
-            int duty = EcFanPolicy.ClampDuty(percent);
-            ulong payload = (ulong)(((duty * 25600) / 100) & 0xFF00) + (uint)fan;
-            return SendCommand(AcerWmi.GamingMethods.SetFanSpeed, payload).success;
-        }
-
-        public bool SetFanControlWmi(int mode, int cpuSpeed = 50, int gpuSpeed = 50)
-        {
-            lock (_lock)
-            {
-                cpuSpeed = EcFanPolicy.ClampDuty(cpuSpeed);
-                gpuSpeed = EcFanPolicy.ClampDuty(gpuSpeed);
-                bool force = mode != _lastSetFanMode;
-                if (!force && (mode != 2 || cpuSpeed == _lastSetCpuSpeed && gpuSpeed == _lastSetGpuSpeed))
-                    return true;
-                // Only enter Custom once. Re-entering it for every band change can
-                // restart the EC's fan control cycle and produce audible pulses.
-                if (force && !SetFanBehavior((byte)mode)) return false;
-                if (mode == 2)
-                {
-                    if ((force || cpuSpeed != _lastSetCpuSpeed) && !SetCpuFanSpeed(cpuSpeed)) return false;
-                    if ((force || gpuSpeed != _lastSetGpuSpeed) && !SetGpuFanSpeed(gpuSpeed)) return false;
-                }
-                _lastSetFanMode = mode;
-                _lastSetCpuSpeed = cpuSpeed;
-                _lastSetGpuSpeed = gpuSpeed;
-                return true;
-            }
         }
 
         private static int RoundToNearest100(int value) => (int)(Math.Round(value / 100.0) * 100);

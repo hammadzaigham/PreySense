@@ -73,5 +73,18 @@ namespace PreySense.Mode
                 name += ".exe";
             return name;
         }
+
+        public static string NormalizeExecutablePath(string path)
+        {
+            try
+            {
+                return Path.GetFullPath(path.Trim())
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
     }
 }

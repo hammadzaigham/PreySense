@@ -5,6 +5,8 @@ namespace PreySense.Mode
     public sealed class GameProfile
     {
         public string ExeName { get; set; } = string.Empty;
+        // Hidden matching metadata. The Games UI continues to display ExeName.
+        public string ExecutablePath { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public byte PowerMode { get; set; } = 0x04;
         public int CpuPl1 { get; set; } = 75;

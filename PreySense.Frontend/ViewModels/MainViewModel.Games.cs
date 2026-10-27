@@ -200,15 +200,25 @@ namespace PreySense.Frontend.ViewModels
                     return;
 
                 string exe = GameProfileStore.NormalizeExeName(picker.FileName);
-                if (GameProfiles.Any(p => p.ExeName.Equals(exe, StringComparison.OrdinalIgnoreCase)))
+                string executablePath = GameProfileStore.NormalizeExecutablePath(picker.FileName);
+                if (GameProfiles.Any(p =>
+                    (!string.IsNullOrWhiteSpace(p.ExecutablePath) &&
+                     p.ExecutablePath.Equals(executablePath, StringComparison.OrdinalIgnoreCase)) ||
+                    (string.IsNullOrWhiteSpace(p.ExecutablePath) &&
+                     p.ExeName.Equals(exe, StringComparison.OrdinalIgnoreCase))))
                 {
-                    SelectedGameProfile = GameProfiles.First(p => p.ExeName.Equals(exe, StringComparison.OrdinalIgnoreCase));
+                    SelectedGameProfile = GameProfiles.First(p =>
+                        (!string.IsNullOrWhiteSpace(p.ExecutablePath) &&
+                         p.ExecutablePath.Equals(executablePath, StringComparison.OrdinalIgnoreCase)) ||
+                        (string.IsNullOrWhiteSpace(p.ExecutablePath) &&
+                         p.ExeName.Equals(exe, StringComparison.OrdinalIgnoreCase)));
                     return;
                 }
 
                 var profile = new GameProfile
                 {
                     ExeName = exe,
+                    ExecutablePath = executablePath,
                     DisplayName = Path.GetFileNameWithoutExtension(exe),
                     PowerMode = PeekPendingOrActiveMode() is byte current && current is 0x00 or 0x01 or 0x04 or 0x05
                         ? current

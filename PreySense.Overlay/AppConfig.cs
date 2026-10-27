@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using Microsoft.Win32;
 
 namespace PreySense.Overlay
@@ -6,13 +7,32 @@ namespace PreySense.Overlay
     public static class AppConfig
     {
         private const string RegistryKeyPath = @"SOFTWARE\PreySense";
+        private const string Missing = "\u0000";
+        private static readonly ConcurrentDictionary<string, string> Cache = new(StringComparer.Ordinal);
+
+        private static string Read(string name)
+        {
+            if (Cache.TryGetValue(name, out string? cached))
+                return cached;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
+                string value = key?.GetValue(name)?.ToString() ?? Missing;
+                Cache[name] = value;
+                return value;
+            }
+            catch
+            {
+                Cache[name] = Missing;
+                return Missing;
+            }
+        }
 
         public static bool Exists(string name)
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                return key?.GetValue(name) != null;
+                return Read(name) != Missing;
             }
             catch
             {
@@ -24,9 +44,8 @@ namespace PreySense.Overlay
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                var val = key?.GetValue(name);
-                if (val != null && int.TryParse(val.ToString(), out int result))
+                string value = Read(name);
+                if (value != Missing && int.TryParse(value, out int result))
                 {
                     return result;
                 }
@@ -44,9 +63,8 @@ namespace PreySense.Overlay
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                var val = key?.GetValue(name);
-                return val?.ToString() ?? empty;
+                string value = Read(name);
+                return value == Missing ? empty : value;
             }
             catch
             {
@@ -60,6 +78,7 @@ namespace PreySense.Overlay
             {
                 using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
                 key?.SetValue(name, value, RegistryValueKind.DWord);
+                Cache[name] = value.ToString();
             }
             catch { }
         }
@@ -70,6 +89,7 @@ namespace PreySense.Overlay
             {
                 using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
                 key?.SetValue(name, value, RegistryValueKind.String);
+                Cache[name] = value;
             }
             catch { }
         }

@@ -18,6 +18,13 @@ namespace PreySense.Frontend.ViewModels
         public DtsAudioViewModel(Dispatcher ui)
         {
             _ui = ui;
+        }
+
+        private void EnsureComThread()
+        {
+            if (_com != null)
+                return;
+
             var thread = new Thread(RunComThread)
             {
                 IsBackground = true,
@@ -26,7 +33,6 @@ namespace PreySense.Frontend.ViewModels
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
             _comReady.Wait(TimeSpan.FromSeconds(2));
-            Refresh();
         }
 
         public ObservableCollection<DtsAudioEndpointViewModel> Endpoints { get; } = new();
@@ -43,6 +49,7 @@ namespace PreySense.Frontend.ViewModels
 
         public void Refresh()
         {
+            EnsureComThread();
             if (_com == null || Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0)
                 return;
 

@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -10,7 +11,7 @@ namespace PreySense.Frontend.Services
 {
     public static class UpdateCheckService
     {
-        public const string CurrentVersion = "2.4.6";
+        public const string CurrentVersion = "2.4.7";
         private const string LatestReleaseApi = "https://api.github.com/repos/hammadzaigham/PreySense/releases/latest";
         private const string ReleasesUrl = "https://github.com/hammadzaigham/PreySense/releases";
 
@@ -38,27 +39,50 @@ namespace PreySense.Frontend.Services
                     return;
                 }
 
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                string? downloadUrl = null;
+                if (doc.RootElement.TryGetProperty("assets", out var assets))
+                {
+                    foreach (var asset in assets.EnumerateArray())
+                    {
+                        if (asset.TryGetProperty("name", out var name) &&
+                            string.Equals(name.GetString(), "PreySense.exe", StringComparison.OrdinalIgnoreCase) &&
+                            asset.TryGetProperty("browser_download_url", out var url))
+                        {
+                            downloadUrl = url.GetString();
+                            break;
+                        }
+                    }
+                }
+
+                await Application.Current.Dispatcher.InvokeAsync(async () =>
                 {
                     var dialog = new Views.CustomModalDialog
                     {
                         Owner = Application.Current.MainWindow,
                         Title = "PreySense — Update Available",
                         HeaderSubtitle = " — Update Available",
-                        Message = LocalizationService.Format("Version {0} of PreySense is available.\n\nOpen GitHub to download it?", latestTag),
-                        ConfirmText = "Open GitHub",
+                        Message = LocalizationService.Format("Version {0} of PreySense is available.\n\nDownload and install it now?", latestTag),
+                        ConfirmText = "Download and Install",
                         CancelText = "Cancel",
                         ShowCancelButton = true
                     };
 
-                    if (dialog.ShowDialog() != true)
-                        return;
+                    if (dialog.ShowDialog() != true) return;
 
-                    Process.Start(new ProcessStartInfo
+                    if (!string.IsNullOrWhiteSpace(downloadUrl))
                     {
-                        FileName = ReleasesUrl,
-                        UseShellExecute = true
-                    });
+                        try
+                        {
+                            await DownloadAndInstallAsync(downloadUrl);
+                            return;
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log($"Automatic update failed: {ex.Message}");
+                        }
+                    }
+
+                    Process.Start(new ProcessStartInfo { FileName = ReleasesUrl, UseShellExecute = true });
                 });
             }
             catch (Exception ex)
@@ -66,5 +90,39 @@ namespace PreySense.Frontend.Services
                 AppLogger.Log($"Update check failed: {ex.Message}");
             }
         }
+
+        private static async Task DownloadAndInstallAsync(string downloadUrl)
+        {
+            string currentExe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName
+                ?? throw new InvalidOperationException("Could not determine the running executable path.");
+            string tempExe = Path.Combine(Path.GetTempPath(), $"PreySense-update-{Guid.NewGuid():N}.exe");
+
+            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("PreySense-Updater");
+            await using (var source = await client.GetStreamAsync(downloadUrl))
+            await using (var destination = File.Create(tempExe))
+            {
+                await source.CopyToAsync(destination);
+            }
+
+            var info = new FileInfo(tempExe);
+            if (!info.Exists || info.Length < 100_000)
+                throw new InvalidDataException("GitHub returned an invalid update file.");
+
+            string script = $"$ErrorActionPreference='Stop'; $pid={Process.GetCurrentProcess().Id}; $source={QuoteForPowerShell(tempExe)}; $target={QuoteForPowerShell(currentExe)}; while (Get-Process -Id $pid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 250 }}; Move-Item -LiteralPath $source -Destination $target -Force; Start-Process -FilePath $target";
+            string encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+
+            Application.Current.Shutdown();
+        }
+
+        private static string QuoteForPowerShell(string value) =>
+            "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
     }
 }

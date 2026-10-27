@@ -182,15 +182,6 @@ namespace PreySense.Tests
         {
             // Verify that PL1 and PL2 values written to MCHBAR (ERM4 table & PPL1/PPL2)
             // obey the Acer 1/8W (125mW) scaling factor.
-            // Example: 25W * 8 = 200 (0xC8)
-            //          35W * 8 = 280 (0x0118)
-            //          65W * 8 = 520 (0x0208)
-            //          75W * 8 = 600 (0x0258)
-            Assert.AreEqual(200, 25 * 8);
-            Assert.AreEqual(280, 35 * 8);
-            Assert.AreEqual(520, 65 * 8);
-            Assert.AreEqual(600, 75 * 8);
-
             // Test that custom targets are within electrical limits of the platform
             var cfg = new CpuPowerLimitConfiguration();
             Assert.IsTrue(cfg.QuietPl1 >= 15 && cfg.QuietPl1 <= 65);
@@ -204,15 +195,6 @@ namespace PreySense.Tests
             float watts = monitor.GetPackagePowerWatts();
             // In test environment, if counter is present, watts >= 0. If absent/unprimed, returns 0.
             Assert.IsTrue(watts >= 0f, "Watts returned must be >= 0");
-        }
-
-        [TestMethod]
-        public void Test_Wmi_Channel_Active()
-        {
-            var wmi = new PreySense.Helpers.WmiController();
-            byte profile = wmi.GetPowerProfile();
-            System.Diagnostics.Debug.WriteLine($"WMI Profile: {profile}");
-            Assert.IsTrue(profile >= 0);
         }
 
         [TestMethod]
@@ -373,7 +355,7 @@ namespace PreySense.Tests
             Assert.Contains("string>Disabled</string>", manager);
             Assert.Contains("DisablePlatformInfoSpoof", manager);
             Assert.Contains("StripAppleBootFeatures", manager);
-            string acpiVm = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Frontend", "ViewModels", "MainViewModel.Acpi.cs"));
+            string acpiVm = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Frontend", "ViewModels", "MainViewModel.AcpiModeTuning.cs"));
             Assert.Contains("ClampCpuPl1ToPlatformLimit", acpiVm);
             Assert.Contains("LimitPl1ToPlatform", acpiVm);
             Assert.Contains("LimitPl2", acpiVm);

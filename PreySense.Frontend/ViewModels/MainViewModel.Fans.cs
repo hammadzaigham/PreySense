@@ -28,9 +28,17 @@ public partial class MainViewModel
 
     private void UpdateFanTelemetryInterval()
     {
-        _telemetryTimer.Interval = _telemetryWindowVisible || RequiresFanTelemetry
-            ? VisibleTelemetryIntervalMs
-            : 5000;
+        bool shouldRun = _telemetryWindowVisible || RequiresFanTelemetry;
+        _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
+        if (shouldRun)
+        {
+            if (!_telemetryTimer.Enabled)
+                _telemetryTimer.Start();
+        }
+        else
+        {
+            _telemetryTimer.Stop();
+        }
     }
 
     public int? AppliedCpuFanPercent

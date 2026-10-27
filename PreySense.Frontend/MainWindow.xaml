@@ -7,7 +7,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.6">
+      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.7">
         <controls:WindowTitleBar.Actions>
           <Button AutomationProperties.AutomationId="BtnSettings" Style="{StaticResource TitleBarButtonStyle}" Click="SettingsButton_Click">
             <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-settings-32.png" Width="14" Height="14" />

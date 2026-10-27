@@ -1,7 +1,6 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using Microsoft.Win32;
 using PreySense.Frontend.Services;
 using PreySense.Overlay;
 
@@ -9,7 +8,6 @@ namespace PreySense.Frontend.Views
 {
     public partial class MetricsWindow : Window
     {
-        private const string RegistryKeyPath = @"SOFTWARE\PreySense";
         private static readonly MetricChoice[] CpuChoices =
         {
             new("None", "None"),
@@ -83,10 +81,7 @@ namespace PreySense.Frontend.Views
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                var val = key?.GetValue(keyName);
-                if (val != null && int.TryParse(val.ToString(), out int res))
-                    return res;
+                return AppConfig.Get(keyName, defaultValue);
             }
             catch { }
             return defaultValue;
@@ -96,9 +91,7 @@ namespace PreySense.Frontend.Views
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                var val = key?.GetValue(keyName);
-                if (val != null) return val.ToString() ?? defaultValue;
+                return AppConfig.GetString(keyName, defaultValue);
             }
             catch { }
             return defaultValue;
@@ -108,8 +101,7 @@ namespace PreySense.Frontend.Views
         {
             try
             {
-                using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
-                key?.SetValue(keyName, value, RegistryValueKind.DWord);
+                AppConfig.Set(keyName, value);
             }
             catch { }
         }
@@ -118,8 +110,7 @@ namespace PreySense.Frontend.Views
         {
             try
             {
-                using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
-                key?.SetValue(keyName, value, RegistryValueKind.String);
+                AppConfig.Set(keyName, value);
             }
             catch { }
         }

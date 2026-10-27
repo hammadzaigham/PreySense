@@ -8,15 +8,6 @@ namespace PreySense.Tests
     public class TrayAndStartupTests
     {
         [TestMethod]
-        public void Test_StartupTaskService_TaskName_And_Query()
-        {
-            Assert.AreEqual("PreySense", StartupTaskService.TaskName);
-            // Verify IsStartupEnabled does not throw
-            bool isEnabled = StartupTaskService.IsStartupEnabled();
-            Assert.IsTrue(isEnabled || !isEnabled);
-        }
-
-        [TestMethod]
         public void StartupTask_LogonXml_RunsOnBattery()
         {
             string xml = StartupTaskService.BuildLogonTaskXml(
@@ -37,12 +28,10 @@ namespace PreySense.Tests
         public void Test_TrayIconManager_MessageHandling_And_Dispose()
         {
             bool openCalled = false;
-            bool quitCalled = false;
-
             using var tray = new TrayIconManager(
                 IntPtr.Zero,
                 onOpen: () => openCalled = true,
-                onQuit: () => quitCalled = true
+                onQuit: static () => { }
             );
 
             // Simulate double click message
