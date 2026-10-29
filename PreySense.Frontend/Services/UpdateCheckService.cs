@@ -54,7 +54,7 @@ namespace PreySense.Frontend.Services
                     }
                 }
 
-                await Application.Current.Dispatcher.InvokeAsync(async () =>
+                bool shouldInstall = await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     var dialog = new Views.CustomModalDialog
                     {
@@ -67,23 +67,26 @@ namespace PreySense.Frontend.Services
                         ShowCancelButton = true
                     };
 
-                    if (dialog.ShowDialog() != true) return;
-
-                    if (!string.IsNullOrWhiteSpace(downloadUrl))
-                    {
-                        try
-                        {
-                            await DownloadAndInstallAsync(downloadUrl);
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.Log($"Automatic update failed: {ex.Message}");
-                        }
-                    }
-
-                    Process.Start(new ProcessStartInfo { FileName = ReleasesUrl, UseShellExecute = true });
+                    return dialog.ShowDialog() == true;
                 });
+
+                if (!shouldInstall)
+                    return;
+
+                if (!string.IsNullOrWhiteSpace(downloadUrl))
+                {
+                    try
+                    {
+                        await DownloadAndInstallAsync(downloadUrl);
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log($"Automatic update failed: {ex.Message}");
+                    }
+                }
+
+                Process.Start(new ProcessStartInfo { FileName = ReleasesUrl, UseShellExecute = true });
             }
             catch (Exception ex)
             {
@@ -99,7 +102,10 @@ namespace PreySense.Frontend.Services
 
             using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("PreySense-Updater");
-            await using (var source = await client.GetStreamAsync(downloadUrl))
+            using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            await using (var source = await response.Content.ReadAsStreamAsync())
             await using (var destination = File.Create(tempExe))
             {
                 await source.CopyToAsync(destination);
@@ -109,7 +115,8 @@ namespace PreySense.Frontend.Services
             if (!info.Exists || info.Length < 100_000)
                 throw new InvalidDataException("GitHub returned an invalid update file.");
 
-            string script = $"$ErrorActionPreference='Stop'; $pid={Process.GetCurrentProcess().Id}; $source={QuoteForPowerShell(tempExe)}; $target={QuoteForPowerShell(currentExe)}; while (Get-Process -Id $pid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 250 }}; Move-Item -LiteralPath $source -Destination $target -Force; Start-Process -FilePath $target";
+            int processId = Process.GetCurrentProcess().Id;
+            string script = $"$ErrorActionPreference='Stop'; $processId={processId}; $source={QuoteForPowerShell(tempExe)}; $target={QuoteForPowerShell(currentExe)}; while (Get-Process -Id $processId -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 250 }}; for ($attempt=0; $attempt -lt 80; $attempt++) {{ try {{ Move-Item -LiteralPath $source -Destination $target -Force; Start-Process -FilePath $target; exit 0 }} catch {{ if ($attempt -eq 79) {{ throw }}; Start-Sleep -Milliseconds 250 }} }}; throw 'Timed out replacing the application executable.'";
             string encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
             Process.Start(new ProcessStartInfo
             {
