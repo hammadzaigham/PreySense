@@ -300,7 +300,7 @@ namespace PreySense.Frontend
         private void ApplyResponsivePercentageSize()
         {
             var workArea = SystemParameters.WorkArea;
-            Width = 440;
+            Width = 500;
             double h = double.IsNaN(Height) || Height <= 0 ? 580 : Height;
             Left = workArea.Left + (workArea.Width - Width) / 2;
             Top = Math.Max(workArea.Top + 40, workArea.Top + (workArea.Height - h) / 2);

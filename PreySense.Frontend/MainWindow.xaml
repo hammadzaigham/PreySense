@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="PreySense.Frontend.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:vm="clr-namespace:PreySense.Frontend.ViewModels" xmlns:controls="clr-namespace:PreySense.Frontend.Controls" xmlns:local="clr-namespace:PreySense.Frontend" Title="PreySense" Icon="appicon.ico" Width="460" SizeToContent="Height" WindowStartupLocation="CenterScreen" Background="{DynamicResource TransparentBrush}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}" WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize" UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+<Window x:Class="PreySense.Frontend.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:vm="clr-namespace:PreySense.Frontend.ViewModels" xmlns:controls="clr-namespace:PreySense.Frontend.Controls" xmlns:local="clr-namespace:PreySense.Frontend" Title="PreySense" Icon="appicon.ico" Width="500" SizeToContent="Height" WindowStartupLocation="CenterScreen" Background="{DynamicResource TransparentBrush}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}" WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize" UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
   <Border Style="{DynamicResource AppWindowShellStyle}">
     <Grid>
       <Grid.RowDefinitions>
@@ -7,7 +7,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.7">
+      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.8">
         <controls:WindowTitleBar.Actions>
           <Button AutomationProperties.AutomationId="BtnSettings" Style="{StaticResource TitleBarButtonStyle}" Click="SettingsButton_Click">
             <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-settings-32.png" Width="14" Height="14" />
@@ -34,12 +34,29 @@
                 <Run Text=" RPM" />
               </TextBlock>
             </Grid>
-            <UniformGrid Columns="4" Rows="1" Margin="0,2,0,2">
-              <Button AutomationProperties.AutomationId="BtnModeEcoQuiet" Command="{Binding SetModeCommand}" CommandParameter="{Binding EcoOrQuietModeParam}">
+            <UniformGrid Columns="5" Rows="1" Margin="0,2,0,2">
+              <Button AutomationProperties.AutomationId="BtnModeEco" Command="{Binding SetModeCommand}" CommandParameter="6">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
-                      <DataTrigger Value="True" Binding="{Binding IsEcoOrQuietActive}">
+                      <DataTrigger Value="True" Binding="{Binding IsEcoActive}">
+                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="BorderThickness" Value="2" />
+                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </FrameworkElement.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Path Data="{x:Static local:ModeIconData.EcoGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5" />
+                  <TextBlock FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" Text="Eco" />
+                </StackPanel>
+              </Button>
+              <Button AutomationProperties.AutomationId="BtnModeQuiet" Command="{Binding SetModeCommand}" CommandParameter="0">
+                <FrameworkElement.Style>
+                  <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Style.Triggers>
+                      <DataTrigger Value="True" Binding="{Binding IsQuietActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModeQuietBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
                         <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
@@ -48,31 +65,8 @@
                   </Style>
                 </FrameworkElement.Style>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <Path Data="{x:Static local:ModeIconData.EcoGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5">
-                    <FrameworkElement.Style>
-                      <Style TargetType="{x:Type Path}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                          <DataTrigger Value="False" Binding="{Binding IsAcConnected}">
-                            <Setter Property="Visibility" Value="Visible" />
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </FrameworkElement.Style>
-                  </Path>
-                  <Path Data="{x:Static local:ModeIconData.QuietGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5">
-                    <FrameworkElement.Style>
-                      <Style TargetType="{x:Type Path}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                          <DataTrigger Value="True" Binding="{Binding IsAcConnected}">
-                            <Setter Property="Visibility" Value="Visible" />
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </FrameworkElement.Style>
-                  </Path>
-                  <TextBlock FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" Text="{Binding EcoOrQuietModeName}" />
+                  <Path Data="{x:Static local:ModeIconData.QuietGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5" />
+                  <TextBlock Text="Quiet" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button AutomationProperties.AutomationId="BtnModeBalanced" CommandParameter="1" Command="{Binding SetModeCommand}">
@@ -164,6 +158,23 @@
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                   <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-automation-32.png" Width="20" Height="20" Margin="0,0,0,2" />
                   <TextBlock Text="Auto" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Height="62" Margin="3" CommandParameter="igpu" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowIgpuOnlyTile, Converter={StaticResource BoolToVis}}">
+                <FrameworkElement.Style>
+                  <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
+                    <Style.Triggers>
+                      <DataTrigger Value="True" Binding="{Binding IsGpuIgpuOnlyActive}">
+                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="BorderThickness" Value="2" />
+                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </FrameworkElement.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-video-48.png" Width="20" Height="20" Margin="0,0,0,2" />
+                  <TextBlock Text="iGPU Only" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button Height="62" Margin="3" CommandParameter="0" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowDdsGpuTiles, Converter={StaticResource BoolToVis}}">

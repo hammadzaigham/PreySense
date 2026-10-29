@@ -130,14 +130,6 @@ namespace PreySense.Frontend.ViewModels
                 {
                     IsAcpiOverrideEnabled = ov == 1;
                 }
-                object? gpuBattery = advKey?.GetValue("GpuBatteryAuto");
-                if (gpuBattery is null)
-                {
-                    using var rootKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
-                    gpuBattery = rootKey?.GetValue("GpuBatteryAuto");
-                }
-                if (gpuBattery is int gpuBatteryValue)
-                    IsGpuBatteryAutoEnabled = gpuBatteryValue == 1;
                 if (advKey?.GetValue("CpuBoost") is int boost)
                 {
                     CpuBoostMode = Math.Clamp(boost, 0, 6);
@@ -240,6 +232,7 @@ namespace PreySense.Frontend.ViewModels
             {
                 int? liveDdsMode = null;
                 bool? biosDiscrete = null;
+                bool? igpuOnly = null;
                 System.Collections.Generic.List<int>? rates = null;
                 int refreshRate = 0;
                 try
@@ -253,13 +246,14 @@ namespace PreySense.Frontend.ViewModels
                 }
                 catch { }
                 try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
+                try { igpuOnly = PreySense.Helpers.DeviceHelper.IsDisplayDeviceDisabled("VEN_10DE"); } catch { }
                 try
                 {
                     rates = _hw.GetSupportedRefreshRates();
                     refreshRate = _hw.GetDisplayRefreshRate();
                 }
                 catch { }
-                return (liveDdsMode, biosDiscrete, rates, refreshRate);
+                return (liveDdsMode, biosDiscrete, igpuOnly, rates, refreshRate);
             });
 
             if (_disposed) return;
@@ -275,8 +269,19 @@ namespace PreySense.Frontend.ViewModels
                 }
                 if (result.biosDiscrete.HasValue)
                     IsBiosDiscreteGpuActive = result.biosDiscrete.Value;
+                IsGpuIgpuOnlyActive = result.igpuOnly == true && !IsBiosDiscreteGpuActive;
+                if (IsGpuIgpuOnlyActive)
+                {
+                    GpuMuxModeName = "iGPU Only";
+                    NotifyGpuSelectionsChanged();
+                }
                 ApplyRefreshRateOptions(result.rates, result.refreshRate);
             });
+
+            // PnP can report the old state briefly during startup, especially
+            // after a previous device disable. Reconcile once after discovery;
+            // this is transition-driven, not a polling loop.
+            _ = RefreshGpuDeviceModeStateAsync(attempts: 2);
         }
 
         private void PollTelemetry()

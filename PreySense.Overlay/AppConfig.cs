@@ -118,7 +118,7 @@ namespace PreySense.Overlay
             5 => "Power|Power",
             6 => "Memory|Memory",
             7 => "Memory Speed|Memory Speed",
-            8 => "Fan Speed|Fan Speed",
+            8 => "None|None",
             _ => "None|None"
         };
 
@@ -149,8 +149,17 @@ namespace PreySense.Overlay
         public static void EnsureDefaultOverlayColumns()
         {
             int version = Get("overlay_col_defaults", 0);
-            if (version >= 4)
+            if (version >= 5)
                 return;
+            if (version == 4)
+            {
+                // Remove the old fan defaults, but preserve an intentional
+                // user selection of Fan Speed.
+                if (GetString("overlay_col_8") == "Fan Speed|Fan Speed")
+                    Set("overlay_col_8", DefaultOverlayColumn(8));
+                Set("overlay_col_defaults", 5);
+                return;
+            }
             if (version == 3)
             {
                 string voltageColumn = GetString("overlay_col_4");

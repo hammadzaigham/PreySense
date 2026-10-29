@@ -261,5 +261,35 @@ namespace PreySense.Helpers
 
             return false;
         }
+
+        /// <summary>
+        /// Returns true when Windows reports the matching display adapter as
+        /// disabled in its PnP configuration. This distinguishes true iGPU-only
+        /// mode from normal Optimus/Hybrid mode, where the NVIDIA adapter remains
+        /// enabled but may be idle.
+        /// </summary>
+        public static bool? IsDisplayDeviceDisabled(string hardwareIdSubstring)
+        {
+            try
+            {
+                // Query video controllers specifically. Win32_PnPEntity also
+                // contains NVIDIA HDMI audio and other devices, which could make
+                // a disabled GPU look enabled if the wrong matching device wins.
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT PNPDeviceID, ConfigManagerErrorCode FROM Win32_VideoController");
+                foreach (ManagementObject device in searcher.Get())
+                {
+                    string id = device["PNPDeviceID"] as string ?? string.Empty;
+                    if (id.Contains(hardwareIdSubstring, StringComparison.OrdinalIgnoreCase))
+                        return Convert.ToInt32(device["ConfigManagerErrorCode"] ?? 0) == 22;
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"IsDisplayDeviceDisabled failed: {ex.Message}");
+                return null;
+            }
+        }
     }
 }

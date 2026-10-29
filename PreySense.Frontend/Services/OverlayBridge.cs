@@ -44,6 +44,18 @@ internal static class OverlayBridge
         HardwareOverlayManager.SyncRunningState();
     }
 
+    public static void GameStarted()
+    {
+        EnsureInitialized();
+        HardwareOverlayManager.StartForConfiguredGame();
+    }
+
+    public static void GameExited()
+    {
+        EnsureInitialized();
+        HardwareOverlayManager.StopForConfiguredGame();
+    }
+
     public static void Toggle()
     {
         EnsureInitialized();

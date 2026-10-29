@@ -149,8 +149,8 @@ namespace PreySense.Overlay
             // PDH can briefly fail during resume, topology changes, or a counter
             // refresh. Keep the last valid reading so the overlay does not flash
             // misleading 0 MHz values while the next sample is collected.
-            eCoreMhz = _lastECoreMhz > 0 ? _lastECoreMhz : null;
-            return _lastCpuMhz;
+            eCoreMhz = 0;
+            return 0;
         }
 
         public static float? GetCPUPower()
@@ -179,7 +179,7 @@ namespace PreySense.Overlay
 
         private static int? GetCPUUsage()
         {
-            if (!NativeMethods.GetSystemTimes(out long idle, out long kernel, out long user)) return null;
+            if (!NativeMethods.GetSystemTimes(out long idle, out long kernel, out long user)) return 0;
 
             long now = Environment.TickCount64;
 
@@ -187,7 +187,7 @@ namespace PreySense.Overlay
             {
                 _cpuLastIdle = idle; _cpuLastKernel = kernel; _cpuLastUser = user; _cpuLastTick = now;
                 _cpuUsageBaseline = true;
-                return _lastCpuUsage;
+                return 0;
             }
 
             long deltaIdle = idle - _cpuLastIdle;
@@ -195,7 +195,7 @@ namespace PreySense.Overlay
 
             _cpuLastIdle = idle; _cpuLastKernel = kernel; _cpuLastUser = user; _cpuLastTick = now;
 
-            if (deltaTotal <= 0) return _lastCpuUsage ?? 0;
+            if (deltaTotal <= 0) return 0;
             _lastCpuUsage = Math.Clamp((int)Math.Round((1.0 - (double)deltaIdle / deltaTotal) * 100), 0, 100);
             return _lastCpuUsage;
         }
@@ -240,8 +240,16 @@ namespace PreySense.Overlay
                 bool needsVoltage = false;
                 for (int column = 1; column <= 8; column++)
                     needsVoltage |= AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}")).Cpu == "Voltage";
-                cpuVoltage = needsVoltage ? PreySense.Mode.PawnCpuPowerControl.ReadCoreVid() : null;
-                if (wmi != null)
+                cpuVoltage = needsVoltage ? PreySense.Mode.PawnCpuPowerControl.ReadCoreVid() ?? 0 : 0;
+                bool needsThermal = false;
+                for (int column = 1; column <= 8; column++)
+                {
+                    var metrics = AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}"));
+                    needsThermal |= metrics.Cpu is "Temperature" or "Fan Speed" ||
+                                     metrics.Gpu is "Temperature" or "Fan Speed";
+                }
+
+                if (wmi != null && needsThermal)
                 {
                     var thermal = wmi.ReadThermalSensors();
                     cpuFanRPM = thermal.CpuRpm;
@@ -252,9 +260,9 @@ namespace PreySense.Overlay
                 }
                 else
                 {
-                    cpuFanRPM = null;
-                    gpuFanRPM = null;
-                    cpuTemp = -1;
+                    cpuFanRPM = 0;
+                    gpuFanRPM = 0;
+                    cpuTemp = 0;
                     if (inUse)
                         gpuTemp = -1;
                 }
@@ -265,25 +273,25 @@ namespace PreySense.Overlay
             if (!inUse)
                 gpuTemp = 0;
 
-            cpuUsage = GetCPUUsage();
+            cpuUsage = GetCPUUsage() ?? 0;
 
             var ram = GetRAMInfo();
-            ramUsage = ram?.percent;
-            ramUsedMb = ram?.usedMb;
+            ramUsage = ram?.percent ?? 0;
+            ramUsedMb = ram?.usedMb ?? 0;
 
             if (!inUse)
             {
-                gpuUsage = null;
-                vramUsedMb = null;
-                vramUsage = null;
+                gpuUsage = 0;
+                vramUsedMb = 0;
+                vramUsage = 0;
                 gpuPower = 0;
-                gpuMhz = null;
-                vramSpeedMhz = null;
-                gpuVoltage = null;
+                gpuMhz = 0;
+                vramSpeedMhz = 0;
+                gpuVoltage = 0;
             }
             else
             {
-                try { gpuUsage = GpuControl?.GetGpuUse(); } catch { gpuUsage = null; }
+                try { gpuUsage = GpuControl?.GetGpuUse() ?? 0; } catch { gpuUsage = 0; }
 
                 try
                 {
@@ -292,18 +300,18 @@ namespace PreySense.Overlay
                         vramUsedMb = (int)v.usedMb;
                         vramUsage = (int)Math.Clamp(v.usedMb * 100 / v.totalMb, 0, 100);
                     }
-                    else { vramUsedMb = null; vramUsage = null; }
+                    else { vramUsedMb = 0; vramUsage = 0; }
                 }
-                catch { vramUsedMb = null; vramUsage = null; }
+                catch { vramUsedMb = 0; vramUsage = 0; }
 
-                gpuPower = GetGPUPower() ?? gpuPower;
-                try { gpuMhz = GpuControl?.GetGpuClock(); } catch { gpuMhz = null; }
-                try { vramSpeedMhz = GpuControl?.GetGpuMemoryClock(); } catch { vramSpeedMhz = null; }
-                try { gpuVoltage = GpuControl?.GetGpuVoltage(); } catch { gpuVoltage = null; }
+                gpuPower = GetGPUPower() ?? 0;
+                try { gpuMhz = GpuControl?.GetGpuClock() ?? 0; } catch { gpuMhz = 0; }
+                try { vramSpeedMhz = GpuControl?.GetGpuMemoryClock() ?? 0; } catch { vramSpeedMhz = 0; }
+                try { gpuVoltage = GpuControl?.GetGpuVoltage() ?? 0; } catch { gpuVoltage = 0; }
             }
 
-            cpuPower = GetCPUPower();
-            ramSpeedMhz = GetRamSpeed();
+            cpuPower = GetCPUPower() ?? 0;
+            ramSpeedMhz = GetRamSpeed() ?? 0;
         }
 
         private static int? _cachedRamSpeed;

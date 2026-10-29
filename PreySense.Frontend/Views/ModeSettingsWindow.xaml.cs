@@ -110,7 +110,15 @@ namespace PreySense.Frontend.Views
             }
 
             if (SwitchCpuBoost != null)
+            {
+                SwitchCpuBoost.Visibility = vm.CpuBoostEditorVisibility;
                 SwitchCpuBoost.IsChecked = vm.CpuBoostForModeIndex(_selectedModeIndex);
+            }
+            if (DropdownCpuBoost != null)
+            {
+                DropdownCpuBoost.Visibility = vm.ExtendedCpuBoostEditorVisibility;
+                DropdownCpuBoost.SelectedIndex = Math.Clamp(vm.CpuBoostMode, 0, vm.CpuBoostModes.Count - 1);
+            }
 
             int gpuWatts = _selectedModeIndex switch
             {
@@ -403,7 +411,9 @@ namespace PreySense.Frontend.Views
             vm.SaveCpuLimitsToRegistry();
 
             string modeName = GetSelectedModeName();
-            string boost = SwitchCpuBoost?.IsChecked == true ? "on" : "off";
+            string boost = vm.IsExtendedCpuBoostEnabled
+                ? vm.CpuBoostModeName
+                : (SwitchCpuBoost?.IsChecked == true ? "on" : "off");
             vm.StatusMessage = $"Saved {modeName} limits (PL1 {pl1}W, PL2 {pl2}W, Tau {FormatTau(tau)}, CPU Boost {boost}) to registry.";
         }
 

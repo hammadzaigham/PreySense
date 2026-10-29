@@ -345,6 +345,19 @@ namespace PreySense.Frontend.ViewModels
             PowerLimitController.SetEnergySaverOnBattery(value);
         }
 
+        partial void OnIsExtendedCpuBoostEnabledChanged(bool value)
+        {
+            PersistSessionSettings();
+            OnPropertyChanged(nameof(CpuBoostEditorVisibility));
+            OnPropertyChanged(nameof(ExtendedCpuBoostEditorVisibility));
+        }
+
+        public System.Windows.Visibility CpuBoostEditorVisibility =>
+            IsExtendedCpuBoostEnabled ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+
+        public System.Windows.Visibility ExtendedCpuBoostEditorVisibility =>
+            IsExtendedCpuBoostEnabled ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
         private void NotifyModeSelectionsChanged()
         {
             OnPropertyChanged(nameof(IsEcoActive));

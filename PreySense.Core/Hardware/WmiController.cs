@@ -19,6 +19,9 @@ namespace PreySense.Helpers
         private ManagementEventWatcher? _powerSourceWatcher;
         private readonly object _lock = new();
         private int _pluggedSource = -1;
+        private ThermalSnapshot _cachedThermalSnapshot;
+        private long _cachedThermalTick;
+        private const int ThermalCacheWindowMs = 750;
 
         public event EventHandler? PowerSourceChanged;
 
@@ -105,6 +108,7 @@ namespace PreySense.Helpers
                 _cachedObj = null;
                 _cachedApgeObj = null;
                 _cachedBatteryObj = null;
+                _cachedThermalTick = 0;
             }
         }
 
@@ -416,6 +420,10 @@ namespace PreySense.Helpers
         {
             lock (_lock)
             {
+                long now = Environment.TickCount64;
+                if (_cachedThermalTick != 0 && now - _cachedThermalTick < ThermalCacheWindowMs)
+                    return _cachedThermalSnapshot;
+
                 try
                 {
                     var obj = GetWmiObject();
@@ -427,10 +435,13 @@ namespace PreySense.Helpers
                     int gpuTemp = ReadSensor(obj, inParams, AcerWmi.Sensors.GpuTemperature);
                     int cpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.CpuFanRpm));
                     int gpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.GpuFanRpm));
-                    return new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
+                    _cachedThermalSnapshot = new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
+                    _cachedThermalTick = now;
+                    return _cachedThermalSnapshot;
                 }
                 catch
                 {
+                    _cachedThermalTick = 0;
                     InvalidateCache();
                     return default;
                 }

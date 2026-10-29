@@ -92,6 +92,12 @@
                                 </Grid>
 
                                 <controls:SettingSwitchRow x:Name="SwitchCpuBoost" Title="CPU Boost"/>
+                                <controls:SettingDropdownRow x:Name="DropdownCpuBoost"
+                                                             Title="CPU Boost"
+                                                             ItemsSource="{Binding CpuBoostModes}"
+                                                             SelectedIndex="{Binding CpuBoostMode, Mode=TwoWay}"
+                                                             DropdownWidth="240"
+                                                             Visibility="Collapsed"/>
 
                                 <controls:SettingValueRow x:Name="RowPl1"
                                                           Title="Sustained Long Power [PL1]"

@@ -7,6 +7,7 @@ namespace PreySense.Overlay
     {
         private static HardwareOverlay? _overlay;
         private static readonly object _lock = new();
+        private static bool _gameSessionActive;
 
         public static bool IsActive => _overlay?.IsActive ?? false;
 
@@ -64,7 +65,8 @@ namespace PreySense.Overlay
 
         public static void SyncRunningState()
         {
-            if (AppConfig.ShouldRunOverlay())
+            bool shouldRun = AppConfig.IsOverlay() || (AppConfig.IsOverlayGameOnly() && _gameSessionActive);
+            if (shouldRun)
             {
                 var overlay = GetOverlay();
                 if (!overlay.IsActive)
@@ -80,6 +82,20 @@ namespace PreySense.Overlay
             {
                 _overlay?.StopOverlay();
             }
+        }
+
+        public static void StartForConfiguredGame()
+        {
+            lock (_lock) _gameSessionActive = true;
+            GetOverlay().SetGameSessionActive(true);
+            SyncRunningState();
+        }
+
+        public static void StopForConfiguredGame()
+        {
+            lock (_lock) _gameSessionActive = false;
+            _overlay?.SetGameSessionActive(false);
+            SyncRunningState();
         }
 
         public static void RefreshDisplayFlags()

@@ -22,6 +22,7 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private bool _isBatteryLimitEnabled = true;
         [ObservableProperty] private int _batteryLimitPercent = 80;
         [ObservableProperty] private bool _isGpuBatteryAutoEnabled = false;
+        [ObservableProperty] private bool _isExtendedCpuBoostEnabled = false;
 
         public ObservableCollection<string> CpuBoostModes { get; } = new()
         {

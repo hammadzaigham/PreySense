@@ -11,7 +11,7 @@ namespace PreySense.Frontend.Services
 {
     public static class UpdateCheckService
     {
-        public const string CurrentVersion = "2.4.7";
+        public const string CurrentVersion = "2.4.8";
         private const string LatestReleaseApi = "https://api.github.com/repos/hammadzaigham/PreySense/releases/latest";
         private const string ReleasesUrl = "https://github.com/hammadzaigham/PreySense/releases";
 

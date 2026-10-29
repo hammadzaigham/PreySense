@@ -90,8 +90,35 @@ namespace PreySense.Frontend.ViewModels
                     UsbCPowerModeIndex = ProfileManager.SourceProfileIndex((byte)legacyUsb);
                 if (key.GetValue("BatteryPowerMode") is int batteryMode && batteryMode is 0 or 1 or 4 or 5 or 6)
                     BatteryPowerModeIndex = ProfileManager.SourceProfileIndex((byte)batteryMode);
-                if (key.GetValue("BatteryEnergySaver") is int energySaver)
+                object? energySaverValue = key.GetValue("BatteryEnergySaver");
+                if (energySaverValue is null)
+                {
+                    // Keep compatibility with builds that stored this
+                    // Advanced setting outside the session subkey.
+                    using var advancedKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
+                    energySaverValue = advancedKey?.GetValue("BatteryEnergySaver")
+                        ?? advancedKey?.GetValue("EnergySaverOnBattery");
+                }
+                if (energySaverValue is int energySaver)
                     IsBatteryEnergySaverEnabled = energySaver == 1;
+                object? gpuBatteryValue = key.GetValue("GpuBatteryAuto");
+                if (gpuBatteryValue is null)
+                {
+                    // Compatibility with older builds that stored this toggle
+                    // outside the session key. Load it only after Energy Saver
+                    // so its persistence callback cannot overwrite that value.
+                    using var advancedKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
+                    gpuBatteryValue = advancedKey?.GetValue("GpuBatteryAuto");
+                    if (gpuBatteryValue is null)
+                    {
+                        using var rootKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
+                        gpuBatteryValue = rootKey?.GetValue("GpuBatteryAuto");
+                    }
+                }
+                if (gpuBatteryValue is int gpuBatteryAuto)
+                    IsGpuBatteryAutoEnabled = gpuBatteryAuto == 1;
+                if (key.GetValue("ExtendedCpuBoost") is int extendedBoost)
+                    IsExtendedCpuBoostEnabled = extendedBoost == 1;
                 if (key.GetValue("LastPluggedSource") is int lastPlugged && lastPlugged is 1 or 4)
                     _hw.NotePluggedSource(lastPlugged == 4 ? PowerSourceKind.UsbC : PowerSourceKind.Ac);
                 _currentPowerSource = _hw.GetPowerSource();
@@ -125,6 +152,8 @@ namespace PreySense.Frontend.ViewModels
                 key.SetValue("UsbCPowerMode", (int)ProfileManager.SourceProfileMode(UsbCPowerModeIndex), RegistryValueKind.DWord);
                 key.SetValue("BatteryPowerMode", (int)ProfileManager.SourceProfileMode(BatteryPowerModeIndex), RegistryValueKind.DWord);
                 key.SetValue("BatteryEnergySaver", IsBatteryEnergySaverEnabled ? 1 : 0, RegistryValueKind.DWord);
+                key.SetValue("GpuBatteryAuto", IsGpuBatteryAutoEnabled ? 1 : 0, RegistryValueKind.DWord);
+                key.SetValue("ExtendedCpuBoost", IsExtendedCpuBoostEnabled ? 1 : 0, RegistryValueKind.DWord);
                 if (_currentPowerSource is PowerSourceKind.Ac or PowerSourceKind.UsbC)
                     key.SetValue("LastPluggedSource", _currentPowerSource == PowerSourceKind.UsbC ? 4 : 1, RegistryValueKind.DWord);
             }

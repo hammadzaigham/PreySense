@@ -1115,9 +1115,9 @@ namespace PreySense.Tests
             string mainXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml"));
             Assert.Contains("BtnNavGames", mainXaml);
             Assert.Contains("GamesButton_Click", mainXaml);
-            Assert.DoesNotContain("Columns=\"5\"", mainXaml);
+            Assert.Contains("Columns=\"5\"", mainXaml);
             Assert.Contains("<RowDefinition Height=\"34\"/>", mainXaml);
-            Assert.Contains("Grid.Row=\"2\" Columns=\"2\"", mainXaml);
+            Assert.Contains("Grid.Row=\"2\" Columns=\"3\"", mainXaml);
 
             string exe = PreySense.Mode.GameProfileStore.NormalizeExeName(@"C:\Games\r5apex.exe");
             Assert.AreEqual("r5apex.exe", exe);
@@ -1391,9 +1391,9 @@ namespace PreySense.Tests
             string lightingUi = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "KeyboardWindow.xaml.cs"));
 
             Assert.AreEqual("P-Core|Clock", PreySense.Overlay.AppConfig.DefaultOverlayColumn(3));
-            Assert.AreEqual("E-Core|Voltage", PreySense.Overlay.AppConfig.DefaultOverlayColumn(4));
+            Assert.AreEqual("Voltage|Voltage", PreySense.Overlay.AppConfig.DefaultOverlayColumn(4));
             Assert.AreEqual("Memory Speed|Memory Speed", PreySense.Overlay.AppConfig.DefaultOverlayColumn(7));
-            Assert.AreEqual("Fan Speed|Fan Speed", PreySense.Overlay.AppConfig.DefaultOverlayColumn(8));
+            Assert.AreEqual("None|None", PreySense.Overlay.AppConfig.DefaultOverlayColumn(8));
             Assert.Contains("PollIntervalMs = 1000", overlay);
             Assert.DoesNotContain("ApplyPollInterval", overlay);
             Assert.Contains("bool gpuActive = HardwareControl.gpuInUse", overlay);

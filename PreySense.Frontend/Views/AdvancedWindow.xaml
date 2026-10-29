@@ -35,7 +35,10 @@
                                                          DropdownWidth="160"/>
 
                             <controls:SettingSwitchRow Title="Energy Saver on Battery"
-                                                      IsChecked="{Binding IsBatteryEnergySaverEnabled, Mode=TwoWay}"/>
+                                                      IsChecked="{Binding IsBatteryEnergySaverEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+                            <controls:SettingSwitchRow Title="iGPU Only on Battery"
+                                                      IsChecked="{Binding IsGpuBatteryAutoEnabled, Mode=TwoWay}"/>
 
                             <controls:SettingDropdownRow Title="On USB-C"
                                                          ItemsSource="{Binding SourceProfileNames}"
@@ -46,6 +49,11 @@
                                                          ItemsSource="{Binding SourceProfileNames}"
                                                          SelectedIndex="{Binding AcPowerModeIndex, Mode=TwoWay}"
                                                          DropdownWidth="160"/>
+
+                            <Separator Margin="0,8,0,8"/>
+
+                            <controls:SettingSwitchRow Title="Extended CPU Boost Options"
+                                                      IsChecked="{Binding IsExtendedCpuBoostEnabled, Mode=TwoWay}"/>
                         </StackPanel>
                     </Border>
 

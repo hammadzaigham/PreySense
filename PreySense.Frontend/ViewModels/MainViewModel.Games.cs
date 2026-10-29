@@ -335,6 +335,7 @@ namespace PreySense.Frontend.ViewModels
         {
             return _dispatcher.InvokeAsync(async () =>
             {
+                OverlayBridge.GameStarted();
                 if (_disposed || !IsAcpiOverrideEnabled) return;
                 if (_appliedGameExe == null)
                     _modeBeforeGame = PeekPendingOrActiveMode();
@@ -347,6 +348,7 @@ namespace PreySense.Frontend.ViewModels
         {
             return _dispatcher.InvokeAsync(async () =>
             {
+                OverlayBridge.GameExited();
                 if (_disposed) return;
                 string? applied = _appliedGameExe;
                 byte restore = _modeBeforeGame;

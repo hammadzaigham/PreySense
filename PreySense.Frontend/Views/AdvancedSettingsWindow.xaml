@@ -87,6 +87,7 @@
                                                       IsChecked="{Binding IsLcdOverdriveEnabled, Mode=OneWay}" 
                                                       Command="{Binding ToggleLcdOverdriveCommand}"/>
 
+
                         </StackPanel>
                     </Border>
 

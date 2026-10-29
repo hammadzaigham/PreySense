@@ -28,6 +28,12 @@ public partial class MainViewModel
 
     private void UpdateFanTelemetryInterval()
     {
+        // Unit-test and early-startup paths can process a fan profile before
+        // the telemetry timer has been created. Fan policy must remain safe in
+        // that case; the normal application path always has a timer here.
+        if (_telemetryTimer == null)
+            return;
+
         bool shouldRun = _telemetryWindowVisible || RequiresFanTelemetry;
         _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
         if (shouldRun)

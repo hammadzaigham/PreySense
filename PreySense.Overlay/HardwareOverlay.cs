@@ -111,6 +111,7 @@ namespace PreySense.Overlay
         private bool _active;
         public bool IsActive => _active;
         private bool _gameOnly;
+        private bool _gameSessionActive;
         private bool _hidden;
         private bool _screenshotHidden;
         private int _shownPid;
@@ -342,12 +343,12 @@ namespace PreySense.Overlay
                 }
             }
 
-            if (_gameOnly)
+            if (_gameOnly && !_gameSessionActive)
             {
                 // PreySense auto-hide focuses the desktop/shell. Keep the overlay as-is
                 // instead of treating that as leaving a game.
                 if (!ownWindow && !(_keepOverlayAfterUiHide && desktopFg))
-                    UpdateGameVisibility(fgPid);
+                    UpdateGameVisibility(fgPid, false);
                 _wasOwnWindow = ownWindow;
                 if (_hidden) return;
             }
@@ -433,10 +434,11 @@ namespace PreySense.Overlay
             Invalidate();
         }
 
-        private void UpdateGameVisibility(int fgPid)
+        private void UpdateGameVisibility(int fgPid, bool configuredGame)
         {
-            if (_currentFps >= MinGameFps && !_fgDesktop) _shownPid = fgPid;
-            bool show = fgPid == _shownPid;
+            if (configuredGame)
+                _shownPid = fgPid;
+            bool show = configuredGame;
             if (show != _hidden) return;
             _hidden = !show;
             if (Handle != nint.Zero)
@@ -722,6 +724,7 @@ namespace PreySense.Overlay
                 return totalW;
             }
         }
+
         private void DrawMetricColumn(Graphics g, Font font, Font unitFont, Font rpmFont, float sc, string cpuMetric, string gpuMetric, float colX, float colW, int textY, int lineH, int lineGap)
         {
             DrawMetricValue(g, font, unitFont, rpmFont, sc, cpuMetric, false, colX, colW, textY);
@@ -992,13 +995,13 @@ namespace PreySense.Overlay
                             NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
                     }
                 }
-                else
+                else if (!_gameSessionActive)
                 {
                     NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out uint fgPidRaw);
                     int fgPid = (int)fgPidRaw;
                     bool ownWindow = fgPid == 0 || fgPid == Environment.ProcessId;
                     if (!ownWindow)
-                        UpdateGameVisibility(fgPid);
+                        UpdateGameVisibility(fgPid, false);
                     else if (_shownPid == 0)
                     {
                         _hidden = true;
@@ -1010,6 +1013,15 @@ namespace PreySense.Overlay
             }
         }
 
+        public void SetGameSessionActive(bool active)
+        {
+            _gameSessionActive = active;
+            if (!active)
+            {
+                _hidden = false;
+                ResetFpsDisplayState();
+            }
+        }
 
     }
 }
