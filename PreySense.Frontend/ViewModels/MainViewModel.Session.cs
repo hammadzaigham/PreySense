@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -447,6 +447,7 @@ namespace PreySense.Frontend.ViewModels
 
             PreySense.Core.Services.CpuUsageMonitor.InvalidateBaseline();
             PreySense.Core.Services.TelemetryCoordinator.InvalidateCurrentSnapshot();
+            TriggerDisplayStateRefresh();
 
             _ = App.Current?.Dispatcher.InvokeAsync(async () =>
             {

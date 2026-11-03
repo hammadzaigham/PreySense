@@ -21,6 +21,7 @@ public class TelemetryAndBoostRegressionTests
         Set(vm, "_hw", hardware);
         Set(vm, "_dispatcher", Dispatcher.CurrentDispatcher);
         Set(vm, "_fanControlGate", new object());
+        Set(vm, "_displaySettingsDebounceLock", new object());
         Set(vm, "_cpuFanFollower", new FanCurveFollower());
         Set(vm, "_gpuFanFollower", new FanCurveFollower());
         Set(vm, "_fanCoolingSafety", new FanCoolingSafety());
@@ -107,11 +108,66 @@ public class TelemetryAndBoostRegressionTests
         }
     }
 
+    [TestMethod]
+    public async Task TelemetrySnapshotDoesNotPollDisplayOrDds()
+    {
+        var hardware = new RecordingHardware();
+        var vm = Create(hardware);
+        vm.SetTelemetryPollingActive(true);
+
+        hardware.DdsReads = 0;
+        hardware.RefreshRateReads = 0;
+
+        var onSnapshot = typeof(MainViewModel).GetMethod("OnCoordinatorSnapshotAvailable", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var snapshot = TelemetrySnapshot.Empty with
+        {
+            CpuTemp = 55,
+            GpuTemp = 45,
+            CpuRpm = 2000,
+            GpuRpm = 2200,
+            CpuPkgPowerWatts = 25f,
+            CpuUsage = 10,
+            CpuMaxCoreUsage = 15,
+            CpuPCoreUsage = 12,
+            CpuECoreUsage = 8,
+            GpuClockMhz = 1500,
+            GpuPowerWatts = 30f,
+            RamUsage = 40,
+            BatteryPercent = 90,
+            IsAcConnected = true,
+            PowerSource = PowerSourceKind.Ac,
+            IsValid = true
+        };
+
+        onSnapshot.Invoke(vm, new object[] { snapshot });
+        await Task.Delay(50);
+
+        Assert.AreEqual(0, hardware.DdsReads, "Telemetry snapshot must not poll DDS status.");
+        Assert.AreEqual(0, hardware.RefreshRateReads, "Telemetry snapshot must not poll display refresh rate.");
+    }
+
+    [TestMethod]
+    public async Task EventDrivenRefreshUpdatesDisplayAndDdsState()
+    {
+        var hardware = new RecordingHardware();
+        var vm = Create(hardware);
+
+        hardware.DdsReads = 0;
+        hardware.RefreshRateReads = 0;
+
+        await vm.RefreshDisplayAndDdsStateAsync();
+
+        Assert.IsTrue(hardware.DdsReads >= 1, "RefreshDisplayAndDdsStateAsync must query DDS status.");
+        Assert.IsTrue(hardware.RefreshRateReads >= 1, "RefreshDisplayAndDdsStateAsync must query display refresh rate.");
+    }
+
     private sealed class RecordingHardware : MockHardwareService, IHardwareService
     {
-        public int Reads, TemperatureReads, AutoWrites;
+        public int Reads, TemperatureReads, AutoWrites, DdsReads, RefreshRateReads;
         public new HardwareTelemetry GetCurrentTelemetry() { Reads++; return base.GetCurrentTelemetry(); }
         public HardwareTelemetry GetFanTemperatures() { TemperatureReads++; return base.GetCurrentTelemetry(); }
         public new bool SetFanMode(byte cpuMode, byte gpuMode) { if (cpuMode == 0 && gpuMode == 0) AutoWrites++; return true; }
+        public new PreySense.Gpu.DdsStatus? GetDdsStatus() { DdsReads++; return base.GetDdsStatus(); }
+        public new int GetDisplayRefreshRate() { RefreshRateReads++; return base.GetDisplayRefreshRate(); }
     }
 }

@@ -1,9 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
+using PreySense.Gpu;
 
 namespace PreySense.Frontend.ViewModels
 {
@@ -24,6 +27,9 @@ namespace PreySense.Frontend.ViewModels
         public ObservableCollection<string> AvailableRefreshRates { get; } = new();
         [ObservableProperty] private string? _selectedRefreshRateOption;
         private bool _isUpdatingRefreshRateSelection = false;
+
+        private readonly object _displaySettingsDebounceLock = new();
+        private CancellationTokenSource? _displaySettingsDebounceCts;
 
         public ObservableCollection<string> BlueLightShieldModes { get; } = new()
         {
@@ -55,6 +61,127 @@ namespace PreySense.Frontend.ViewModels
             catch { }
 
             ApplyRefreshRateOptions(supportedRates, hwRate);
+        }
+
+        private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+        {
+            if (_disposed) return;
+            TriggerDisplayStateRefresh();
+        }
+
+        public void TriggerDisplayStateRefresh()
+        {
+            if (_disposed) return;
+            var lockObj = _displaySettingsDebounceLock ?? this;
+            lock (lockObj)
+            {
+                _displaySettingsDebounceCts?.Cancel();
+                _displaySettingsDebounceCts?.Dispose();
+                _displaySettingsDebounceCts = new CancellationTokenSource();
+                var token = _displaySettingsDebounceCts.Token;
+
+                Task.Delay(300, token).ContinueWith(async t =>
+                {
+                    if (t.IsCanceled || _disposed) return;
+                    await RefreshDisplayAndDdsStateAsync();
+                }, TaskScheduler.Default);
+            }
+        }
+
+        private void DisposeDisplaySettingsWatcher()
+        {
+            var lockObj = _displaySettingsDebounceLock ?? this;
+            lock (lockObj)
+            {
+                _displaySettingsDebounceCts?.Cancel();
+                _displaySettingsDebounceCts?.Dispose();
+                _displaySettingsDebounceCts = null;
+            }
+        }
+
+        public async Task RefreshDisplayAndDdsStateAsync()
+        {
+            if (_disposed || Volatile.Read(ref _gpuSwitchInProgress) != 0) return;
+
+            int revision = Volatile.Read(ref _gpuDisplayRevision);
+
+            var result = await Task.Run(() =>
+            {
+                bool biosDiscrete = false;
+                bool? nvidiaDisabled = null;
+                try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
+                try { nvidiaDisabled = _hw.IsDiscreteGpuDisabled; } catch { }
+
+                DdsStatus? dds = null;
+                if (nvidiaDisabled != true && !biosDiscrete && _hw.IsDdsAvailable && _hw.IsDdsSupported())
+                {
+                    try { dds = _hw.GetDdsStatus(); }
+                    catch (Exception ex) { AppLogger.Error($"GPU display status read failed: {ex.Message}"); }
+                }
+
+                System.Collections.Generic.List<int>? supportedRates = null;
+                int currentRate = 0;
+                try
+                {
+                    supportedRates = _hw.GetSupportedRefreshRates();
+                    currentRate = _hw.GetDisplayRefreshRate();
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error($"Display refresh rate read failed: {ex.Message}");
+                }
+
+                return (biosDiscrete, nvidiaDisabled, dds, supportedRates, currentRate);
+            });
+
+            if (_disposed || Volatile.Read(ref _gpuSwitchInProgress) != 0 ||
+                revision != Volatile.Read(ref _gpuDisplayRevision))
+                return;
+
+            if (_dispatcher == null || _dispatcher.CheckAccess())
+            {
+                ApplyDisplayAndDdsState(result, revision);
+            }
+            else
+            {
+                _ = _dispatcher.InvokeAsync(() => ApplyDisplayAndDdsState(result, revision));
+            }
+        }
+
+        private void ApplyDisplayAndDdsState(
+            (bool biosDiscrete, bool? nvidiaDisabled, DdsStatus? dds, System.Collections.Generic.List<int>? supportedRates, int currentRate) result,
+            int revision)
+        {
+            if (_disposed || Volatile.Read(ref _gpuSwitchInProgress) != 0 ||
+                revision != Volatile.Read(ref _gpuDisplayRevision))
+                return;
+
+            IsBiosDiscreteGpuActive = result.biosDiscrete;
+            if (result.nvidiaDisabled.HasValue)
+                IsGpuIgpuOnlyActive = result.nvidiaDisabled.Value && !result.biosDiscrete;
+            if (IsBiosDiscreteGpuActive)
+                GpuMuxModeName = "dGPU Only";
+            else if (IsGpuIgpuOnlyActive)
+                GpuMuxModeName = "iGPU Only";
+
+            if (result.dds != null)
+            {
+                ApplyDdsStatus(result.dds);
+            }
+            else
+            {
+                RefreshActiveGpuDisplayMode();
+            }
+            NotifyGpuSelectionsChanged();
+
+            if (result.supportedRates != null && result.supportedRates.Count > 0)
+            {
+                ApplyRefreshRateOptions(result.supportedRates, result.currentRate);
+            }
+            else if (result.currentRate > 0 && result.currentRate != CurrentRefreshRate)
+            {
+                UpdateLiveRefreshRate(result.currentRate);
+            }
         }
 
         private void UpdateLiveRefreshRate(int hz)

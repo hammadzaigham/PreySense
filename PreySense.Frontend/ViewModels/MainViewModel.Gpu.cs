@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -88,6 +88,7 @@ namespace PreySense.Frontend.ViewModels
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(ShowIgpuOnlyTile))]
+        [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuNvidiaOnlyActive))]
@@ -102,6 +103,7 @@ namespace PreySense.Frontend.ViewModels
         [NotifyPropertyChangedFor(nameof(IsGpuStandardActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuUltimateActive))]
         [NotifyPropertyChangedFor(nameof(ShowIgpuOnlyTile))]
+        [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuNvidiaOnlyActive))]
@@ -112,7 +114,16 @@ namespace PreySense.Frontend.ViewModels
 
         public bool ShowDdsGpuTiles => !IsBiosDiscreteGpuActive;
         public bool ShowIgpuOnlyTile => ShowDdsGpuTiles && !IsGpuNvidiaOnlyActive;
-        public int GpuModeTileColumns => IsBiosDiscreteGpuActive ? 2 : 5;
+        public int GpuModeTileColumns
+        {
+            get
+            {
+                int count = 2; // Auto + dGPU Only
+                if (ShowDdsGpuTiles) count += 2; // Hybrid + Advanced Optimus
+                if (ShowIgpuOnlyTile) count += 1; // iGPU Only
+                return Math.Max(1, count);
+            }
+        }
 
         // GPU selection flags (0=Optimus, 1=Automatic, 2=NVIDIA Only)
         public bool IsGpuEnduranceActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 0;
@@ -197,7 +208,9 @@ namespace PreySense.Frontend.ViewModels
 
         private void NotifyGpuSelectionsChanged()
         {
+            OnPropertyChanged(nameof(ShowDdsGpuTiles));
             OnPropertyChanged(nameof(ShowIgpuOnlyTile));
+            OnPropertyChanged(nameof(GpuModeTileColumns));
             OnPropertyChanged(nameof(IsGpuEnduranceActive));
             OnPropertyChanged(nameof(IsGpuStandardActive));
             OnPropertyChanged(nameof(IsGpuUltimateActive));
@@ -215,7 +228,7 @@ namespace PreySense.Frontend.ViewModels
             if (status is not { IsSupported: true, KmdResponse: 0 }) return "GPU mode unavailable";
             return status.ActiveMux switch
             {
-                DdsActiveMux.dGPU => "dGPU exclusive",
+                DdsActiveMux.dGPU => "dGPU",
                 DdsActiveMux.Optimus => "iGPU + dGPU",
                 _ => "GPU mode unavailable"
             };

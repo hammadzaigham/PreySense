@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using PreySense.Core.Services;
@@ -21,7 +21,13 @@ public class GpuDisplayStateTests
         vm.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
         vm.ActiveGpuMuxMode = 1;
         Assert.IsTrue(vm.ShowIgpuOnlyTile);
+        Assert.AreEqual(5, vm.GpuModeTileColumns);
         CollectionAssert.Contains(changes, nameof(MainViewModel.ShowIgpuOnlyTile));
+        CollectionAssert.Contains(changes, nameof(MainViewModel.GpuModeTileColumns));
+
+        vm.ActiveGpuMuxMode = 2; // Advanced Optimus / NVIDIA Only
+        Assert.IsFalse(vm.ShowIgpuOnlyTile, "iGPU tile must hide in Advanced Optimus mode.");
+        Assert.AreEqual(4, vm.GpuModeTileColumns, "Buttons must expand to 4 columns to fit entire space in Advanced Optimus mode.");
     }
 
     [TestMethod]
@@ -33,7 +39,7 @@ public class GpuDisplayStateTests
         Assert.IsTrue(autoDgpu.Matches(DdsDisplayMode.Automatic));
         Assert.IsFalse(autoDgpu.Matches(DdsDisplayMode.NvidiaGpuOnly));
         Assert.AreEqual("iGPU + dGPU", MainViewModel.DescribeActiveGpuMode(autoIgpu, false, false));
-        Assert.AreEqual("dGPU exclusive", MainViewModel.DescribeActiveGpuMode(autoDgpu, false, false));
+        Assert.AreEqual("dGPU", MainViewModel.DescribeActiveGpuMode(autoDgpu, false, false));
         Assert.AreEqual("iGPU only", MainViewModel.DescribeActiveGpuMode(null, false, true));
         Assert.AreEqual("dGPU exclusive", MainViewModel.DescribeActiveGpuMode(null, true, false));
         Assert.AreEqual("GPU mode unavailable", MainViewModel.DescribeActiveGpuMode(null, false, false));

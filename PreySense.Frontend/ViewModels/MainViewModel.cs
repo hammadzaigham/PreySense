@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Win32;
 using PreySense.Core.Acpi;
 using PreySense.Core.Services;
 using PreySense;
@@ -121,6 +122,7 @@ namespace PreySense.Frontend.ViewModels
             Dts = new DtsAudioViewModel(_dispatcher);
             _hw.PowerModeChanged += OnPowerModeChanged;
             _hw.PowerSourceChanged += OnPowerSourceChanged;
+            SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             _turboKeyWatcher = new TurboKeyWatcher();
             _turboKeyWatcher.TurboKeyPressed += OnTurboKeyPressed;
             _turboKeyWatcher.PowerSourceReceived += OnPowerSourceReceived;
@@ -334,25 +336,11 @@ namespace PreySense.Frontend.ViewModels
                 var telemetry = fullTelemetry ? _hw.GetCurrentTelemetry() : _hw.GetFanTemperatures();
                 ProcessFanCurves(telemetry);
                 if (!fullTelemetry) return;
-                DdsStatus? displayStatus = null;
-                int refreshRate = 0;
-                if (_telemetryWindowVisible)
-                {
-                    try { displayStatus = _hw.GetDdsStatus(); refreshRate = _hw.GetDisplayRefreshRate(); }
-                    catch (Exception ex) { AppLogger.Error($"GPU display status read failed: {ex.Message}"); }
-                }
                 _dispatcher.InvokeAsync(() =>
                 {
                     if (!_disposed && ShouldPollTelemetry)
                     {
                         UpdateTelemetry(telemetry);
-                        if (_telemetryWindowVisible && Volatile.Read(ref _gpuSwitchInProgress) == 0 &&
-                            displayRevision == Volatile.Read(ref _gpuDisplayRevision))
-                        {
-                            ApplyDdsStatus(displayStatus);
-                            if (refreshRate > 0 && refreshRate != CurrentRefreshRate)
-                                UpdateLiveRefreshRate(refreshRate);
-                        }
                     }
                 });
             }
@@ -434,30 +422,10 @@ namespace PreySense.Frontend.ViewModels
 
             if (!_telemetryWindowVisible) return;
 
-            int displayRevision = Volatile.Read(ref _gpuDisplayRevision);
-            DdsStatus? displayStatus = null;
-            int refreshRate = 0;
-            try
-            {
-                displayStatus = _hw.GetDdsStatus();
-                refreshRate = _hw.GetDisplayRefreshRate();
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error($"GPU display status read failed: {ex.Message}");
-            }
-
             _dispatcher.InvokeAsync(() =>
             {
                 if (_disposed || !_telemetryWindowVisible) return;
                 UpdateTelemetryFromSnapshot(snapshot);
-                if (Volatile.Read(ref _gpuSwitchInProgress) == 0 &&
-                    displayRevision == Volatile.Read(ref _gpuDisplayRevision))
-                {
-                    ApplyDdsStatus(displayStatus);
-                    if (refreshRate > 0 && refreshRate != CurrentRefreshRate)
-                        UpdateLiveRefreshRate(refreshRate);
-                }
             });
         }
 
@@ -519,6 +487,10 @@ namespace PreySense.Frontend.ViewModels
             _telemetryWindowVisible = windowVisible;
             PreySense.Core.Services.TelemetryCoordinator.SetDemand(
                 PreySense.Core.Services.TelemetryDemand.MainWindow, windowVisible);
+            if (windowVisible)
+            {
+                TriggerDisplayStateRefresh();
+            }
         }
 
         private void OnPowerModeChanged(object? sender, byte mode)
@@ -578,6 +550,8 @@ namespace PreySense.Frontend.ViewModels
             DetachSessionLifecycleHooks();
             _hw.PowerModeChanged -= OnPowerModeChanged;
             _hw.PowerSourceChanged -= OnPowerSourceChanged;
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            DisposeDisplaySettingsWatcher();
             _turboKeyWatcher.TurboKeyPressed -= OnTurboKeyPressed;
             _turboKeyWatcher.BrightnessKeyPressed -= OnBrightnessKeyPressed;
             _turboKeyWatcher.PowerSourceReceived -= OnPowerSourceReceived;
