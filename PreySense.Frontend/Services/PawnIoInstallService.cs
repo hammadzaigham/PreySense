@@ -65,6 +65,12 @@ public static class PawnIoInstallService
         if (inspection.state == Availability.Unavailable)
         { report(inspection.detail); return false; }
 
+        if (owner == null || !owner.IsVisible)
+        {
+            report("PawnIO is not installed. Open PreySense to install it.");
+            return false;
+        }
+
         bool previous = App.SuppressAutoHide;
         App.SuppressAutoHide = true;
         string? installer = null;

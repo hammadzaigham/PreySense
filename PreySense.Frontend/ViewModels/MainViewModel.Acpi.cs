@@ -32,7 +32,7 @@ namespace PreySense.Frontend.ViewModels
             var operation = await _dispatcher.InvokeAsync(async () =>
             {
                 if (_disposed || _startupCalibrationPrompted || !IsOpenCoreLoaded || FactoryCalibrationIsLocked()) return;
-                if (Application.Current?.MainWindow is not Window owner) return;
+                if (Application.Current?.MainWindow is not Window owner || !owner.IsVisible) return;
                 _startupCalibrationPrompted = true;
                 bool previous = App.SuppressAutoHide;
                 App.SuppressAutoHide = true;

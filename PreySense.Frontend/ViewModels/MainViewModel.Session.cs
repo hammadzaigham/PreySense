@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -223,7 +223,10 @@ namespace PreySense.Frontend.ViewModels
             });
 
             if (promptForUpdate && state == OpenCoreSecurityValidator.OpenCoreIntegrationState.UpdateRequired && !_disposed)
-                await _dispatcher.InvokeAsync(PromptOpenCoreReinstall, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            {
+                if (System.Windows.Application.Current?.MainWindow is System.Windows.Window mw && mw.IsVisible)
+                    await _dispatcher.InvokeAsync(PromptOpenCoreReinstall, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            }
         }
 
         private async Task InitializeSessionAsync()
@@ -272,6 +275,7 @@ namespace PreySense.Frontend.ViewModels
                     UsbChargingPercent = usbLevel;
             });
 
+            TriggerDisplayStateRefresh();
         }
 
         public async Task RestoreSessionSettingsAsync(string reason)
@@ -325,6 +329,11 @@ namespace PreySense.Frontend.ViewModels
                     ActivePowerMode = mode;
                     UpdateModeName(mode);
                     NotifyModeSelectionsChanged();
+                    bool onAc = source != PowerSourceKind.Battery;
+                    _lastAcState = onAc;
+                    _lastPowerSource = source;
+                    ApplyAutoRefreshForPower(onAc);
+                    ApplyGpuBatteryAuto(onAc);
                     StatusMessage = reason.Equals("startup", StringComparison.OrdinalIgnoreCase)
                         ? "Saved settings applied."
                         : "Saved settings reapplied after wake.";

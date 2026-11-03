@@ -834,5 +834,77 @@ namespace PreySense.Tests
             Assert.AreEqual(0, sampler1Calls - 1, "Old sampler was never invoked");
             Assert.AreEqual(1, sampler2Calls, "New sampler 2 cleanly took over");
         }
+
+        [TestMethod]
+        public void BackgroundPolling_IsRateLimited_ToPreventFastFlips()
+        {
+            int sampleCount = 0;
+            long mockTicks = 10_000_000;
+
+            TelemetryCoordinator.ConfigureSampler(
+                fullSampler: () =>
+                {
+                    Interlocked.Increment(ref sampleCount);
+                    return new TelemetrySnapshot { IsValid = true, CpuUsage = 15, CpuTemp = 50, GpuTemp = 45 };
+                },
+                fanOnlySampler: null,
+                timestampProvider: () => mockTicks);
+
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+
+            // First poll produces snapshot
+            TelemetryCoordinator.Poll(force: false);
+            Assert.AreEqual(1, sampleCount, "Initial poll must execute");
+
+            // Rapid follow-up polls within 500ms (Stopwatch.Frequency / 2 ticks)
+            mockTicks += (long)(Stopwatch.Frequency * 0.5);
+            TelemetryCoordinator.Poll(force: false);
+            TelemetryCoordinator.Poll(force: false);
+            Assert.AreEqual(1, sampleCount, "Subsequent polls within 850ms must be throttled to prevent rapid updates");
+
+            // Advance time past 1 second (1000ms)
+            mockTicks += (long)(Stopwatch.Frequency * 0.5); // Total 1.0s elapsed
+            TelemetryCoordinator.Poll(force: false);
+            Assert.AreEqual(2, sampleCount, "Poll after 1.0s interval must be permitted");
+        }
+
+        [TestMethod]
+        public void SetDemand_DoesNotQueueRedundantPoll_IfSnapshotIsFresh()
+        {
+            int sampleCount = 0;
+            long mockTicks = 50_000_000;
+
+            TelemetryCoordinator.ConfigureSampler(
+                fullSampler: () =>
+                {
+                    Interlocked.Increment(ref sampleCount);
+                    return new TelemetrySnapshot
+                    {
+                        IsValid = true,
+                        CpuUsage = 20,
+                        CpuTemp = 55,
+                        TimestampTicks = mockTicks,
+                        ThermalTimestampTicks = mockTicks
+                    };
+                },
+                fanOnlySampler: null,
+                timestampProvider: () => mockTicks);
+
+            TelemetryCoordinator.AutoPromptOnDemandResume = true;
+
+            // Initially establish demand and sample
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.Poll(force: true);
+            Assert.AreEqual(1, sampleCount);
+
+            // Demand toggles within 200ms (snapshot is fresh, < 1.0s old)
+            mockTicks += (long)(Stopwatch.Frequency * 0.2);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+
+            // Give ThreadPool a short window if anything was queued
+            Thread.Sleep(50);
+            Assert.AreEqual(1, sampleCount, "Fresh snapshot must prevent queuing duplicate poll on resume");
+        }
     }
 }

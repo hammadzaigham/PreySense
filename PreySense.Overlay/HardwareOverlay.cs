@@ -358,15 +358,16 @@ namespace PreySense.Overlay
             }
 
             PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
-
-            if (!IsShowing) return;
-
-            InvalidateIfDirty();
         }
 
         private void OnTelemetrySnapshot(PreySense.Core.Services.TelemetrySnapshot snapshot)
         {
             if (IsDisposed || !_active || !IsShowing) return;
+
+            if (_fps != null && _fps.TargetPid != 0)
+            {
+                UpdateCurrentFps((int)Math.Round(_fps.SampleFps()));
+            }
 
             HardwareControl.ApplySnapshot(snapshot);
 

@@ -171,9 +171,11 @@ public static class TelemetryCoordinator
     private static int _demandMask;
     private static int _pollInProgress;
     private static TelemetrySnapshot _currentSnapshot = TelemetrySnapshot.Empty;
+    private static long _lastPollTicks;
 
     private const double StaleSnapshotSeconds = 4.0;
     private const double MaxThermalStalenessSeconds = 3.0;
+    private const double MinBackgroundPollIntervalSeconds = 0.850;
 
     private static Func<TelemetrySnapshot>? _customFullSampler;
     private static Func<TelemetrySnapshot>? _customFanOnlySampler;
@@ -241,7 +243,7 @@ public static class TelemetryCoordinator
 
     static TelemetryCoordinator()
     {
-        MasterTimer.Elapsed += (_, _) => Poll();
+        MasterTimer.Elapsed += (_, _) => Poll(force: false);
     }
 
     public static void SetInterval(double intervalMs)
@@ -283,9 +285,9 @@ public static class TelemetryCoordinator
                 }
             }
 
-            if (hasSampler && AutoPromptOnDemandResume)
+            if (hasSampler && AutoPromptOnDemandResume && IsSnapshotExpired(1.0))
             {
-                ThreadPool.QueueUserWorkItem(_ => Poll());
+                ThreadPool.QueueUserWorkItem(_ => Poll(force: false));
             }
         }
         else if (!hasDemand && hadDemand)
@@ -314,9 +316,9 @@ public static class TelemetryCoordinator
                 hasSampler = _customFullSampler != null;
             }
 
-            if (hasSampler && AutoPromptOnDemandResume)
+            if (hasSampler && AutoPromptOnDemandResume && IsSnapshotExpired(1.0))
             {
-                ThreadPool.QueueUserWorkItem(_ => Poll());
+                ThreadPool.QueueUserWorkItem(_ => Poll(force: false));
             }
         }
     }
@@ -354,6 +356,7 @@ public static class TelemetryCoordinator
             _customFanOnlySampler = null;
             _customTimestampProvider = null;
             _currentSnapshot = TelemetrySnapshot.Empty;
+            _lastPollTicks = 0;
             Volatile.Write(ref _demandMask, 0);
             Interlocked.Exchange(ref _pollInProgress, 0);
             AutoPromptOnDemandResume = false;
@@ -366,6 +369,7 @@ public static class TelemetryCoordinator
         lock (SyncLock)
         {
             _currentSnapshot = TelemetrySnapshot.Empty;
+            _lastPollTicks = 0;
         }
     }
 
@@ -425,7 +429,7 @@ public static class TelemetryCoordinator
         return sample.ToHardwareTelemetry();
     }
 
-    public static void Poll()
+    public static void Poll(bool force = true)
     {
         if (!HasActiveDemand)
             return;
@@ -434,6 +438,17 @@ public static class TelemetryCoordinator
         {
             if (_customFullSampler == null && _customFanOnlySampler == null)
                 return;
+
+            if (!force && _lastPollTicks > 0)
+            {
+                long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
+                double elapsed = _customTimestampProvider != null
+                    ? (double)(now - _lastPollTicks) / Stopwatch.Frequency
+                    : Stopwatch.GetElapsedTime(_lastPollTicks, now).TotalSeconds;
+
+                if (elapsed < MinBackgroundPollIntervalSeconds)
+                    return;
+            }
         }
 
         if (Interlocked.Exchange(ref _pollInProgress, 1) != 0)
@@ -505,6 +520,11 @@ public static class TelemetryCoordinator
 
         if (producedSnapshot)
         {
+            lock (SyncLock)
+            {
+                _lastPollTicks = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
+            }
+
             // Publish completed snapshot to subscribers outside of any hardware locks or gates
             var handler = SnapshotAvailable;
             if (handler != null)

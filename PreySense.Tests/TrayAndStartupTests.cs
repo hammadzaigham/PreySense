@@ -76,5 +76,17 @@ namespace PreySense.Tests
             Assert.Contains("FlushMenuThemes();", tray);
             Assert.DoesNotContain("SetPreferredAppMode(2);", tray);
         }
+
+        [TestMethod]
+        public async System.Threading.Tasks.Task PawnIoInstallService_SkipsModalDialog_WhenOwnerNotVisible()
+        {
+            string reported = string.Empty;
+            bool result = await PawnIoInstallService.EnsureInstalledAsync(null!, msg => reported = msg);
+            // If not already ready, must return false non-blockingly without showing modal dialog
+            if (!result)
+            {
+                StringAssert.Contains(reported, "PawnIO");
+            }
+        }
     }
 }

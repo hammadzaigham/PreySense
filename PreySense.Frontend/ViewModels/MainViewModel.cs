@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -420,6 +420,41 @@ namespace PreySense.Frontend.ViewModels
             var telemetry = snapshot.ToHardwareTelemetry();
             ProcessFanCurves(telemetry);
 
+            if (!snapshot.IsFanOnly)
+            {
+                bool onAc = snapshot.IsAcConnected;
+                PowerSourceKind source = snapshot.PowerSource;
+                if (_lastPowerSource.HasValue && _lastPowerSource.Value != source)
+                {
+                    if (_lastAcState != onAc)
+                    {
+                        _dispatcher.InvokeAsync(() =>
+                        {
+                            if (_disposed) return;
+                            NotifyModeSelectionsChanged();
+                            ApplyAutoRefreshForPower(onAc);
+                            ApplyGpuBatteryAuto(onAc);
+                        });
+                    }
+
+                    _dispatcher.InvokeAsync(() =>
+                    {
+                        if (_disposed) return;
+                        ApplyPowerProfileForSource(source);
+                    });
+                }
+                else if (!_lastPowerSource.HasValue)
+                {
+                    _dispatcher.InvokeAsync(() =>
+                    {
+                        if (_disposed) return;
+                        ApplyGpuBatteryAuto(onAc);
+                    });
+                }
+                _lastAcState = onAc;
+                _lastPowerSource = source;
+            }
+
             if (!_telemetryWindowVisible) return;
 
             _dispatcher.InvokeAsync(() =>
@@ -462,24 +497,6 @@ namespace PreySense.Frontend.ViewModels
             var batteryStatus = $"{Math.Round(BatteryPercent)}% ({sourceLabel})";
             if (!string.Equals(BatteryStatusText, batteryStatus, StringComparison.Ordinal))
                 BatteryStatusText = batteryStatus;
-
-            if (_lastPowerSource.HasValue && _lastPowerSource.Value != _currentPowerSource)
-            {
-                if (_lastAcState != IsAcConnected)
-                {
-                    NotifyModeSelectionsChanged();
-                    ApplyAutoRefreshForPower(IsAcConnected);
-                    ApplyGpuBatteryAuto(IsAcConnected);
-                }
-
-                ApplyPowerProfileForSource(_currentPowerSource);
-            }
-            else if (!_lastPowerSource.HasValue)
-            {
-                ApplyGpuBatteryAuto(IsAcConnected);
-            }
-            _lastAcState = IsAcConnected;
-            _lastPowerSource = _currentPowerSource;
         }
 
         public void SetTelemetryPollingActive(bool windowVisible)
