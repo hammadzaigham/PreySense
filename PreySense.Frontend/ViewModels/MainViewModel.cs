@@ -136,6 +136,7 @@ namespace PreySense.Frontend.ViewModels
             StartGameLaunchWatcher();
 
             PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnCoordinatorSnapshotAvailable;
+            PreySense.Core.Services.TelemetryCoordinator.DisplayTick += OnCoordinatorDisplayTick;
             UpdateFanDemand();
 
             try
@@ -455,8 +456,11 @@ namespace PreySense.Frontend.ViewModels
                 _lastAcState = onAc;
                 _lastPowerSource = source;
             }
+        }
 
-            if (!_telemetryWindowVisible) return;
+        private void OnCoordinatorDisplayTick(TelemetrySnapshot snapshot)
+        {
+            if (_disposed || !_telemetryWindowVisible) return;
 
             if (Interlocked.Exchange(ref _uiTelemetryUpdateQueued, 1) != 0)
                 return;
@@ -570,6 +574,7 @@ namespace PreySense.Frontend.ViewModels
             _disposed = true;
             _applicationReady.TrySetResult();
             PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnCoordinatorSnapshotAvailable;
+            PreySense.Core.Services.TelemetryCoordinator.DisplayTick -= OnCoordinatorDisplayTick;
             PreySense.Core.Services.TelemetryCoordinator.SetDemand(
                 PreySense.Core.Services.TelemetryDemand.MainWindow, false);
             ReleaseCustomFans();

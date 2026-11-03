@@ -55,8 +55,8 @@ public partial class HardwareOverlay
         RestorePosition(); base.Show();
         if (_gameOnly) { _hidden = true; NativeMethods.ShowWindow(Handle, NativeMethods.SW_HIDE); } else Invalidate();
         RestorePosition(); _timer.Interval = PollIntervalMs; _timer.Start(); EnsureFpsMonitor();
-        PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
-        PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnTelemetrySnapshot;
+        PreySense.Core.Services.TelemetryCoordinator.DisplayTick -= OnTelemetrySnapshot;
+        PreySense.Core.Services.TelemetryCoordinator.DisplayTick += OnTelemetrySnapshot;
         PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
         _ = Task.Run(() => { try { HardwareControl.Warmup(); } catch { } if (_active) { try { Tick(); } catch { } } });
     }
@@ -75,7 +75,7 @@ public partial class HardwareOverlay
     public void StopOverlay()
     {
         _active = false; SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; _timer.Stop();
-        PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
+        PreySense.Core.Services.TelemetryCoordinator.DisplayTick -= OnTelemetrySnapshot;
         PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
         _dragModeActive = false; _dragging = false; _fps?.Dispose(); _fps = null; ResetFpsDisplayState();
         _font?.Dispose(); _font = null; _rpmFont?.Dispose(); _rpmFont = null; _unitFont?.Dispose(); _unitFont = null;

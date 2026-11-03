@@ -169,6 +169,8 @@ public static class TelemetryCoordinator
     private static readonly object SyncLock = new();
     private static double _configuredIntervalMs = 1000;
     private static readonly System.Timers.Timer MasterTimer = new(1000) { AutoReset = false };
+    private static readonly System.Timers.Timer DisplayTimer = new(1000) { AutoReset = true };
+    private static int _firstSnapshotDelivered;
     private static int _demandMask;
     private static int _pollInProgress;
     private static TelemetrySnapshot _currentSnapshot = TelemetrySnapshot.Empty;
@@ -182,7 +184,21 @@ public static class TelemetryCoordinator
     private static Func<TelemetrySnapshot>? _customFanOnlySampler;
     private static Func<long>? _customTimestampProvider;
 
+    /// <summary>
+    /// Raw hardware telemetry snapshot event.
+    /// Fired immediately upon completion of a hardware poll cycle.
+    /// Used exclusively for real-time safety automation (fan curve follower, emergency cooling)
+    /// and power profile transitions without waiting for display clocks.
+    /// </summary>
     public static event Action<TelemetrySnapshot>? SnapshotAvailable;
+
+    /// <summary>
+    /// Synchronized 1 Hz display clock event.
+    /// Fired once every 1,000 ms to drive all visual UI consumers (MainWindow and HardwareOverlay).
+    /// Consumes the latest cached snapshot, guaranteeing that all displayed metrics (CPU/GPU temp,
+    /// usage, wattage, clocks, RAM, and graphs) update together in lockstep at exactly 1 Hz.
+    /// </summary>
+    public static event Action<TelemetrySnapshot>? DisplayTick;
 
     public static bool AutoPromptOnDemandResume { get; set; } = false;
 
@@ -244,9 +260,10 @@ public static class TelemetryCoordinator
 
     static TelemetryCoordinator()
     {
-        // Authoritative 1,000 ms master timer acts as normal polling heartbeat,
+        // Authoritative master timer acts as normal polling heartbeat,
         // bypassing demand debounce while strictly enforcing hardware concurrency protection.
         MasterTimer.Elapsed += (_, _) => Poll(bypassDebounce: true);
+        DisplayTimer.Elapsed += (_, _) => TriggerDisplayTick();
     }
 
     public static void SetInterval(double intervalMs)
@@ -270,6 +287,35 @@ public static class TelemetryCoordinator
                 MasterTimer.Stop();
                 MasterTimer.Interval = _configuredIntervalMs;
                 MasterTimer.Start();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Delivers the latest snapshot to all 1 Hz visual display consumers (MainWindow, HardwareOverlay).
+    /// </summary>
+    public static void TriggerDisplayTick()
+    {
+        if (!HasUiDemand)
+            return;
+
+        TelemetrySnapshot snapshot = CurrentSnapshot;
+        if (!snapshot.IsValid)
+            return;
+
+        var handler = DisplayTick;
+        if (handler != null)
+        {
+            foreach (Action<TelemetrySnapshot> subscriber in handler.GetInvocationList())
+            {
+                try
+                {
+                    subscriber(snapshot);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[TelemetryCoordinator] DisplayTick subscriber failed: {ex.Message}");
+                }
             }
         }
     }
@@ -344,6 +390,23 @@ public static class TelemetryCoordinator
                 ThreadPool.QueueUserWorkItem(_ => Poll(bypassDebounce: false));
             }
         }
+
+        // Manage synchronized 1 Hz display clock strictly based on UI demand
+        if (!hadUiDemand && hasUiDemand)
+        {
+            lock (SyncLock)
+            {
+                DisplayTimer.Start();
+            }
+            TriggerDisplayTick();
+        }
+        else if (hadUiDemand && !hasUiDemand)
+        {
+            lock (SyncLock)
+            {
+                DisplayTimer.Stop();
+            }
+        }
     }
 
     public static void ConfigureSampler(
@@ -374,13 +437,16 @@ public static class TelemetryCoordinator
         lock (SyncLock)
         {
             MasterTimer.Stop();
+            DisplayTimer.Stop();
             SnapshotAvailable = null;
+            DisplayTick = null;
             _customFullSampler = null;
             _customFanOnlySampler = null;
             _customTimestampProvider = null;
             _currentSnapshot = TelemetrySnapshot.Empty;
             _lastPollTicks = 0;
             _configuredIntervalMs = 1000;
+            Interlocked.Exchange(ref _firstSnapshotDelivered, 0);
             Volatile.Write(ref _demandMask, 0);
             Interlocked.Exchange(ref _pollInProgress, 0);
             AutoPromptOnDemandResume = false;
@@ -394,6 +460,7 @@ public static class TelemetryCoordinator
         {
             _currentSnapshot = TelemetrySnapshot.Empty;
             _lastPollTicks = 0;
+            Interlocked.Exchange(ref _firstSnapshotDelivered, 0);
         }
     }
 
@@ -588,6 +655,12 @@ public static class TelemetryCoordinator
                         Debug.WriteLine($"[TelemetryCoordinator] Subscriber failed: {ex.Message}");
                     }
                 }
+            }
+
+            // Prime the 1 Hz display clock with the first valid snapshot if UI demand is active
+            if (HasUiDemand && Interlocked.Exchange(ref _firstSnapshotDelivered, 1) == 0)
+            {
+                TriggerDisplayTick();
             }
         }
     }

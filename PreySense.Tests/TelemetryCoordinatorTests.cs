@@ -951,5 +951,158 @@ namespace PreySense.Tests
             Thread.Sleep(50);
             Assert.AreEqual(1, sampleCount, "Fresh snapshot must prevent queuing duplicate poll on resume");
         }
+
+        [TestMethod]
+        public void DisplayClock_EnforcesStrict1Hz_DecoupledFromFastHardwareSnapshots()
+        {
+            var rawSnapshots = new List<TelemetrySnapshot>();
+            var displaySnapshots = new List<TelemetrySnapshot>();
+            var displayTimestamps = new List<long>();
+            int currentTemp = 50;
+            long mockTicks = 100_000_000;
+
+            TelemetryCoordinator.ConfigureSampler(
+                fullSampler: () =>
+                {
+                    currentTemp += 2;
+                    return new TelemetrySnapshot
+                    {
+                        IsValid = true,
+                        CpuTemp = currentTemp,
+                        GpuTemp = 50,
+                        CpuUsage = 20,
+                        TimestampTicks = mockTicks,
+                        ThermalTimestampTicks = mockTicks
+                    };
+                },
+                fanOnlySampler: null,
+                timestampProvider: () => mockTicks);
+
+            void OnRaw(TelemetrySnapshot s) => rawSnapshots.Add(s);
+            void OnDisplay(TelemetrySnapshot s)
+            {
+                displaySnapshots.Add(s);
+                displayTimestamps.Add(mockTicks);
+            }
+
+            TelemetryCoordinator.SnapshotAvailable += OnRaw;
+            TelemetryCoordinator.DisplayTick += OnDisplay;
+
+            try
+            {
+                // Enable UI demand (MainWindow visible)
+                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+
+                // Initial poll produces first snapshot (Temp = 52)
+                TelemetryCoordinator.Poll(bypassDebounce: true);
+                Assert.AreEqual(1, rawSnapshots.Count, "Raw hardware snapshot produced for fan safety");
+                Assert.AreEqual(1, displaySnapshots.Count, "Initial display tick primes UI display");
+                Assert.AreEqual(52, displaySnapshots[0].CpuTemp);
+
+                // 4 rapid hardware samples arrive within 400ms (at 100ms intervals)
+                for (int i = 0; i < 4; i++)
+                {
+                    mockTicks += (long)(Stopwatch.Frequency * 0.1); // +100ms
+                    TelemetryCoordinator.Poll(bypassDebounce: true);
+                }
+
+                // Fan safety received all 5 hardware readings immediately
+                Assert.AreEqual(5, rawSnapshots.Count, "Fan safety / emergency cooling received all 5 hardware reads");
+                Assert.AreEqual(60, rawSnapshots.Last().CpuTemp, "Latest raw temperature updated in cache");
+
+                // BUT visual display clock MUST NOT have fired on any of the rapid hardware samples!
+                Assert.AreEqual(1, displaySnapshots.Count, "Display clock decoupled: visual metrics did NOT flicker during rapid hardware reads");
+
+                // Advance clock by remaining time to reach a full 1,000 ms display tick
+                mockTicks += (long)(Stopwatch.Frequency * 0.6); // Total 1.0s elapsed
+                TelemetryCoordinator.TriggerDisplayTick();
+
+                Assert.AreEqual(2, displaySnapshots.Count, "1 Hz display clock delivered next synchronized visual update");
+                Assert.AreEqual(60, displaySnapshots[1].CpuTemp, "Visual update consumed the latest cached hardware snapshot");
+
+                // Explicitly check the time between visible metric updates
+                double secondsBetweenUpdates = (double)(displayTimestamps[1] - displayTimestamps[0]) / Stopwatch.Frequency;
+                Assert.IsTrue(secondsBetweenUpdates >= 1.0, $"Visible metric updates must be separated by at least 1.0s (was {secondsBetweenUpdates:F3}s)");
+            }
+            finally
+            {
+                TelemetryCoordinator.SnapshotAvailable -= OnRaw;
+                TelemetryCoordinator.DisplayTick -= OnDisplay;
+            }
+        }
+
+        [TestMethod]
+        public void HistoricalGraphs_ReceiveExactlyOneSamplePerDisplayTick()
+        {
+            var graphHistory = new List<float>();
+            int currentTemp = 40;
+            long mockTicks = 50_000_000;
+
+            TelemetryCoordinator.ConfigureSampler(
+                fullSampler: () =>
+                {
+                    currentTemp += 1;
+                    return new TelemetrySnapshot
+                    {
+                        IsValid = true,
+                        CpuTemp = currentTemp,
+                        GpuTemp = 45,
+                        CpuUsage = 15,
+                        TimestampTicks = mockTicks,
+                        ThermalTimestampTicks = mockTicks
+                    };
+                },
+                fanOnlySampler: null,
+                timestampProvider: () => mockTicks);
+
+            // Simulate HardwareOverlay subscribing to DisplayTick for graph recording
+            void OnOverlayDisplayTick(TelemetrySnapshot snapshot)
+            {
+                graphHistory.Add((float)(snapshot.CpuTemp ?? 0));
+            }
+
+            TelemetryCoordinator.DisplayTick += OnOverlayDisplayTick;
+
+            try
+            {
+                // Enable overlay demand
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
+
+                // Initial poll on startup/show primes graph with 1st point (Temp = 41)
+                TelemetryCoordinator.Poll(bypassDebounce: true);
+                Assert.AreEqual(1, graphHistory.Count, "Initial display tick records initial graph sample");
+                Assert.AreEqual(41f, graphHistory[0]);
+
+                // Over the next 3 seconds, multiple rapid hardware polls occur (e.g. 3 polls per second = 9 polls)
+                for (int second = 1; second <= 3; second++)
+                {
+                    for (int subPoll = 0; subPoll < 3; subPoll++)
+                    {
+                        mockTicks += (long)(Stopwatch.Frequency * 0.25); // +250ms
+                        TelemetryCoordinator.Poll(bypassDebounce: true);
+                    }
+
+                    // Advance clock to the 1-second display tick boundary
+                    mockTicks += (long)(Stopwatch.Frequency * 0.25); // Completes the full second
+                    TelemetryCoordinator.TriggerDisplayTick();
+
+                    // Graph must have added exactly ONE sample for this second
+                    Assert.AreEqual(second + 1, graphHistory.Count, $"Graph history must have exactly {second + 1} samples after second {second}");
+                }
+
+                // Total hardware polls: 1 initial + 9 periodic = 10 polls.
+                // Graph history must contain strictly 4 samples (initial + 3 display ticks), not 10.
+                Assert.AreEqual(4, graphHistory.Count, "Historical graphs must receive exactly one sample per display tick regardless of hardware poll bursts");
+                // The recorded temperatures must reflect the latest hardware state at each tick
+                Assert.AreEqual(41f, graphHistory[0]);
+                Assert.AreEqual(44f, graphHistory[1]);
+                Assert.AreEqual(47f, graphHistory[2]);
+                Assert.AreEqual(50f, graphHistory[3]);
+            }
+            finally
+            {
+                TelemetryCoordinator.DisplayTick -= OnOverlayDisplayTick;
+            }
+        }
     }
 }

@@ -160,7 +160,7 @@ namespace PreySense.Overlay
         {
             Alpha = 255;
             _timer.Elapsed += (_, _) => Tick();
-            PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnTelemetrySnapshot;
+            PreySense.Core.Services.TelemetryCoordinator.DisplayTick += OnTelemetrySnapshot;
         }
 
         private const int WM_NCDESTROY = 0x0082;
@@ -474,7 +474,7 @@ namespace PreySense.Overlay
         {
             if (disposing)
             {
-                PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
+                PreySense.Core.Services.TelemetryCoordinator.DisplayTick -= OnTelemetrySnapshot;
                 PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
             }
             base.Dispose(disposing);
