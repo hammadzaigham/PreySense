@@ -167,7 +167,8 @@ public static class TelemetryInstrumentation
 public static class TelemetryCoordinator
 {
     private static readonly object SyncLock = new();
-    private static readonly System.Timers.Timer MasterTimer = new(1000) { AutoReset = true };
+    private static double _configuredIntervalMs = 1000;
+    private static readonly System.Timers.Timer MasterTimer = new(1000) { AutoReset = false };
     private static int _demandMask;
     private static int _pollInProgress;
     private static TelemetrySnapshot _currentSnapshot = TelemetrySnapshot.Empty;
@@ -252,7 +253,24 @@ public static class TelemetryCoordinator
     {
         lock (SyncLock)
         {
-            MasterTimer.Interval = Math.Clamp(intervalMs, 250, 5000);
+            _configuredIntervalMs = Math.Clamp(intervalMs, 250, 5000);
+            if (HasActiveDemand)
+            {
+                MasterTimer.Interval = _configuredIntervalMs;
+            }
+        }
+    }
+
+    private static void ScheduleNextMasterTick()
+    {
+        lock (SyncLock)
+        {
+            if (HasActiveDemand && (_customFullSampler != null || _customFanOnlySampler != null))
+            {
+                MasterTimer.Stop();
+                MasterTimer.Interval = _configuredIntervalMs;
+                MasterTimer.Start();
+            }
         }
     }
 
@@ -281,15 +299,18 @@ public static class TelemetryCoordinator
             lock (SyncLock)
             {
                 hasSampler = _customFullSampler != null || _customFanOnlySampler != null;
-                if (hasSampler)
-                {
-                    MasterTimer.Start();
-                }
             }
 
-            if (hasSampler && AutoPromptOnDemandResume && IsSnapshotExpired(MinDemandPollIntervalSeconds))
+            if (hasSampler)
             {
-                ThreadPool.QueueUserWorkItem(_ => Poll(bypassDebounce: false));
+                if (AutoPromptOnDemandResume && IsSnapshotExpired(MinDemandPollIntervalSeconds))
+                {
+                    ThreadPool.QueueUserWorkItem(_ => Poll(bypassDebounce: false));
+                }
+                else
+                {
+                    ScheduleNextMasterTick();
+                }
             }
         }
         else if (!hasDemand && hadDemand)
@@ -339,7 +360,7 @@ public static class TelemetryCoordinator
             bool hasSampler = fullSampler != null || fanOnlySampler != null;
             if (HasActiveDemand && hasSampler)
             {
-                MasterTimer.Start();
+                ScheduleNextMasterTick();
             }
             else if (!hasSampler)
             {
@@ -359,6 +380,7 @@ public static class TelemetryCoordinator
             _customTimestampProvider = null;
             _currentSnapshot = TelemetrySnapshot.Empty;
             _lastPollTicks = 0;
+            _configuredIntervalMs = 1000;
             Volatile.Write(ref _demandMask, 0);
             Interlocked.Exchange(ref _pollInProgress, 0);
             AutoPromptOnDemandResume = false;
@@ -545,6 +567,7 @@ public static class TelemetryCoordinator
         finally
         {
             Volatile.Write(ref _pollInProgress, 0);
+            ScheduleNextMasterTick();
         }
 
         if (producedSnapshot)

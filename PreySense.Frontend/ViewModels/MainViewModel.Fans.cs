@@ -93,8 +93,8 @@ public partial class MainViewModel
                     _fanOverrideActive = false;
                     _fanFallbackActive = true;
                     _sentCpuFan = _sentGpuFan = null;
+                    UpdateFanDemand();
                 }
-                UpdateFanDemand();
                 return;
             }
             if (_runningFanProfile.ControlMode == FanControlMode.Max)
@@ -107,10 +107,10 @@ public partial class MainViewModel
                         _sentMaxFanMode = _fanOverrideActive = true;
                         _fanFallbackActive = false;
                         _sentCpuFan = _sentGpuFan = null;
+                        UpdateFanDemand();
                     }
                     else FanWriteFailed();
                 }
-                UpdateFanDemand();
                 return;
             }
             bool emergency = _fanCoolingSafety.Evaluate(telemetry.CpuTemp, telemetry.GpuTemp);

@@ -26,6 +26,7 @@ namespace PreySense.Frontend.ViewModels
         private int _pendingBrightnessDelta;
         private int _powerSourceUpdateQueued;
         private int _telemetryPollInProgress;
+        private int _uiTelemetryUpdateQueued;
         private volatile bool _telemetryWindowVisible;
         private bool ShouldPollTelemetry => _telemetryWindowVisible || OverlayBridge.IsShowing;
         private bool _disposed;
@@ -457,10 +458,20 @@ namespace PreySense.Frontend.ViewModels
 
             if (!_telemetryWindowVisible) return;
 
+            if (Interlocked.Exchange(ref _uiTelemetryUpdateQueued, 1) != 0)
+                return;
+
             _dispatcher.InvokeAsync(() =>
             {
-                if (_disposed || !_telemetryWindowVisible) return;
-                UpdateTelemetryFromSnapshot(snapshot);
+                try
+                {
+                    if (_disposed || !_telemetryWindowVisible) return;
+                    UpdateTelemetryFromSnapshot(snapshot);
+                }
+                finally
+                {
+                    Volatile.Write(ref _uiTelemetryUpdateQueued, 0);
+                }
             });
         }
 
