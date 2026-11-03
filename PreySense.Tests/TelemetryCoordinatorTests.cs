@@ -853,19 +853,64 @@ namespace PreySense.Tests
             TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
 
             // First poll produces snapshot
-            TelemetryCoordinator.Poll(force: false);
+            TelemetryCoordinator.Poll(bypassDebounce: false);
             Assert.AreEqual(1, sampleCount, "Initial poll must execute");
 
             // Rapid follow-up polls within 500ms (Stopwatch.Frequency / 2 ticks)
             mockTicks += (long)(Stopwatch.Frequency * 0.5);
-            TelemetryCoordinator.Poll(force: false);
-            TelemetryCoordinator.Poll(force: false);
-            Assert.AreEqual(1, sampleCount, "Subsequent polls within 850ms must be throttled to prevent rapid updates");
+            TelemetryCoordinator.Poll(bypassDebounce: false);
+            TelemetryCoordinator.Poll(bypassDebounce: false);
+            Assert.AreEqual(1, sampleCount, "Subsequent demand polls within 1.0s must be throttled to prevent rapid updates");
 
-            // Advance time past 1 second (1000ms)
-            mockTicks += (long)(Stopwatch.Frequency * 0.5); // Total 1.0s elapsed
-            TelemetryCoordinator.Poll(force: false);
+            // Advance time past 1 second (1000ms + 10ms margin)
+            mockTicks += (long)(Stopwatch.Frequency * 0.51); // Total > 1.0s elapsed
+            TelemetryCoordinator.Poll(bypassDebounce: false);
             Assert.AreEqual(2, sampleCount, "Poll after 1.0s interval must be permitted");
+        }
+
+        [TestMethod]
+        public void MasterTimer_BypassesDebounce_ButHonorsConcurrency()
+        {
+            int sampleCount = 0;
+            long mockTicks = 20_000_000;
+            var inSampler = new ManualResetEventSlim(false);
+            var blockGate = new ManualResetEventSlim(false);
+
+            TelemetryCoordinator.ConfigureSampler(
+                fullSampler: () =>
+                {
+                    Interlocked.Increment(ref sampleCount);
+                    inSampler.Set();
+                    blockGate.Wait(1000);
+                    return new TelemetrySnapshot { IsValid = true, CpuUsage = 25, CpuTemp = 55, GpuTemp = 50 };
+                },
+                fanOnlySampler: null,
+                timestampProvider: () => mockTicks);
+
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+
+            // 1. Initial master tick produces sample
+            blockGate.Set();
+            TelemetryCoordinator.Poll(bypassDebounce: true);
+            Assert.AreEqual(1, sampleCount);
+
+            // 2. Authoritative master timer ticks at 995ms (slightly under 1.0s due to timer jitter)
+            mockTicks += (long)(Stopwatch.Frequency * 0.995);
+            TelemetryCoordinator.Poll(bypassDebounce: true);
+            Assert.AreEqual(2, sampleCount, "Master timer tick must bypass debounce to prevent 2-second stutter");
+
+            // 3. Concurrency protection: if a slow read is in-flight, MasterTimer tick must NOT overlap
+            blockGate.Reset();
+            inSampler.Reset();
+            var task = System.Threading.Tasks.Task.Run(() => TelemetryCoordinator.Poll(bypassDebounce: true));
+            Assert.IsTrue(inSampler.Wait(500), "Background task must enter sampler");
+
+            // A second master tick arrives while the slow read is still in flight
+            TelemetryCoordinator.Poll(bypassDebounce: true);
+            blockGate.Set();
+            task.Wait();
+
+            Assert.AreEqual(3, sampleCount, "In-flight poll concurrency protection must prevent overlapping reads");
         }
 
         [TestMethod]
@@ -894,7 +939,7 @@ namespace PreySense.Tests
 
             // Initially establish demand and sample
             TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
-            TelemetryCoordinator.Poll(force: true);
+            TelemetryCoordinator.Poll(bypassDebounce: true);
             Assert.AreEqual(1, sampleCount);
 
             // Demand toggles within 200ms (snapshot is fresh, < 1.0s old)
