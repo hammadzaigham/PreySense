@@ -8,7 +8,6 @@ using System.Threading;
 public enum TelemetryDemand
 {
     None = 0,
-    MainWindow = 1 << 0,
     Overlay = 1 << 1,
     FanController = 1 << 2
 }
@@ -44,7 +43,8 @@ public readonly record struct TelemetrySnapshot(
     PowerSourceKind PowerSource,
     bool IsValid,
     bool IsFanOnly = false,
-    long ThermalTimestampTicks = 0)
+    long ThermalTimestampTicks = 0,
+    int? RamSpeedMhz = null)
 {
     public long EffectiveThermalTicks => ThermalTimestampTicks > 0 ? ThermalTimestampTicks : TimestampTicks;
 
@@ -167,12 +167,10 @@ public static class TelemetryInstrumentation
 public static class TelemetryCoordinator
 {
     private static readonly object SyncLock = new();
-    private static double _configuredIntervalMs = 1000;
     private static readonly System.Timers.Timer MasterTimer = new(1000) { AutoReset = false };
-    private static readonly System.Timers.Timer DisplayTimer = new(1000) { AutoReset = true };
-    private static int _firstSnapshotDelivered;
     private static int _demandMask;
     private static int _pollInProgress;
+    private static int _cycleInProgress;
     private static TelemetrySnapshot _currentSnapshot = TelemetrySnapshot.Empty;
     private static long _lastPollTicks;
 
@@ -185,22 +183,37 @@ public static class TelemetryCoordinator
     private static Func<long>? _customTimestampProvider;
 
     /// <summary>
-    /// Raw hardware telemetry snapshot event.
+    /// Shared hardware telemetry snapshot for fan control, power transitions, and both UIs.
     /// Fired immediately upon completion of a hardware poll cycle.
-    /// Used exclusively for real-time safety automation (fan curve follower, emergency cooling)
-    /// and power profile transitions without waiting for display clocks.
     /// </summary>
     public static event Action<TelemetrySnapshot>? SnapshotAvailable;
 
-    /// <summary>
-    /// Synchronized 1 Hz display clock event.
-    /// Fired once every 1,000 ms to drive all visual UI consumers (MainWindow and HardwareOverlay).
-    /// Consumes the latest cached snapshot, guaranteeing that all displayed metrics (CPU/GPU temp,
-    /// usage, wattage, clocks, RAM, and graphs) update together in lockstep at exactly 1 Hz.
-    /// </summary>
-    public static event Action<TelemetrySnapshot>? DisplayTick;
+    // Lightweight overlay visibility/FPS work shares the same timer, even while sensors are idle.
+    public static event Action? Heartbeat;
+    private static bool _overlayActive;
+    private static TelemetryMetrics _overlayMetrics;
 
-    public static bool AutoPromptOnDemandResume { get; set; } = false;
+    public static TelemetryMetrics RequestedMetrics
+    {
+        get
+        {
+            lock (SyncLock)
+            {
+                var demand = (TelemetryDemand)_demandMask;
+                var metrics = TelemetryMetrics.None;
+                if (demand.HasFlag(TelemetryDemand.Overlay)) metrics |= _overlayMetrics;
+                if (demand.HasFlag(TelemetryDemand.FanController))
+                    metrics |= TelemetryMetrics.Temperatures;
+                return metrics;
+            }
+        }
+    }
+
+    public static void SetOverlayMetrics(TelemetryMetrics metrics)
+    {
+        lock (SyncLock) _overlayMetrics = metrics;
+    }
+
 
     public static TelemetrySnapshot CurrentSnapshot
     {
@@ -254,158 +267,62 @@ public static class TelemetryCoordinator
     }
 
     public static bool HasActiveDemand => Volatile.Read(ref _demandMask) != 0;
-    public static bool HasUiDemand => (Volatile.Read(ref _demandMask) & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay)) != 0;
-    public static bool HasFanOnlyDemand => Volatile.Read(ref _demandMask) == (int)TelemetryDemand.FanController;
+    public static bool HasUiDemand => (Volatile.Read(ref _demandMask) & (int)TelemetryDemand.Overlay) != 0;
+    public static bool HasFanOnlyDemand => HasActiveDemand && !HasUiDemand;
     public static TelemetryDemand ActiveDemand => (TelemetryDemand)Volatile.Read(ref _demandMask);
 
     static TelemetryCoordinator()
     {
-        // Authoritative master timer acts as normal polling heartbeat,
-        // bypassing demand debounce while strictly enforcing hardware concurrency protection.
-        MasterTimer.Elapsed += (_, _) => Poll(bypassDebounce: true);
-        DisplayTimer.Elapsed += (_, _) => TriggerDisplayTick();
-    }
-
-    public static void SetInterval(double intervalMs)
-    {
-        lock (SyncLock)
+        // Timer ticks and explicit requests use the same rate and concurrency limits.
+        MasterTimer.Elapsed += (_, _) =>
         {
-            _configuredIntervalMs = Math.Clamp(intervalMs, 250, 5000);
-            if (HasActiveDemand)
+            if (Interlocked.Exchange(ref _cycleInProgress, 1) != 0) return;
+            try
             {
-                MasterTimer.Interval = _configuredIntervalMs;
+                Heartbeat?.Invoke();
+                Poll();
             }
-        }
+            catch (Exception ex) { AppLogger.Log($"Telemetry cycle failed: {ex.Message}"); }
+            finally
+            {
+                Volatile.Write(ref _cycleInProgress, 0);
+                ScheduleNextMasterTick();
+            }
+        };
     }
 
     private static void ScheduleNextMasterTick()
     {
         lock (SyncLock)
         {
-            if (HasActiveDemand && (_customFullSampler != null || _customFanOnlySampler != null))
+            if (Volatile.Read(ref _cycleInProgress) == 0 && !MasterTimer.Enabled &&
+                (_overlayActive || (HasActiveDemand && (_customFullSampler != null || _customFanOnlySampler != null))))
             {
-                MasterTimer.Stop();
-                MasterTimer.Interval = _configuredIntervalMs;
                 MasterTimer.Start();
             }
         }
     }
 
-    /// <summary>
-    /// Delivers the latest snapshot to all 1 Hz visual display consumers (MainWindow, HardwareOverlay).
-    /// </summary>
-    public static void TriggerDisplayTick()
+    public static void SetOverlayActive(bool active)
     {
-        if (!HasUiDemand)
-            return;
-
-        TelemetrySnapshot snapshot = CurrentSnapshot;
-        if (!snapshot.IsValid)
-            return;
-
-        var handler = DisplayTick;
-        if (handler != null)
+        lock (SyncLock)
         {
-            foreach (Action<TelemetrySnapshot> subscriber in handler.GetInvocationList())
-            {
-                try
-                {
-                    subscriber(snapshot);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[TelemetryCoordinator] DisplayTick subscriber failed: {ex.Message}");
-                }
-            }
+            _overlayActive = active;
+            if (active) ScheduleNextMasterTick();
+            else if (!HasActiveDemand) MasterTimer.Stop();
         }
     }
 
     public static void SetDemand(TelemetryDemand demand, bool active)
     {
-        int oldMask, newMask;
-        do
+        lock (SyncLock)
         {
-            oldMask = Volatile.Read(ref _demandMask);
-            newMask = active ? (oldMask | (int)demand) : (oldMask & ~(int)demand);
-        } while (Interlocked.CompareExchange(ref _demandMask, newMask, oldMask) != oldMask);
-
-        bool hadDemand = oldMask != 0;
-        bool hasDemand = newMask != 0;
-        bool hadUiDemand = (oldMask & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay)) != 0;
-        bool hasUiDemand = (newMask & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay)) != 0;
-
-        if (hasDemand && !hadDemand)
-        {
-            if (IsSnapshotExpired())
-            {
-                InvalidateCurrentSnapshot();
-            }
-
-            bool hasSampler;
-            lock (SyncLock)
-            {
-                hasSampler = _customFullSampler != null || _customFanOnlySampler != null;
-            }
-
-            if (hasSampler)
-            {
-                if (AutoPromptOnDemandResume && IsSnapshotExpired(MinDemandPollIntervalSeconds))
-                {
-                    ThreadPool.QueueUserWorkItem(_ => Poll(bypassDebounce: false));
-                }
-                else
-                {
-                    ScheduleNextMasterTick();
-                }
-            }
-        }
-        else if (!hasDemand && hadDemand)
-        {
-            lock (SyncLock)
-            {
-                MasterTimer.Stop();
-            }
-        }
-        else if (!hadUiDemand && hasUiDemand)
-        {
-            // UI demand just resumed while background fan demand was already running.
-            // Invalidate stale full telemetry metrics so 30-minute old metrics aren't displayed.
-            if (IsSnapshotExpired())
-            {
-                lock (SyncLock)
-                {
-                    long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                    _currentSnapshot = _currentSnapshot.ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider);
-                }
-            }
-
-            bool hasSampler;
-            lock (SyncLock)
-            {
-                hasSampler = _customFullSampler != null;
-            }
-
-            if (hasSampler && AutoPromptOnDemandResume && IsSnapshotExpired(MinDemandPollIntervalSeconds))
-            {
-                ThreadPool.QueueUserWorkItem(_ => Poll(bypassDebounce: false));
-            }
-        }
-
-        // Manage synchronized 1 Hz display clock strictly based on UI demand
-        if (!hadUiDemand && hasUiDemand)
-        {
-            lock (SyncLock)
-            {
-                DisplayTimer.Start();
-            }
-            TriggerDisplayTick();
-        }
-        else if (hadUiDemand && !hasUiDemand)
-        {
-            lock (SyncLock)
-            {
-                DisplayTimer.Stop();
-            }
+            int oldMask = _demandMask;
+            int newMask = active ? oldMask | (int)demand : oldMask & ~(int)demand;
+            if (oldMask == newMask) return;
+            Volatile.Write(ref _demandMask, newMask);
+            if (oldMask == 0 && newMask != 0) ScheduleNextMasterTick();
+            else if (newMask == 0 && !_overlayActive) MasterTimer.Stop();
         }
     }
 
@@ -425,7 +342,7 @@ public static class TelemetryCoordinator
             {
                 ScheduleNextMasterTick();
             }
-            else if (!hasSampler)
+            else if (!hasSampler && !_overlayActive)
             {
                 MasterTimer.Stop();
             }
@@ -437,19 +354,18 @@ public static class TelemetryCoordinator
         lock (SyncLock)
         {
             MasterTimer.Stop();
-            DisplayTimer.Stop();
+
             SnapshotAvailable = null;
-            DisplayTick = null;
+            Heartbeat = null;
+            _overlayActive = false;
+            _overlayMetrics = TelemetryMetrics.None;
             _customFullSampler = null;
             _customFanOnlySampler = null;
             _customTimestampProvider = null;
             _currentSnapshot = TelemetrySnapshot.Empty;
             _lastPollTicks = 0;
-            _configuredIntervalMs = 1000;
-            Interlocked.Exchange(ref _firstSnapshotDelivered, 0);
             Volatile.Write(ref _demandMask, 0);
             Interlocked.Exchange(ref _pollInProgress, 0);
-            AutoPromptOnDemandResume = false;
             TelemetryInstrumentation.Reset();
         }
     }
@@ -459,76 +375,19 @@ public static class TelemetryCoordinator
         lock (SyncLock)
         {
             _currentSnapshot = TelemetrySnapshot.Empty;
-            _lastPollTicks = 0;
-            Interlocked.Exchange(ref _firstSnapshotDelivered, 0);
         }
     }
 
-    /// <summary>
-    /// Independent, thread-safe temperature query for the fan curve controller.
-    /// Allows thermal safety/emergency checks to obtain fresh readings without relying on UI timers.
-    /// If gate contention occurs and cached thermal readings are stale (> 3.0s), returns invalid
-    /// temperatures (-1, -1) so the fan controller invokes conservative cooling fallback.
-    /// </summary>
-    public static HardwareTelemetry RequestFreshFanTemperatures()
+    /// <summary>Reads the shared thermal snapshot without issuing hardware queries.</summary>
+    public static HardwareTelemetry GetFanTemperaturesSnapshot() =>
+        IsThermalExpired(MaxThermalStalenessSeconds)
+            ? new HardwareTelemetry(-1, -1, -1, -1, 5800, 5600, 0, false, 0)
+            : CurrentSnapshot.ToHardwareTelemetry();
+
+    /// <summary>Samples once at most per second, including explicit requests and timer ticks.</summary>
+    public static void Poll()
     {
-        using var lease = HardwareOperationGate.TryEnterTelemetry(100);
-        if (lease == null)
-        {
-            // If gate is busy, check freshness of cached thermal reading.
-            // If cached temperatures are stale (> 3.0s), return invalid readings (-1, -1)
-            // so the fan controller can apply conservative cooling fallback rather than
-            // blindly trusting stale temperatures.
-            if (IsThermalExpired(MaxThermalStalenessSeconds))
-            {
-                return new HardwareTelemetry(-1, -1, -1, -1, 5800, 5600, 0, false, 0);
-            }
-            return CurrentSnapshot.ToHardwareTelemetry();
-        }
-
-        TelemetrySnapshot sample;
-        lock (SyncLock)
-        {
-            if (_customFanOnlySampler != null)
-            {
-                sample = _customFanOnlySampler();
-            }
-            else if (_customFullSampler != null)
-            {
-                sample = _customFullSampler();
-            }
-            else
-            {
-                return CurrentSnapshot.ToHardwareTelemetry();
-            }
-
-            if (_currentSnapshot.IsValid && sample.IsFanOnly)
-            {
-                long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                var baseSnapshot = _currentSnapshot.ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider);
-                _currentSnapshot = baseSnapshot.WithFanTemperatures(
-                    sample.CpuTemp,
-                    sample.GpuTemp,
-                    sample.EffectiveThermalTicks);
-            }
-            else
-            {
-                _currentSnapshot = sample;
-            }
-        }
-        Interlocked.Increment(ref TelemetryInstrumentation.EcThermalReadCount);
-        return sample.ToHardwareTelemetry();
-    }
-
-    /// <summary>
-    /// Executes a polling cycle.
-    /// When <paramref name="bypassDebounce"/> is true (e.g., authoritative master timer ticks), the 1.0s demand debounce
-    /// guard is bypassed. Concurrency protection (<see cref="_pollInProgress"/>) is strictly enforced in all cases
-    /// so in-flight slow hardware reads can never overlap.
-    /// </summary>
-    public static void Poll(bool bypassDebounce = true)
-    {
-        if (!HasActiveDemand)
+        if (!HasActiveDemand || RequestedMetrics == TelemetryMetrics.None)
             return;
 
         if (Interlocked.Exchange(ref _pollInProgress, 1) != 0)
@@ -548,7 +407,7 @@ public static class TelemetryCoordinator
                 return;
             }
 
-            if (!bypassDebounce && _lastPollTicks > 0)
+            if (_lastPollTicks > 0)
             {
                 long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
                 double elapsed = _customTimestampProvider != null
@@ -575,7 +434,7 @@ public static class TelemetryCoordinator
                 if (lease == null)
                 {
                     // If gate is contended and thermal readings have expired (> 3.0s),
-                    // notify subscribers with an invalid thermal snapshot so safety fallback can take over.
+                    // notify subscribers with an invalid thermal snapshot so fan curves skip the update.
                     if (IsThermalExpired(MaxThermalStalenessSeconds))
                     {
                         lock (SyncLock)
@@ -585,7 +444,6 @@ public static class TelemetryCoordinator
                                 .ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider)
                                 .WithFanTemperatures(-1, -1, 0) with { IsValid = false };
                             _currentSnapshot = snapshot;
-                            _lastPollTicks = now;
                         }
                         producedSnapshot = true;
                     }
@@ -598,11 +456,11 @@ public static class TelemetryCoordinator
                 {
                     if (uiDemand)
                     {
-                        snapshot = fullSampler != null ? fullSampler() : DefaultFullSampler();
+                        snapshot = (fullSampler ?? fanOnlySampler!)();
                     }
                     else
                     {
-                        snapshot = fanOnlySampler != null ? fanOnlySampler() : DefaultFanOnlySampler();
+                        snapshot = (fanOnlySampler ?? fullSampler!)();
                         if (snapshot.IsFanOnly)
                         {
                             lock (SyncLock)
@@ -634,7 +492,6 @@ public static class TelemetryCoordinator
         finally
         {
             Volatile.Write(ref _pollInProgress, 0);
-            ScheduleNextMasterTick();
         }
 
         if (producedSnapshot)
@@ -657,144 +514,6 @@ public static class TelemetryCoordinator
                 }
             }
 
-            // Prime the 1 Hz display clock with the first valid snapshot if UI demand is active
-            if (HasUiDemand && Interlocked.Exchange(ref _firstSnapshotDelivered, 1) == 0)
-            {
-                TriggerDisplayTick();
-            }
         }
-    }
-
-    private static TelemetrySnapshot DefaultFanOnlySampler()
-    {
-        long timestamp = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-        int cpuTemp = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-        int gpuTemp = PreySense.Gpu.NvidiaGpuControl.Shared.ReadCurrentTemperature() ?? -1;
-
-        Interlocked.Increment(ref TelemetryInstrumentation.EcThermalReadCount);
-
-        lock (SyncLock)
-        {
-            if (_currentSnapshot.IsValid)
-            {
-                return _currentSnapshot.WithFanTemperatures(cpuTemp, gpuTemp, timestamp);
-            }
-        }
-
-        return new TelemetrySnapshot(
-            TimestampTicks: 0,
-            CpuUsage: null,
-            CpuMaxCoreUsage: null,
-            CpuPCoreUsage: null,
-            CpuECoreUsage: null,
-            RamUsage: null,
-            RamUsedMb: null,
-            CpuTemp: cpuTemp,
-            GpuTemp: gpuTemp,
-            CpuRpm: null,
-            GpuRpm: null,
-            CpuFanMaxRpm: 5800,
-            GpuFanMaxRpm: 5600,
-            CpuPkgPowerWatts: null,
-            GpuPowerWatts: null,
-            CpuVoltage: null,
-            GpuVoltage: null,
-            CpuClockMhz: null,
-            ECoreClockMhz: null,
-            GpuClockMhz: null,
-            GpuUsage: null,
-            VramUsedMb: null,
-            VramTotalMb: null,
-            VramSpeedMhz: null,
-            GpuInUse: false,
-            BatteryPercent: 0f,
-            IsAcConnected: false,
-            PowerSource: PowerSourceKind.Ac,
-            IsValid: cpuTemp > 0 || gpuTemp > 0,
-            IsFanOnly: true,
-            ThermalTimestampTicks: timestamp);
-    }
-
-    private static TelemetrySnapshot DefaultFullSampler()
-    {
-        long timestamp = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-
-        // 1. CPU utilization via CpuUsageMonitor (zero-allocation native syscalls)
-        var cpuSnap = CpuUsageMonitor.GetSnapshot();
-        Interlocked.Increment(ref TelemetryInstrumentation.CpuTelemetryReadCount);
-
-        // 2. RAM utilization via SystemMemoryMonitor
-        var ramInfo = SystemMemoryMonitor.GetMemoryInfo();
-        Interlocked.Increment(ref TelemetryInstrumentation.RamTelemetryReadCount);
-
-        // 3. Thermal sensors & battery
-        int cpuTemp = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-        int gpuTemp = PreySense.Gpu.NvidiaGpuControl.Shared.ReadCurrentTemperature() ?? -1;
-        Interlocked.Increment(ref TelemetryInstrumentation.EcThermalReadCount);
-
-        // 4. GPU specifics
-        var gpu = PreySense.Gpu.NvidiaGpuControl.Shared;
-        bool gpuInUse = gpu.IsDiscreteGpuInUse();
-        int? gpuUsage = null;
-        int? gpuMhz = null;
-        float? gpuVoltage = null;
-        float? gpuPower = null;
-        int? vramUsedMb = null;
-        int? vramTotalMb = null;
-        int? vramSpeedMhz = null;
-
-        if (gpuInUse)
-        {
-            try
-            {
-                gpuUsage = gpu.GetGpuUse();
-                gpuMhz = gpu.GetGpuClock();
-                gpuVoltage = gpu.GetGpuVoltage();
-                gpuPower = (float?)gpu.GetGpuPower();
-                if (gpu.GetVramInfo() is { } v && v.totalMb > 0)
-                {
-                    vramUsedMb = (int)v.usedMb;
-                    vramTotalMb = (int)v.totalMb;
-                }
-                vramSpeedMhz = gpu.GetGpuMemoryClock();
-                Interlocked.Increment(ref TelemetryInstrumentation.GpuTelemetryReadCount);
-            }
-            catch { }
-        }
-
-        float? cpuVid = PreySense.Mode.PawnCpuPowerControl.ReadCoreVid();
-
-        return new TelemetrySnapshot(
-            TimestampTicks: timestamp,
-            CpuUsage: cpuSnap?.TotalUsage,
-            CpuMaxCoreUsage: cpuSnap?.MaxCoreUsage,
-            CpuPCoreUsage: cpuSnap?.PCoreUsage,
-            CpuECoreUsage: cpuSnap?.ECoreUsage,
-            RamUsage: ramInfo?.UsedPercent,
-            RamUsedMb: ramInfo?.UsedMb,
-            CpuTemp: cpuTemp,
-            GpuTemp: gpuTemp,
-            CpuRpm: null, // Populated via Wmi thermal if available
-            GpuRpm: null,
-            CpuFanMaxRpm: 5800,
-            GpuFanMaxRpm: 5600,
-            CpuPkgPowerWatts: null,
-            GpuPowerWatts: gpuPower,
-            CpuVoltage: cpuVid,
-            GpuVoltage: gpuVoltage,
-            CpuClockMhz: null,
-            ECoreClockMhz: null,
-            GpuClockMhz: gpuMhz,
-            GpuUsage: gpuUsage,
-            VramUsedMb: vramUsedMb,
-            VramTotalMb: vramTotalMb,
-            VramSpeedMhz: vramSpeedMhz,
-            GpuInUse: gpuInUse,
-            BatteryPercent: 0f,
-            IsAcConnected: true,
-            PowerSource: PowerSourceKind.Ac,
-            IsValid: true,
-            IsFanOnly: false,
-            ThermalTimestampTicks: timestamp);
     }
 }

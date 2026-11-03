@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="PreySense.Frontend.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:vm="clr-namespace:PreySense.Frontend.ViewModels" xmlns:controls="clr-namespace:PreySense.Frontend.Controls" xmlns:local="clr-namespace:PreySense.Frontend" Title="PreySense" Icon="appicon.ico" Width="500" SizeToContent="Height" WindowStartupLocation="CenterScreen" Background="{DynamicResource TransparentBrush}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}" WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize" UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:vm="clr-namespace:PreySense.Frontend.ViewModels" xmlns:controls="clr-namespace:PreySense.Frontend.Controls" xmlns:local="clr-namespace:PreySense.Frontend" Title="PreySense" Icon="appicon.ico" Width="500" SizeToContent="Height" WindowStartupLocation="CenterScreen" Background="{DynamicResource TransparentBrush}" Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}" WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize">
   <Border Style="{DynamicResource AppWindowShellStyle}">
     <Grid>
       <Grid.RowDefinitions>
@@ -7,7 +7,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.9">
+      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.5.0">
         <controls:WindowTitleBar.Actions>
           <Button AutomationProperties.AutomationId="BtnSettings" Style="{StaticResource TitleBarButtonStyle}" Click="SettingsButton_Click">
             <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-settings-32.png" Width="14" Height="14" />
@@ -18,20 +18,10 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-gauge-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="Performance Mode" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
-              <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}" Foreground="{DynamicResource TextOnAccentBrush}" HorizontalAlignment="Right" TextAlignment="Right" Margin="12,0,0,0">
-                <Run Text="CPU: " />
-                <Run Text="{Binding CpuTemperatureText, Mode=OneWay}" />
-                <Run Text=" • " />
-                <Run Text="{Binding CpuFanText, Mode=OneWay}" />
-              </TextBlock>
             </Grid>
             <UniformGrid Columns="5" Rows="1" Margin="0,2,0,2">
               <Button AutomationProperties.AutomationId="BtnModeEco" Command="{Binding SetModeCommand}" CommandParameter="6">
@@ -39,7 +29,7 @@
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsEcoActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource ModeEcoBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
                         <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
@@ -125,20 +115,10 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-video-card-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="GPU Mode" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
-              <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}" Foreground="{DynamicResource TextOnAccentBrush}" HorizontalAlignment="Right" TextAlignment="Right" Margin="12,0,0,0">
-                <Run Text="GPU: " />
-                <Run Text="{Binding GpuTemperatureText, Mode=OneWay}" />
-                <Run Text=" • " />
-                <Run Text="{Binding GpuFanText, Mode=OneWay}" />
-              </TextBlock>
             </Grid>
             <UniformGrid Columns="{Binding GpuModeTileColumns}" Rows="1" Margin="0,2,0,2">
               <Button Height="62" Margin="3" CommandParameter="1" Command="{Binding SetGpuMuxModeCommand}">
@@ -242,17 +222,10 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-laptop-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="Display" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
-              <TextBlock Grid.Column="1" HorizontalAlignment="Right" Margin="12,0,0,0" Foreground="{DynamicResource TextOnAccentBrush}" Style="{StaticResource OriginalStatusTextStyle}">
-                <Run Text="{Binding DisplayPanelInfo}" /><Run Text=" • " /><Run Text="{Binding ActiveGpuDisplayMode}" />
-              </TextBlock>
             </Grid>
             <Grid Margin="0,2,0,2">
               <Grid.ColumnDefinitions>

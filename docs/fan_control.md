@@ -8,8 +8,8 @@ custom-curve setting. The curve editor appears only for Custom, and switching
 to Auto or Max preserves its saved points. New modes default to Auto.
 
 Save persists drafts; Apply also activates the selected performance mode. Fan
-settings follow performance-mode changes in the tray through the shared
-one-second polling loop. Opening Fans again activates the existing window.
+settings follow performance-mode change events. Custom control uses the shared
+one-second temperature loop. Opening Fans again activates the existing window.
 The old global FanMode preference no longer controls the runtime. Legacy
 profile switches migrate to the new selection, respecting a saved global Auto
 override; an explicit new per-mode selection takes priority over legacy keys.
@@ -25,12 +25,11 @@ value without a click-position jump. Sideways movement does not edit. Escape
 cancels a drag and restores the original point. Arrow keys select neighboring
 points or adjust the selected duty by 1% within its neighbors' bounds.
 Loading old curves raises any descending points to preserve nondecreasing speed.
-Both fan curves use the hotter of the CPU and GPU temperatures. Each fan retains
-its own percentage targets, but either sensor can raise both fans. The graph's
-live marker follows this shared temperature.
-The horizontal dashed line shows the displayed fan's last successfully applied
-percentage (100% in per-mode Max). It is a command indication, not measured PWM
-feedback; the line is hidden in firmware Auto or when no applied value is known.
+Both fan curves use the hotter of the CPU and GPU temperatures when both are
+available. If the GPU is asleep, both use CPU temperature alone. Each fan retains
+its own percentage targets. The editor draws curve segments and editable points
+over a static grid with axis labels. Live horizontal/vertical markers remain
+removed. Opening the editor requests no telemetry.
 
 Cooling uses a 5°C hysteresis to prevent chatter at a boundary. Fan Control Delay
 waits 0–5 seconds before accepting either a higher or lower target (default 2
@@ -40,17 +39,24 @@ ramp-up setting now controls both directions and values above 5 are clamped.
 Further changes in the same direction do not restart the clock; the
 latest demand is used when it expires. Returning to the applied demand cancels
 the pending change. These are delays, not gradual percentage ramps.
-High-temperature cooling bypasses bands and delays (CPU 95°C or GPU 87°C forces
-both fans to 100%). Emergency cooling stays latched until CPU is at most 90°C
-and GPU is at most 82°C with valid sensors; recovery then observes Fan Control
-Delay. That prevents oscillation near the emergency thresholds.
+Custom mode follows the saved curve and response delay at all temperatures.
+There is no separate immediate or emergency cooling override.
 
-The existing 1 Hz telemetry loop remains active in the tray to follow mode
-changes, including from Auto to a mode configured as Max or Custom. It evaluates
-even identical samples so a pending response delay can finish.
-Missing temperature readings or a rejected write return control to firmware
-Auto; exiting the app also releases a software curve to Auto. There is no
-periodic fan-PWM keepalive.
+The main window requests no telemetry. The visible overlay requests only its
+selected metrics. Custom mode reads only temperatures to follow the curve,
+regardless of window visibility; Auto and Max do not request sensors.
+Custom control never requests fan RPM or other metric reads. Before accessing
+NVIDIA temperature APIs, the sampler checks Windows-maintained device power
+data. It skips sleeping or unknown-power-state adapters without constructing
+the GPU client.
+Mode-change events and explicit profile application select the running profile;
+fan evaluation does not query the firmware power mode on every sample.
+Missing CPU temperature skips the update and preserves the last confirmed command.
+Missing GPU temperature uses CPU temperature alone.
+A rejected fan write pauses automatic writes until the profile is explicitly
+applied again or the mode changes; it does not switch to Auto or retry every five
+seconds. Exiting the app still releases software fan control to firmware Auto.
+There is no periodic fan-PWM keepalive.
 
 The editor uses percentages only. Estimated RPM editing and its scaling logic
 have been removed. Actual RPM telemetry elsewhere in the app is unchanged.

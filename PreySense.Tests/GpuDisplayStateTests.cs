@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using PreySense.Core.Services;
@@ -38,11 +38,6 @@ public class GpuDisplayStateTests
         Assert.IsTrue(autoIgpu.Matches(DdsDisplayMode.Automatic));
         Assert.IsTrue(autoDgpu.Matches(DdsDisplayMode.Automatic));
         Assert.IsFalse(autoDgpu.Matches(DdsDisplayMode.NvidiaGpuOnly));
-        Assert.AreEqual("iGPU + dGPU", MainViewModel.DescribeActiveGpuMode(autoIgpu, false, false));
-        Assert.AreEqual("dGPU", MainViewModel.DescribeActiveGpuMode(autoDgpu, false, false));
-        Assert.AreEqual("iGPU only", MainViewModel.DescribeActiveGpuMode(null, false, true));
-        Assert.AreEqual("dGPU exclusive", MainViewModel.DescribeActiveGpuMode(null, true, false));
-        Assert.AreEqual("GPU mode unavailable", MainViewModel.DescribeActiveGpuMode(null, false, false));
     }
 
     [TestMethod]
@@ -54,7 +49,6 @@ public class GpuDisplayStateTests
         Assert.IsFalse((status with { KmdResponse = 1 }).Matches(DdsDisplayMode.NvidiaGpuOnly));
         Assert.IsFalse((status with { IsSupported = false }).Matches(DdsDisplayMode.NvidiaGpuOnly));
         Assert.IsFalse((status with { IsAutomatic = true, ActiveMux = DdsActiveMux.Unknown }).Matches(DdsDisplayMode.Automatic));
-        Assert.AreEqual("GPU mode unavailable", MainViewModel.DescribeActiveGpuMode(status with { KmdResponse = 1 }, false, false));
     }
 
     [TestMethod]

@@ -1,4 +1,5 @@
 using System;
+using PreySense.Core.Services;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -98,17 +99,16 @@ namespace PreySense.Gpu
             }
         }
 
-        public int? ReadCurrentTemperature(bool log = false, bool forceWake = false)
+        public int? ReadCurrentTemperature(bool log = false)
+        {
+            if (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)
+                return null;
+            return ReadAwakeTemperature(log);
+        }
+
+        private int? ReadAwakeTemperature(bool log = false)
         {
             if (!IsValid) return null;
-
-            // Don't wake the dGPU just to read temperature
-            if (!forceWake)
-            {
-                var state = GetGpuState();
-                if (state != GpuState.Active) return null;
-            }
-
             try
             {
                 var thermalSettings = GPUApi.GetThermalSettings(_internalGpu!.Handle);
@@ -231,10 +231,46 @@ namespace PreySense.Gpu
             }
         }
 
-        public int? GetGpuUse()
+        public readonly record struct Metrics(bool InUse, int? Temperature, int? Usage,
+            int? ClockMhz, int? MemoryClockMhz, float? Voltage, float? PowerWatts,
+            long? VramUsedMb, long? VramTotalMb);
+
+        /// <summary>One power-state decision for the entire shared GPU sampling batch.</summary>
+        public Metrics ReadMetrics(TelemetryMetrics requested)
+        {
+            bool Wants(TelemetryMetrics metric) => (requested & metric) != 0;
+            if (!Wants(TelemetryMetrics.Gpu)) return default;
+            if (!Wants(TelemetryMetrics.GpuPower | TelemetryMetrics.GpuClock | TelemetryMetrics.GpuMemory | TelemetryMetrics.GpuMemoryClock))
+                NvmlHelper.Shutdown();
+            if (GetGpuState(out var performanceState) != GpuState.Active)
+            {
+                NvmlHelper.Shutdown();
+                return default;
+            }
+            var temperature = Wants(TelemetryMetrics.GpuTemperature) ? ReadAwakeTemperature() : null;
+            if ((requested & ~TelemetryMetrics.GpuTemperature) == 0)
+                return new Metrics(true, temperature, null, null, null, null, null, null, null);
+            if (IsIdlePerformanceState(performanceState) && !HasUserGpuClient())
+            {
+                NvmlHelper.Shutdown();
+                return new Metrics(false, temperature, null, null, null, null, null, null, null);
+            }
+            var usage = Wants(TelemetryMetrics.GpuUsage) ? GetGpuUse(true) : null;
+            var clock = Wants(TelemetryMetrics.GpuClock) ? GetGpuClock(true) : null;
+            var memoryClock = Wants(TelemetryMetrics.GpuMemoryClock) ? GetGpuMemoryClock(true) : null;
+            var voltage = Wants(TelemetryMetrics.GpuVoltage) ? GetGpuVoltage(true) : null;
+            var power = Wants(TelemetryMetrics.GpuPower) ? GetGpuPower(true) : null;
+            var memory = Wants(TelemetryMetrics.GpuMemory) ? GetVramInfo(true) : null;
+            return new Metrics(true, temperature, usage, clock, memoryClock, voltage, power,
+                memory?.usedMb, memory?.totalMb);
+        }
+
+        public int? GetGpuUse() => GetGpuUse(false);
+
+        private int? GetGpuUse(bool stateChecked)
         {
             if (!IsValid) return null;
-            if (GetGpuState() != GpuState.Active) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
 
             try
             {
@@ -248,44 +284,54 @@ namespace PreySense.Gpu
             }
         }
 
-        public float? GetGpuPower()
+        public float? GetGpuPower() => GetGpuPower(false);
+
+        private float? GetGpuPower(bool stateChecked)
         {
             if (!IsValid) return null;
-            var state = GetGpuState();
+            var state = stateChecked ? GpuState.Active : GetGpuState();
             if (state == GpuState.Off)
             {
                 NvmlHelper.Shutdown();
                 return null;
             }
-            if (state != GpuState.Active) return 0f;
-            return NvmlHelper.GetGpuPower() ?? 0f;
+            if (state != GpuState.Active) return null;
+            return NvmlHelper.GetGpuPower();
         }
 
-        public (long usedMb, long totalMb)? GetVramInfo()
+        public (long usedMb, long totalMb)? GetVramInfo() => GetVramInfo(false);
+
+        private (long usedMb, long totalMb)? GetVramInfo(bool stateChecked)
         {
             if (!IsValid) return null;
-            if (GetGpuState() != GpuState.Active) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
             return NvmlHelper.GetMemoryInfo();
         }
 
-        public int? GetGpuClock()
+        public int? GetGpuClock() => GetGpuClock(false);
+
+        private int? GetGpuClock(bool stateChecked)
         {
             if (!IsValid) return null;
-            if (GetGpuState() != GpuState.Active) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
             return NvmlHelper.GetGpuClock();
         }
 
-        public int? GetGpuMemoryClock()
+        public int? GetGpuMemoryClock() => GetGpuMemoryClock(false);
+
+        private int? GetGpuMemoryClock(bool stateChecked)
         {
             if (!IsValid) return null;
-            if (GetGpuState() != GpuState.Active) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
             return NvmlHelper.GetGpuMemoryClock();
         }
 
-        public float? GetGpuVoltage()
+        public float? GetGpuVoltage() => GetGpuVoltage(false);
+
+        private float? GetGpuVoltage(bool stateChecked)
         {
             if (!IsValid) return null;
-            if (GetGpuState() != GpuState.Active) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
             try
             {
                 var status = GPUApi.GetCurrentVoltage(_internalGpu!.Handle);

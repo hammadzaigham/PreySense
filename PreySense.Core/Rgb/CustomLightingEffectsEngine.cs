@@ -48,6 +48,7 @@ namespace PreySense.Rgb
         private bool _isDisposed;
         private int _idleTimeoutSeconds;
         private bool _idleDimmed;
+        private readonly PreySense.Core.Services.AsyncChangeSignal _idleWake = new();
         private bool _hardwareTimeoutSuppressed;
         private bool _forceHwDispatch;
         private bool _hasLastFrame;
@@ -170,10 +171,13 @@ namespace PreySense.Rgb
         {
             lock (_lock)
             {
+                if (_idleTimeoutSeconds == Math.Max(0, seconds)) return;
                 _idleTimeoutSeconds = Math.Max(0, seconds);
                 if (_idleTimeoutSeconds == 0)
                     _idleDimmed = false;
             }
+
+            _idleWake.Pulse();
 
             if (IsRunning && seconds > 0)
                 SuppressHardwareTimeout();
@@ -202,6 +206,8 @@ namespace PreySense.Rgb
             _animationTask = null;
             RestoreHardwareTimeout();
         }
+
+        private void WakeIdle() => _idleWake.Pulse();
 
         private void SuppressHardwareTimeout()
         {
@@ -326,30 +332,29 @@ namespace PreySense.Rgb
                             FrameUpdated?.Invoke(IdleOffFrame);
                             AppLogger.Log($"CustomLightingEffectsEngine: backlight off after {timeoutSeconds}s idle. Animation stopped.");
 
-                            while (!ct.IsCancellationRequested && !_isDisposed)
+                            KeyboardActivity.KeyDown += WakeIdle;
+                            try
                             {
-                                await Task.Delay(250, ct);
-                                int stillTimeout;
-                                lock (_lock)
+                                while (!ct.IsCancellationRequested && !_isDisposed)
                                 {
-                                    stillTimeout = _idleTimeoutSeconds;
-                                }
-
-                                bool keyPressed = KeyboardActivity.LastKeyTick != lastInputTick;
-                                if (stillTimeout <= 0 || keyPressed)
-                                {
-                                    lock (_lock)
+                                    // Observe first, then inspect state: a key or settings change
+                                    // between the check and await cannot be lost.
+                                    Task changed = _idleWake.WaitAsync(ct);
+                                    int stillTimeout;
+                                    lock (_lock) { stillTimeout = _idleTimeoutSeconds; }
+                                    bool keyPressed = KeyboardActivity.LastKeyTick != lastInputTick;
+                                    if (stillTimeout <= 0 || keyPressed)
                                     {
-                                        _idleDimmed = false;
+                                        lock (_lock) { _idleDimmed = false; }
+                                        lastHwDispatch = 0;
+                                        if (keyPressed)
+                                            AppLogger.Log("CustomLightingEffectsEngine: backlight restored after input.");
+                                        break;
                                     }
-
-                                    lastHwDispatch = 0;
-                                    if (keyPressed)
-                                        AppLogger.Log("CustomLightingEffectsEngine: backlight restored after input.");
-                                    break;
+                                    await changed.ConfigureAwait(false);
                                 }
                             }
-
+                            finally { KeyboardActivity.KeyDown -= WakeIdle; }
                             continue;
                         }
                     }

@@ -237,7 +237,7 @@ namespace PreySense.Tests
             Assert.Contains("SaveDraft();\n        UpdateEditor();", fanWindowCs.Replace("\r\n", "\n"));
 
             // Fan window Apply and Reset switch hardware mode immediately when not active
-            Assert.Contains("await Vm.ApplyModeSwitchAsync(_mode);", fanWindowCs);
+            Assert.Contains("await vm.ApplyModeSwitchAsync(_mode);", fanWindowCs);
 
             // Mode settings window Apply switches hardware mode immediately when not confirmed active
             Assert.Contains("await vm.ApplyModeSwitchAsync(selectedMode);", modeSettingsCs);

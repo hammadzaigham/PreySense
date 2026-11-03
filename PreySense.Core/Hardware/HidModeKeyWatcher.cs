@@ -1,7 +1,9 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 
 namespace PreySense
@@ -33,28 +35,23 @@ namespace PreySense
         private readonly Action _onModeKeyPressed;
         private readonly Action<int>? _onBrightnessDelta;
         private readonly CancellationTokenSource _cts = new();
-        private readonly List<Thread> _threads = new();
         private readonly HashSet<string> _seenReports = new(StringComparer.Ordinal);
         private DateTime _lastModeUtc = DateTime.MinValue;
         private DateTime _lastBrightnessUtc = DateTime.MinValue;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         public HidModeKeyWatcher(Action onModeKeyPressed, Action<int>? onBrightnessDelta = null)
         {
             _onModeKeyPressed = onModeKeyPressed ?? throw new ArgumentNullException(nameof(onModeKeyPressed));
             _onBrightnessDelta = onBrightnessDelta;
+            var token = _cts.Token;
+            int readers = 0;
             foreach (string path in EnumerateAcerEcHidPaths())
             {
-                var thread = new Thread(() => ReadLoop(path, _cts.Token))
-                {
-                    IsBackground = true,
-                    Name = "PreySense.HidModeKey"
-                };
-                _threads.Add(thread);
-                thread.Start();
+                readers++;
+                _ = Task.Run(() => ReadLoopAsync(path, token));
             }
-
-            if (_threads.Count == 0)
+            if (readers == 0)
                 AppLogger.Log("TurboKey: no 1025174B HID collections found for the chassis Mode key.");
         }
 
@@ -150,8 +147,9 @@ namespace PreySense
             return false;
         }
 
-        private void ReadLoop(string path, CancellationToken token)
+        private async Task ReadLoopAsync(string path, CancellationToken token)
         {
+            if (token.IsCancellationRequested || _disposed) return;
             AppLogger.Log($"TurboKey: opening HID Mode key path '{path}'.");
             using SafeFileHandle handle = CreateFile(
                 path,
@@ -176,67 +174,36 @@ namespace PreySense
                     return;
                 }
 
-                PumpReports(path, readOnly, token);
+                await PumpReportsAsync(path, readOnly, token).ConfigureAwait(false);
                 return;
             }
 
-            PumpReports(path, handle, token);
+            await PumpReportsAsync(path, handle, token).ConfigureAwait(false);
         }
 
-        private void PumpReports(string path, SafeFileHandle handle, CancellationToken token)
+        private async Task PumpReportsAsync(string path, SafeFileHandle handle, CancellationToken token)
         {
             byte[] buffer = new byte[256];
-            using var overlappedEvent = new ManualResetEvent(false);
-            var overlapped = new NativeOverlapped
-            {
-                EventHandle = overlappedEvent.SafeWaitHandle.DangerousGetHandle()
-            };
-            bool pending = false;
-
             try
             {
+                using var stream = new FileStream(handle, FileAccess.Read, bufferSize: 1, isAsync: true);
                 while (!token.IsCancellationRequested)
                 {
-                    int read = 0;
-                    if (!pending)
+                    int read;
+                    try
                     {
-                        overlapped.InternalLow = IntPtr.Zero;
-                        overlapped.InternalHigh = IntPtr.Zero;
-                        overlapped.OffsetLow = 0;
-                        overlapped.OffsetHigh = 0;
-                        overlappedEvent.Reset();
-                        if (!ReadFile(handle, buffer, buffer.Length, out read, ref overlapped))
-                        {
-                            int err = Marshal.GetLastWin32Error();
-                            if (err == 997) // ERROR_IO_PENDING
-                            {
-                                pending = true;
-                            }
-                            else if (err == 995 || err == 6)
-                            {
-                                break;
-                            }
-                            else
-                            {
-                                Thread.Sleep(250);
-                                continue;
-                            }
-                        }
+                        // ReadAsync is completed by Windows I/O completion, or canceled
+                        // on shutdown. No periodic wait or manually managed OVERLAPPED.
+                        read = await stream.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
                     }
-
-                    if (pending)
+                    catch (IOException ex) when (!token.IsCancellationRequested)
                     {
-                        int wait = WaitForSingleObject(overlapped.EventHandle, 400);
-                        if (wait == 0x102) // WAIT_TIMEOUT — keep the same I/O
-                            continue;
-                        pending = false;
-                        if (wait != 0 || !GetOverlappedResult(handle, ref overlapped, out read, false))
-                            continue;
-                    }
-
-                    if (read <= 0)
+                        int error = ex.HResult & 0xFFFF;
+                        if (error is 6 or 995 or 1167) break;
+                        await Task.Delay(250, token).ConfigureAwait(false);
                         continue;
-
+                    }
+                    if (read <= 0 || token.IsCancellationRequested || _disposed) break;
                     string hex = ToHex(buffer, read);
                     lock (_seenReports)
                     {
@@ -268,9 +235,10 @@ namespace PreySense
                     }
                 }
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             catch (Exception ex)
             {
-                AppLogger.Log($"TurboKey: HID reader failed on '{path}': {ex.Message}");
+                if (!token.IsCancellationRequested) AppLogger.Log($"TurboKey: HID reader failed on '{path}': {ex.Message}");
             }
         }
 
@@ -303,25 +271,12 @@ namespace PreySense
             string lpFileName, uint dwDesiredAccess, uint dwShareMode,
             IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool ReadFile(SafeFileHandle hFile, byte[] lpBuffer, int nNumberOfBytesToRead, out int lpNumberOfBytesRead, ref NativeOverlapped lpOverlapped);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetOverlappedResult(SafeFileHandle hFile, ref NativeOverlapped lpOverlapped, out int lpNumberOfBytesTransferred, bool bWait);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern int WaitForSingleObject(IntPtr hHandle, int dwMilliseconds);
-
         public void Dispose()
         {
             if (_disposed)
                 return;
             _disposed = true;
             _cts.Cancel();
-            foreach (Thread thread in _threads)
-            {
-                try { thread.Join(400); } catch { }
-            }
             _cts.Dispose();
         }
     }

@@ -73,54 +73,16 @@ namespace PreySense.Frontend.Views
                 _ = Dispatcher.BeginInvoke(Apply);
         }
 
-        private static int GetRegInt(string keyName, int defaultValue)
-        {
-            try
-            {
-                return AppConfig.Get(keyName, defaultValue);
-            }
-            catch { }
-            return defaultValue;
-        }
-
-        private static string GetRegString(string keyName, string defaultValue)
-        {
-            try
-            {
-                return AppConfig.GetString(keyName, defaultValue);
-            }
-            catch { }
-            return defaultValue;
-        }
-
-        private static void SetRegInt(string keyName, int value)
-        {
-            try
-            {
-                AppConfig.Set(keyName, value);
-            }
-            catch { }
-        }
-
-        private static void SetRegString(string keyName, string value)
-        {
-            try
-            {
-                AppConfig.Set(keyName, value);
-            }
-            catch { }
-        }
-
         private void LoadSettings()
         {
             bool isOverlayEnabled = AppConfig.IsOverlay();
-            bool showFps = GetRegInt("overlay_show_fps", 1) == 1;
+            bool showFps = AppConfig.Get("overlay_show_fps", 1) == 1;
 
-            int rawScale = GetRegInt("overlay_scale_percent", 100);
-            int scale = (int)Math.Round(rawScale / 25.0) * 25;
+            int rawScale = AppConfig.Get("overlay_scale_percent", 100);
+            int scale = (int)Math.Round(rawScale / 5.0) * 5;
             scale = Math.Clamp(scale, 50, 200);
 
-            int rawAlpha = GetRegInt("overlay_alpha", 50);
+            int rawAlpha = AppConfig.Get("overlay_alpha", 50);
             int opacityPercent;
             if (rawAlpha > 100)
             {
@@ -137,14 +99,24 @@ namespace PreySense.Frontend.Views
             SliderHudScale.Value = scale;
             SliderOpacity.Value = opacityPercent;
 
+            int rawTextAlpha = AppConfig.Get("overlay_text_alpha", 100);
+            int textOpacityPercent = rawTextAlpha > 100
+                ? (int)Math.Round((rawTextAlpha / 255.0) * 10.0) * 10
+                : (int)Math.Round(rawTextAlpha / 10.0) * 10;
+            textOpacityPercent = Math.Clamp(textOpacityPercent, 0, 100);
+            if (SliderTextOpacity != null)
+                SliderTextOpacity.Value = textOpacityPercent;
+
             LabelHudScale.Text = $"{scale}%";
             LabelOpacity.Text = $"{opacityPercent}%";
+            if (LabelTextOpacity != null)
+                LabelTextOpacity.Text = $"{textOpacityPercent}%";
 
             DropdownHorizontalPos.ItemsSource = HorizontalPositions;
             DropdownVerticalPos.ItemsSource = VerticalPositions;
 
-            string hPos = GetRegString("overlay_pos_horizontal", "Left");
-            string vPos = GetRegString("overlay_pos_vertical", "Top");
+            string hPos = AppConfig.GetString("overlay_pos_horizontal", "Left");
+            string vPos = AppConfig.GetString("overlay_pos_vertical", "Top");
             DropdownHorizontalPos.SelectedItem = hPos;
             DropdownVerticalPos.SelectedItem = vPos;
         }
@@ -154,8 +126,8 @@ namespace PreySense.Frontend.Views
             if (_isInitializing) return;
             string h = DropdownHorizontalPos.SelectedItem as string ?? "Left";
             string v = DropdownVerticalPos.SelectedItem as string ?? "Top";
-            SetRegString("overlay_pos_horizontal", h);
-            SetRegString("overlay_pos_vertical", v);
+            AppConfig.Set("overlay_pos_horizontal", h);
+            AppConfig.Set("overlay_pos_vertical", v);
             HardwareOverlayManager.Reposition(h, v);
         }
 
@@ -174,8 +146,8 @@ namespace PreySense.Frontend.Views
                 string defaultVal = AppConfig.DefaultOverlayColumn(colNum);
                 int defaultGraph = (i == 4) ? 1 : 0;
 
-                string currentVal = GetRegString(configKey, defaultVal);
-                bool hasGraph = GetRegInt(graphKey, defaultGraph) == 1;
+                string currentVal = AppConfig.GetString(configKey, defaultVal);
+                bool hasGraph = AppConfig.Get(graphKey, defaultGraph) == 1;
 
                 var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -222,7 +194,7 @@ namespace PreySense.Frontend.Views
                         return;
                     string cpu = (cpuCombo.SelectedItem as MetricChoice)?.Id ?? "None";
                     string gpu = (gpuCombo.SelectedItem as MetricChoice)?.Id ?? "None";
-                    SetRegString(configKey, cpu + "|" + gpu);
+                    AppConfig.Set(configKey, cpu + "|" + gpu);
                     HardwareOverlayManager.RefreshDisplayFlags();
                 }
                 cpuCombo.SelectionChanged += (_, _) => SaveColumn();
@@ -242,7 +214,7 @@ namespace PreySense.Frontend.Views
                 {
                     if (!_isInitializing)
                     {
-                        SetRegInt(graphKey, 1);
+                        AppConfig.Set(graphKey, 1);
                         HardwareOverlayManager.RefreshDisplayFlags();
                     }
                 };
@@ -250,7 +222,7 @@ namespace PreySense.Frontend.Views
                 {
                     if (!_isInitializing)
                     {
-                        SetRegInt(graphKey, 0);
+                        AppConfig.Set(graphKey, 0);
                         HardwareOverlayManager.RefreshDisplayFlags();
                     }
                 };
@@ -284,7 +256,7 @@ namespace PreySense.Frontend.Views
         {
             if (_isInitializing) return;
             bool showFps = CheckShowFps.IsChecked == true;
-            SetRegInt("overlay_show_fps", showFps ? 1 : 0);
+            AppConfig.Set("overlay_show_fps", showFps ? 1 : 0);
             HardwareOverlayManager.RefreshDisplayFlags();
         }
 
@@ -292,15 +264,18 @@ namespace PreySense.Frontend.Views
         {
             if (LabelHudScale != null)
             {
-                int val = (int)Math.Round(SliderHudScale.Value / 25.0) * 25;
+                int val = (int)Math.Round(SliderHudScale.Value / 5.0) * 5;
                 val = Math.Clamp(val, 50, 200);
                 if (Math.Abs(SliderHudScale.Value - val) > 0.01)
+                {
                     SliderHudScale.Value = val;
+                    return;
+                }
 
                 LabelHudScale.Text = $"{val}%";
                 if (!_isInitializing)
                 {
-                    SaveHudScale();
+                    SaveHudScale(val);
                 }
             }
         }
@@ -312,20 +287,22 @@ namespace PreySense.Frontend.Views
                 int val = (int)Math.Round(SliderOpacity.Value / 10.0) * 10;
                 val = Math.Clamp(val, 0, 100);
                 if (Math.Abs(SliderOpacity.Value - val) > 0.01)
+                {
                     SliderOpacity.Value = val;
+                    return;
+                }
 
                 LabelOpacity.Text = $"{val}%";
                 if (!_isInitializing)
                 {
-                    SaveOpacity();
+                    SaveOpacity(val);
                 }
             }
         }
 
-        private void SaveHudScale()
+        private void SaveHudScale(int value)
         {
-            int value = (int)Math.Round(SliderHudScale.Value / 25.0) * 25;
-            SetRegInt("overlay_scale_percent", value);
+            AppConfig.Set("overlay_scale_percent", value);
             HardwareOverlayManager.RefreshDisplayFlags();
         }
 
@@ -336,10 +313,35 @@ namespace PreySense.Frontend.Views
             public override string ToString() => LocalizationService.Translate(Label);
         }
 
-        private void SaveOpacity()
+                private void SliderTextOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            int value = (int)Math.Round(SliderOpacity.Value / 10.0) * 10;
-            SetRegInt("overlay_alpha", value);
+            if (LabelTextOpacity != null)
+            {
+                int val = (int)Math.Round(SliderTextOpacity.Value / 10.0) * 10;
+                val = Math.Clamp(val, 0, 100);
+                if (Math.Abs(SliderTextOpacity.Value - val) > 0.01)
+                {
+                    SliderTextOpacity.Value = val;
+                    return;
+                }
+
+                LabelTextOpacity.Text = $"{val}%";
+                if (!_isInitializing)
+                {
+                    SaveTextOpacity(val);
+                }
+            }
+        }
+
+        private void SaveTextOpacity(int value)
+        {
+            AppConfig.Set("overlay_text_alpha", value);
+            HardwareOverlayManager.RefreshDisplayFlags();
+        }
+
+        private void SaveOpacity(int value)
+        {
+            AppConfig.Set("overlay_alpha", value);
             HardwareOverlayManager.RefreshDisplayFlags();
         }
 

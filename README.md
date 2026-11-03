@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v2.4.9** introduces a demand-driven shared telemetry coordinator, unified ACPI event handling, reliable RGB startup and preset theme persistence, and overlay performance improvements. See the [release notes](docs/releases/v2.4.9.md).
+**v2.5.0** introduces fine-grained HUD scaling, independent overlay text opacity, split hardware and software lighting modes, streamlined window activation, and enhanced hardware safety.
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 

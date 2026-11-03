@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -22,8 +22,6 @@ namespace PreySense.Frontend.ViewModels
         private int _gpuBatteryTransitionInProgress;
         private int _gpuSwitchInProgress;
         private int _gpuDisplayRevision;
-        private DdsStatus? _liveDdsStatus;
-        [ObservableProperty] private string _activeGpuDisplayMode = "Detecting GPU mode…";
 
         // GPU Power Target & ACPI Hardware Controls
         [ObservableProperty] private int _gpuPowerTargetWatts = 130;
@@ -141,14 +139,12 @@ namespace PreySense.Frontend.ViewModels
             // iGPU-only is a separate state from the Advanced Optimus mode
             // index, so all normal GPU tiles must be refreshed when it changes.
             NotifyGpuSelectionsChanged();
-            RefreshActiveGpuDisplayMode();
         }
 
         partial void OnIsBiosDiscreteGpuActiveChanged(bool value)
         {
             if (value)
                 GpuMuxModeName = "dGPU Only";
-            RefreshActiveGpuDisplayMode();
         }
 
         /// <summary>
@@ -221,25 +217,8 @@ namespace PreySense.Frontend.ViewModels
             OnPropertyChanged(nameof(IsGpuIgpuOnlyActive));
         }
 
-        public static string DescribeActiveGpuMode(DdsStatus? status, bool biosDiscrete, bool adapterDisabled)
-        {
-            if (biosDiscrete) return "dGPU exclusive";
-            if (adapterDisabled) return "iGPU only";
-            if (status is not { IsSupported: true, KmdResponse: 0 }) return "GPU mode unavailable";
-            return status.ActiveMux switch
-            {
-                DdsActiveMux.dGPU => "dGPU",
-                DdsActiveMux.Optimus => "iGPU + dGPU",
-                _ => "GPU mode unavailable"
-            };
-        }
-
-        private void RefreshActiveGpuDisplayMode() => ActiveGpuDisplayMode =
-            DescribeActiveGpuMode(_liveDdsStatus, IsBiosDiscreteGpuActive, IsGpuIgpuOnlyActive);
-
         private void ApplyDdsStatus(DdsStatus? status)
         {
-            _liveDdsStatus = status;
             if (!IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && status is { IsSupported: true, KmdResponse: 0 })
             {
                 if (status.IsAutomatic) ActiveGpuMuxMode = 1;
@@ -248,7 +227,6 @@ namespace PreySense.Frontend.ViewModels
                 GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
                 NotifyGpuSelectionsChanged();
             }
-            RefreshActiveGpuDisplayMode();
         }
 
         private static string GetGpuModeName(int mode) => mode switch
@@ -649,7 +627,6 @@ namespace PreySense.Frontend.ViewModels
             {
                 IsBusy = false;
                 System.Threading.Volatile.Write(ref _gpuSwitchInProgress, 0);
-                PollTelemetry();
             }
         }
 

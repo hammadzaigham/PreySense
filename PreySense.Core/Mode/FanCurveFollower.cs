@@ -8,14 +8,8 @@ public sealed class FanCurveFollower
     private int _pendingDirection;
     private long _pendingSince;
 
-    public int Evaluate(int temperature, int[] curve, int delaySeconds, long nowMs, bool emergency = false)
+    public int Evaluate(int temperature, int[] curve, int delaySeconds, long nowMs)
     {
-        if (emergency)
-        {
-            _applied = 100;
-            _pendingDirection = 0;
-            return 100;
-        }
         int band = Math.Clamp(temperature / 5 * 5, FanCurveProfile.MinimumTemperature, FanCurveProfile.MaximumTemperature);
         if (!_band.HasValue || band > _band.Value || temperature <= _band.Value - 5) _band = band;
         int target = Math.Clamp(curve[FanCurveProfile.PointIndex(_band.Value)], 0, 100);

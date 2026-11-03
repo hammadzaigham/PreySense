@@ -137,17 +137,7 @@ namespace PreySense
                     return TurnOffBacklight();
                 }
 
-                // Optimization: if all 4 zones have the same color, send a single broadcast report (mask 0x0F)
-                bool allSame = zoneColors[0].R == zoneColors[1].R && zoneColors[0].G == zoneColors[1].G && zoneColors[0].B == zoneColors[1].B &&
-                               zoneColors[0].R == zoneColors[2].R && zoneColors[0].G == zoneColors[2].G && zoneColors[0].B == zoneColors[2].B &&
-                               zoneColors[0].R == zoneColors[3].R && zoneColors[0].G == zoneColors[3].G && zoneColors[0].B == zoneColors[3].B;
-
-                if (allSame)
-                {
-                    return SendFeatureReport(EffectStatic, b, 0, 0, zoneColors[0].R, zoneColors[0].G, zoneColors[0].B, 0x0F);
-                }
-
-                // Otherwise, dispatch 4 per-zone feature reports using confirmed masks 0x01, 0x02, 0x04, 0x08
+                // Dispatch 4 per-zone feature reports using confirmed masks 0x01, 0x02, 0x04, 0x08
                 bool allSucceeded = true;
                 for (int i = 0; i < 4; i++)
                 {
@@ -270,15 +260,7 @@ namespace PreySense
                 {
                     int err = Marshal.GetLastWin32Error();
                     CloseHandle();
-                    AppLogger.Error($"EnekRgbClient: HidD_SetFeature failed with Win32 error {err}. Reopening device and retrying report.");
-                    if (EnsureDeviceOpen() && _deviceHandle != null && !_deviceHandle.IsInvalid)
-                    {
-                        success = HidD_SetFeature(_deviceHandle, packet, packet.Length);
-                        if (!success)
-                        {
-                            CloseHandle();
-                        }
-                    }
+                    AppLogger.Error($"EnekRgbClient: HidD_SetFeature failed with Win32 error {err}.");
                 }
                 return success;
             }

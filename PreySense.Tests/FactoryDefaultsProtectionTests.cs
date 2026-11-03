@@ -100,7 +100,7 @@ public class FactoryDefaultsProtectionTests
         Assert.IsTrue(assigned >= 0 && assigned < ready && ready < show,
             "Session startup must be released after assigning the owner and before the visibility branch.");
         Assert.DoesNotContain("!owner.IsLoaded", body);
-        Assert.Contains("SetTelemetryPollingActive(IsVisible", Read("PreySense.Frontend/MainWindow.xaml.cs"));
+        Assert.DoesNotContain("SetTelemetryPollingActive", Read("PreySense.Frontend/MainWindow.xaml.cs"));
         Assert.DoesNotContain("Loaded +=", Read("PreySense.Frontend/MainWindow.xaml.cs"));
         Assert.Contains("Services.OverlayBridge.StartIfNeeded()", Read("PreySense.Frontend/App.xaml.cs"));
     }

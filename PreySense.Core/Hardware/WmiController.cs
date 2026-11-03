@@ -218,6 +218,11 @@ namespace PreySense.Helpers
         public PowerSourceKind ReadPowerSource()
         {
             TryGetPowerStatus(out bool onAc, out _);
+            return ReadPowerSource(onAc);
+        }
+
+        public PowerSourceKind ReadPowerSource(bool onAc)
+        {
             if (!onAc)
                 return PowerSourceKind.Battery;
 
@@ -413,7 +418,7 @@ namespace PreySense.Helpers
         /// <summary>
         /// One WMI parameter object and one lock for the four live thermal sensors.
         /// </summary>
-        public ThermalSnapshot ReadThermalSensors(bool includeTemperatures = true)
+        public ThermalSnapshot ReadThermalSensors(bool includeTemperatures = true, bool readCpuRpm = true, bool readGpuRpm = true)
         {
             lock (_lock)
             {
@@ -427,8 +432,8 @@ namespace PreySense.Helpers
                     int cpuTemp = includeTemperatures ? ReadSensor(obj, inParams, AcerWmi.Sensors.CpuTemperature) : -1;
                     // GPU temperature comes from NVIDIA; avoid the stale EC GPU sensor.
                     int gpuTemp = 0;
-                    int cpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.CpuFanRpm));
-                    int gpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.GpuFanRpm));
+                    int cpuRpm = readCpuRpm ? RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.CpuFanRpm)) : -1;
+                    int gpuRpm = readGpuRpm ? RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.GpuFanRpm)) : -1;
                     return new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
                 }
                 catch

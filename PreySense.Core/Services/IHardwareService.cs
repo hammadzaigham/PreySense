@@ -31,9 +31,7 @@ namespace PreySense.Core.Services
     /// </summary>
     public interface IHardwareService
     {
-        // Telemetry
-        HardwareTelemetry GetCurrentTelemetry();
-        HardwareTelemetry GetFanTemperatures() => GetCurrentTelemetry();
+        // Power source notifications and control state
         PowerSourceKind GetPowerSource();
         void NotePluggedSource(PowerSourceKind kind);
         event EventHandler? PowerSourceChanged;

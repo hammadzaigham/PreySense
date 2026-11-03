@@ -638,21 +638,15 @@ namespace PreySense.Tests
             Assert.DoesNotContain("create \"", source);
             Assert.DoesNotContain("LibreHardwareMonitor", overlayProject);
             string hardware = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Overlay", "HardwareControl.cs"));
-            Assert.Contains("WinRing0Cleanup.RemoveInstalledDriver", hardware);
+            Assert.Contains("WinRing0Cleanup.RemoveInstalledDriver", File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Frontend", "App.xaml.cs")));
             Assert.DoesNotContain("LibreHardwareMonitor", hardware);
             Assert.DoesNotContain("LhmDriverLocator", hardware);
-            Assert.Contains("PdhCpuPowerMonitor", hardware);
-            Assert.Contains("cpuPower = GetCPUPower()", hardware);
-            Assert.DoesNotContain("cpuPower = null", hardware);
-            Assert.Contains("TrySampleFrequencies", hardware);
-            Assert.Contains("IsDiscreteGpuInUse()", hardware);
-            Assert.Contains("GpuControl?.GetCurrentTemperature()", hardware);
-            Assert.Contains("if (!inUse)", hardware);
-            Assert.Contains("gpuTemp = inUse ?", hardware);
-            Assert.DoesNotContain("NvmlHelper.GetGpuTemperature", hardware);
-            Assert.DoesNotContain("ReadCurrentTemperature", hardware);
-            Assert.DoesNotContain("GpuControl.GetCurrentTemperature()", hardware);
-            Assert.Contains("_lastCpuUsage", hardware);
+            Assert.Contains("cpuPower = snapshot.CpuPkgPowerWatts", hardware);
+            Assert.Contains("cpuMhz = snapshot.CpuClockMhz", hardware);
+            Assert.Contains("ApplySnapshot(TelemetrySnapshot snapshot)", hardware);
+            Assert.DoesNotContain("ReadThermalSensors(", hardware);
+            Assert.DoesNotContain("TrySampleFrequencies(", hardware);
+            Assert.DoesNotContain("GpuControl?.GetCurrentTemperature()", hardware);
 
             string nvml = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Core", "Gpu", "NvmlHelper.cs"));
             Assert.Contains("nvmlDeviceGetTemperature", nvml);
@@ -1384,17 +1378,26 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public async Task ApplyStartupLighting_AppliesKeyboardAndCoverSettings()
+        [DataRow(false)]
+        [DataRow(true)]
+        public async Task ApplyStartupLighting_AppliesKeyboardAndCoverOnce(bool syncCover)
         {
             var hw = new PreySense.Core.Services.MockHardwareService();
-            var vm = new PreySense.Frontend.ViewModels.MainViewModel(hw);
+            using var vm = new PreySense.Frontend.ViewModels.MainViewModel(hw);
+            var loading = vm.GetType().GetField("_isLoadingLighting", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            loading.SetValue(vm, true);
+            vm.SetLightingEffect("HW:0");
+            vm.IsCoverLightingEnabled = true;
+            vm.IsCoverSyncWithKeyboard = syncCover;
+            loading.SetValue(vm, false);
+            int beforeKeyboard = hw.SetRgbAllZonesCount;
             int beforeCover = hw.SetCoverLogoLightingCount;
 
-            vm.ApplyStartupLighting();
-            await Task.Delay(150);
+            await vm.ApplyStartupLightingAsync();
+            await vm.ApplyStartupLightingAsync();
 
-            Assert.IsTrue(hw.SetCoverLogoLightingCount >= beforeCover, "Startup lighting must apply cover logo settings");
-            Assert.IsTrue(hw.IsRgbAvailable, "RGB must be reported available on hardware service");
+            Assert.AreEqual(beforeKeyboard + 1, hw.SetRgbAllZonesCount, "Startup must apply the keyboard once.");
+            Assert.AreEqual(beforeCover + 1, hw.SetCoverLogoLightingCount, "Startup must apply the cover once, including when synced.");
         }
 
         [TestMethod]
@@ -1463,11 +1466,12 @@ namespace PreySense.Tests
             Assert.AreEqual("Voltage|Voltage", PreySense.Overlay.AppConfig.DefaultOverlayColumn(4));
             Assert.AreEqual("Memory Speed|Memory Speed", PreySense.Overlay.AppConfig.DefaultOverlayColumn(7));
             Assert.AreEqual("None|None", PreySense.Overlay.AppConfig.DefaultOverlayColumn(8));
-            Assert.Contains("PollIntervalMs = 1000", overlay);
+            Assert.DoesNotContain("System.Timers.Timer", overlay);
+            Assert.Contains("TelemetryCoordinator.Heartbeat", File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Overlay", "HardwareOverlay.Lifecycle.cs")));
             Assert.DoesNotContain("ApplyPollInterval", overlay);
-            Assert.Contains("bool gpuActive = HardwareControl.gpuInUse", overlay);
+            Assert.Contains("TelemetryGraphValue.Read(snapshot, metric, gpu)", overlay);
             Assert.DoesNotContain("gpuTemp > 0", overlay);
-            Assert.Contains("TelemetryIntervalMs = 1000", vm);
+            Assert.DoesNotContain("TelemetryIntervalMs", vm);
             Assert.DoesNotContain("HiddenTelemetryIntervalMs", vm);
             string session = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.Session.cs"));
             Assert.Contains("PersistSessionSettings", session);
@@ -1476,10 +1480,10 @@ namespace PreySense.Tests
             Assert.Contains("_modeSwitchGate.WaitAsync()", session);
             Assert.Contains("PowerModes.Resume", session);
             Assert.Contains("SessionEnding", session);
-            Assert.Contains("ApplyKeyboardLightingNow", session);
-            Assert.Contains("ApplyCoverLighting(saveSettings: false)", session);
+            Assert.Contains("if (!string.Equals(reason, \"startup\", StringComparison.OrdinalIgnoreCase))\n                        ApplySavedLighting();", session.Replace("\r\n", "\n"));
             Assert.Contains("ApplyStartupLighting", session);
-            Assert.Contains("ApplyStartupLighting", vm);
+            Assert.DoesNotContain("ApplyStartupLighting", vm);
+            Assert.Contains("await _applicationReady.Task", session);
             Assert.Contains("SetPowerMode", session);
             Assert.DoesNotContain("ModeSwitchLightingDelayMs", session);
             Assert.Contains("_hw.SetPowerMode(mode)", session);
@@ -1493,7 +1497,7 @@ namespace PreySense.Tests
             Assert.Contains("PeekPendingOrActiveMode", modes);
             Assert.Contains("if (mode == PeekPendingOrActiveMode())", modes);
             Assert.Contains("IsModeSelectionPending", modes);
-            Assert.Contains("TurboKey: queued mode", vm);
+            Assert.Contains("TurboKey: mode", vm);
             Assert.Contains("HandleModeKeyPressed", vm);
             Assert.DoesNotContain("QuickAccessModeWatcher", vm);
             Assert.DoesNotContain("SyncFirmwarePowerMode", vm);
@@ -1700,7 +1704,7 @@ namespace PreySense.Tests
             string hardwareControl = File.ReadAllText(Path.Combine(root, "PreySense.Overlay", "HardwareControl.cs"));
             Assert.Contains("NvidiaGpuControl.Shared", hardwareControl);
             Assert.DoesNotContain("LibreHardwareMonitor", hardwareControl);
-            Assert.Contains("TrySampleFrequencies", hardwareControl);
+            Assert.Contains("cpuMhz = snapshot.CpuClockMhz", hardwareControl);
             Assert.DoesNotContain("HardwareControl.Warmup();", overlay[..overlay.IndexOf("public void StartOverlay()", StringComparison.Ordinal)]);
             Assert.DoesNotContain("Thread.Sleep", wmiSrc);
             Assert.DoesNotContain("_readTask?.Wait(500)", File.ReadAllText(Path.Combine(root, "PreySense.Core", "Gpu", "NvidiaGpuControl.cs")));

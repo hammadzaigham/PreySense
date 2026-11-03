@@ -60,31 +60,33 @@ namespace PreySense.Frontend.Services
             _foregroundEventHook = SetWinEventHook(EventSystemForeground, EventSystemForeground,
                 IntPtr.Zero, _foregroundEventHandler, 0, 0,
                 WinEventOutOfContext | WinEventSkipOwnProcess);
-            QueueForegroundEvaluation(GetForegroundWindow());
+            QueueForegroundEvaluation();
         }
 
         private void OnForegroundWindowChanged(IntPtr hook, uint eventType, IntPtr window,
             int objectId, int childId, uint eventThreadId, uint eventTime)
-            => QueueForegroundEvaluation(window);
+            => QueueForegroundEvaluation();
 
-        private void QueueForegroundEvaluation(IntPtr window)
+        private void QueueForegroundEvaluation()
         {
-            if (window == IntPtr.Zero || Volatile.Read(ref _disposed) != 0) return;
-            _ = EvaluateForegroundAsync(window);
+            if (Volatile.Read(ref _disposed) != 0) return;
+            _ = EvaluateForegroundAsync();
         }
 
-        public Task RecheckForegroundAfterResumeAsync() => EvaluateForegroundAsync(GetForegroundWindow(), reapplyTrackedGame: true);
+        public Task RecheckForegroundAfterResumeAsync() => EvaluateForegroundAsync(reapplyTrackedGame: true);
 
-        private async Task EvaluateForegroundAsync(IntPtr window, bool reapplyTrackedGame = false)
+        private async Task EvaluateForegroundAsync(bool reapplyTrackedGame = false)
         {
             if (Volatile.Read(ref _disposed) != 0) return;
             await _transitionGate.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (Volatile.Read(ref _disposed) != 0) return;
+                var profiles = _getProfiles();
+                if (!profiles.Any(profile => profile.Enabled)) return;
                 // A queued event may be stale after rapid Alt-Tabbing. Read
                 // the current foreground window before doing any process work.
-                window = GetForegroundWindow();
+                IntPtr window = GetForegroundWindow();
                 if (window == IntPtr.Zero) return;
                 GetWindowThreadProcessId(window, out uint pid);
                 if (pid == 0 || pid == 4) return;
@@ -94,7 +96,7 @@ namespace PreySense.Frontend.Services
                 {
                     if (reapplyTrackedGame)
                     {
-                        var resumedProfile = FindMatchingProfile(GetProcessExecutablePath(pid));
+                        var resumedProfile = FindMatchingProfile(GetProcessExecutablePath(pid), profiles);
                         if (resumedProfile != null)
                             await RunCallbackAsync(() => _onLaunch(resumedProfile), "resume foreground game").ConfigureAwait(false);
                     }
@@ -102,7 +104,7 @@ namespace PreySense.Frontend.Services
                 }
 
                 string? executablePath = GetProcessExecutablePath(pid);
-                GameProfile? profile = FindMatchingProfile(executablePath);
+                GameProfile? profile = FindMatchingProfile(executablePath, profiles);
                 if (profile == null) return;
                 Process? process = TryOpenProcess(pid);
                 if (process == null) return;
@@ -138,13 +140,13 @@ namespace PreySense.Frontend.Services
             finally { _transitionGate.Release(); }
         }
 
-        private GameProfile? FindMatchingProfile(string? executablePath)
+        private static GameProfile? FindMatchingProfile(string? executablePath, IReadOnlyList<GameProfile> profiles)
         {
             if (string.IsNullOrWhiteSpace(executablePath)) return null;
             string exeName = Path.GetFileName(executablePath);
             string processName = Path.GetFileNameWithoutExtension(exeName);
             GameProfile? filenameFallback = null;
-            foreach (GameProfile profile in _getProfiles())
+            foreach (GameProfile profile in profiles)
             {
                 if (!profile.Enabled) continue;
                 if (!string.IsNullOrWhiteSpace(profile.ExecutablePath) &&

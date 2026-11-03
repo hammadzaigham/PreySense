@@ -11,8 +11,27 @@ public class SharedSystemTelemetryTests
     [TestCleanup]
     public void Cleanup()
     {
+        TelemetryCoordinator.Reset();
+        TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.All);
         CpuUsageMonitor.Reset();
         SystemMemoryMonitor.Reset();
+    }
+
+    private static void ConfigureSharedSystemSampler(Func<long> clock)
+    {
+        TelemetryCoordinator.Reset();
+        TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.All);
+        TelemetryCoordinator.ConfigureSampler(() =>
+        {
+            var cpu = CpuUsageMonitor.GetSnapshot();
+            var ram = SystemMemoryMonitor.GetMemoryInfo();
+            return TelemetrySnapshot.Empty with
+            {
+                IsValid = true, TimestampTicks = clock(),
+                CpuUsage = cpu?.TotalUsage, RamUsage = ram?.UsedPercent, RamUsedMb = ram?.UsedMb
+            };
+        }, timestampProvider: clock);
+        TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
     }
 
     private static long SecondsToTicks(double seconds) =>
@@ -50,6 +69,8 @@ public class SharedSystemTelemetryTests
         mockTime += SecondsToTicks(1.0);
         idle += 250; kernel += 500; user += 500;
 
+        ConfigureSharedSystemSampler(() => mockTime);
+        TelemetryCoordinator.Poll();
         // Consumer 1 (e.g. MainWindow / MainViewModel)
         int? cpuConsumer1 = CpuUsageMonitor.GetCpuUsage();
         var ramConsumer1 = SystemMemoryMonitor.GetMemoryInfo();
@@ -63,7 +84,7 @@ public class SharedSystemTelemetryTests
         mockTime += SecondsToTicks(0.05);
 
         // Consumer 2 (e.g. HardwareOverlay)
-        HardwareControl.ReadSystemMetrics();
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
         int? cpuConsumer2 = HardwareControl.cpuUsage;
         int? ramUsageConsumer2 = HardwareControl.ramUsage;
 
@@ -89,71 +110,47 @@ public class SharedSystemTelemetryTests
 
         CpuUsageMonitor.Warmup();
 
+        ConfigureSharedSystemSampler(() => mockTime);
         // Sample 1: 80% usage
         mockTime += SecondsToTicks(1.0);
         idle += 200; kernel += 500; user += 500;
-        HardwareControl.ReadSystemMetrics();
+        TelemetryCoordinator.Poll();
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
         Assert.AreEqual(80, HardwareControl.cpuUsage);
 
         // Simulate overlay becoming invisible, closing, or re-initializing Warmup()
-        HardwareControl.Warmup();
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
 
         // Next tick 1s later: 40% usage
         mockTime += SecondsToTicks(1.0);
         idle += 600; kernel += 500; user += 500;
-        HardwareControl.ReadSystemMetrics();
+        TelemetryCoordinator.Poll();
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
 
         // Must calculate accurately without returning null or resetting baseline
         Assert.AreEqual(40, HardwareControl.cpuUsage);
     }
 
     [TestMethod]
-    public async Task CpuAndRamMetrics_ContinueSampling_WhenHardwareGateIsOccupied()
+    public async Task OverlayReadersDoNotSampleWhileHardwareGateIsOccupied()
     {
-        long mockTime = 1000;
-        long idle = 1000, kernel = 2000, user = 1000;
-
-        CpuUsageMonitor.ConfigureForTesting(
-            timestampProvider: () => mockTime,
-            systemTimesProvider: (out long i, out long k, out long u) =>
-            {
-                i = idle; k = kernel; u = user;
-                return true;
-            });
-
-        SystemMemoryMonitor.ConfigureForTesting(
-            timestampProvider: () => mockTime,
-            memoryStatusProvider: (ref SystemMemoryMonitor.MEMORYSTATUSEX status) =>
-            {
-                status.dwMemoryLoad = 55;
-                status.ullTotalPhys = 16UL * 1024 * 1024 * 1024;
-                status.ullAvailPhys = 8UL * 1024 * 1024 * 1024;
-                return true;
-            });
-
-        CpuUsageMonitor.Warmup();
-
-        // Lock the hardware gate (simulating an ongoing GPU display switch or lengthy EC transaction)
+        int calls = 0;
+        TelemetryCoordinator.Reset();
+        TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.All);
+        TelemetryCoordinator.ConfigureSampler(() => { calls++; return TelemetrySnapshot.Empty; });
+        TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
         using var gateLease = await HardwareOperationGate.EnterDisplaySwitchAsync();
-        Assert.IsNotNull(gateLease);
-
-        // HardwareOperationGate is now held; TryEnterTelemetry(0) will fail:
-        using var hardwareLease = HardwareOperationGate.TryEnterTelemetry(0);
-        Assert.IsNull(hardwareLease);
-
-        // Advance time 1 second
-        mockTime += SecondsToTicks(1.0);
-        idle += 300; kernel += 500; user += 500;
-
-        // Even though hardware gate is completely locked, system metrics (CPU + RAM) must sample successfully
-        HardwareControl.ReadSystemMetrics();
-        Assert.AreEqual(70, HardwareControl.cpuUsage);
-        Assert.AreEqual(55, HardwareControl.ramUsage);
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
+        HardwareControl.ApplySnapshot(TelemetryCoordinator.CurrentSnapshot);
+        Assert.AreEqual(0, calls);
     }
 
     [TestMethod]
     public void ConcurrentCpuAndRamSampling_DoesNotCorruptState()
     {
+        TelemetryCoordinator.Reset();
+        TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.All);
         CpuUsageMonitor.Reset();
         SystemMemoryMonitor.Reset();
         CpuUsageMonitor.Warmup();

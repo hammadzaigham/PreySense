@@ -25,6 +25,15 @@ namespace PreySense.Frontend.Views
             DependencyPropertyDescriptor
                 .FromProperty(SettingDropdownRow.SelectedIndexProperty, typeof(SettingDropdownRow))
                 .AddValueChanged(DropdownCpuBoost, ExtendedCpuBoost_Changed);
+            Closed += (_, _) =>
+            {
+                DependencyPropertyDescriptor
+                    .FromProperty(SettingSwitchRow.IsCheckedProperty, typeof(SettingSwitchRow))
+                    .RemoveValueChanged(SwitchCpuBoost, CpuBoostSwitch_Changed);
+                DependencyPropertyDescriptor
+                    .FromProperty(SettingDropdownRow.SelectedIndexProperty, typeof(SettingDropdownRow))
+                    .RemoveValueChanged(DropdownCpuBoost, ExtendedCpuBoost_Changed);
+            };
         }
 
         private void ModeSettingsWindow_Loaded(object sender, RoutedEventArgs e)
@@ -162,14 +171,7 @@ namespace PreySense.Frontend.Views
         {
             if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
             int val = (int)Math.Round(e.NewValue);
-            switch (_selectedModeIndex)
-            {
-                case 0: vm.CustomEcoGpuTripPoint = val; break;
-                case 1: vm.CustomQuietGpuTripPoint = val; break;
-                case 2: vm.CustomBalancedGpuTripPoint = val; break;
-                case 3: vm.CustomPerfGpuTripPoint = val; break;
-                case 4: vm.CustomTurboGpuTripPoint = val; break;
-            }
+            StoreGpuTripPoint(vm, val);
             vm.GpuThermalTripPointCelsius = val;
         }
 
@@ -318,45 +320,27 @@ namespace PreySense.Frontend.Views
         {
             if (DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
 
-            var (pl1, pl2) = ReadClampedLimits(preferPl2: false);
-            int tau = ReadTauSeconds();
-
-            WriteClampedLimitsToEditor(pl1, pl2);
-            StoreModeLimits(pl1, pl2);
-            vm.SetTauForModeIndex(_selectedModeIndex, tau);
-            StoreCpuBoost(vm);
-            vm.Pl1Watts = pl1;
-            vm.Pl2Watts = pl2;
-
-            int gpuW = ReadGpuWatts();
-            if (RowGpuPower != null) RowGpuPower.Value = gpuW;
-            StoreGpuWatts(gpuW);
-
-            if (SliderGpuTripPoint != null)
-            {
-                int gpuTrip = (int)Math.Round(SliderGpuTripPoint.Value);
-                switch (_selectedModeIndex)
-                {
-                    case 0: vm.CustomEcoGpuTripPoint = gpuTrip; break;
-                    case 1: vm.CustomQuietGpuTripPoint = gpuTrip; break;
-                    case 2: vm.CustomBalancedGpuTripPoint = gpuTrip; break;
-                    case 3: vm.CustomPerfGpuTripPoint = gpuTrip; break;
-                    case 4: vm.CustomTurboGpuTripPoint = gpuTrip; break;
-                }
-                vm.GpuThermalTripPointCelsius = gpuTrip;
-            }
+            StoreEditorSettings(vm, updateActiveValues: true);
 
             // Apply CPU limits to hardware
             // Select the edited mode before writing its mode-table entries.
             byte selectedMode = ModeIndexToByte(_selectedModeIndex);
-            if (vm.ActivePowerMode != selectedMode || !vm.IsGpuHardwareModeActive(selectedMode))
+            bool confirmed = vm.ActivePowerMode == selectedMode &&
+                await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(selectedMode));
+            if (!confirmed)
+            {
                 await vm.ApplyModeSwitchAsync(selectedMode);
-            if (!await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(selectedMode)))
+                confirmed = await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(selectedMode));
+            }
+            else
+            {
+                vm.ApplyCpuBoostForMode(selectedMode);
+            }
+            if (!confirmed)
             {
                 vm.StatusMessage = "The selected Acer mode could not be confirmed; limits were not applied.";
                 return;
             }
-            vm.ApplyCpuBoostForMode(selectedMode);
             await vm.ApplyPowerLimitsCommand.ExecuteAsync(null);
             string cpuApplyStatus = vm.StatusMessage;
 
@@ -369,30 +353,7 @@ namespace PreySense.Frontend.Views
         {
             if (DataContext is not MainViewModel vm || !vm.IsAcpiOverrideEnabled) return;
 
-            var (pl1, pl2) = ReadClampedLimits(preferPl2: false);
-            int tau = ReadTauSeconds();
-
-            WriteClampedLimitsToEditor(pl1, pl2);
-            StoreModeLimits(pl1, pl2);
-            vm.SetTauForModeIndex(_selectedModeIndex, tau);
-            StoreCpuBoost(vm);
-
-            int gpuW = ReadGpuWatts();
-            if (RowGpuPower != null) RowGpuPower.Value = gpuW;
-            StoreGpuWatts(gpuW);
-
-            if (SliderGpuTripPoint != null)
-            {
-                int gpuTrip = (int)Math.Round(SliderGpuTripPoint.Value);
-                switch (_selectedModeIndex)
-                {
-                    case 0: vm.CustomEcoGpuTripPoint = gpuTrip; break;
-                    case 1: vm.CustomQuietGpuTripPoint = gpuTrip; break;
-                    case 2: vm.CustomBalancedGpuTripPoint = gpuTrip; break;
-                    case 3: vm.CustomPerfGpuTripPoint = gpuTrip; break;
-                    case 4: vm.CustomTurboGpuTripPoint = gpuTrip; break;
-                }
-            }
+            var (pl1, pl2, tau) = StoreEditorSettings(vm, updateActiveValues: false);
 
             // Persist to registry
             vm.SaveCpuLimitsToRegistry();
@@ -402,6 +363,40 @@ namespace PreySense.Frontend.Views
                 ? vm.CpuBoostModeName
                 : (SwitchCpuBoost?.IsChecked == true ? "on" : "off");
             vm.StatusMessage = $"Saved {modeName} limits (PL1 {pl1}W, PL2 {pl2}W, Tau {FormatTau(tau)}, CPU Boost {boost}) to registry.";
+        }
+
+        private (int Pl1, int Pl2, int Tau) StoreEditorSettings(MainViewModel vm, bool updateActiveValues)
+        {
+            var (pl1, pl2) = ReadClampedLimits(preferPl2: false);
+            int tau = ReadTauSeconds();
+            WriteClampedLimitsToEditor(pl1, pl2);
+            StoreModeLimits(pl1, pl2);
+            vm.SetTauForModeIndex(_selectedModeIndex, tau);
+            StoreCpuBoost(vm);
+            int gpuWatts = ReadGpuWatts();
+            RowGpuPower.Value = gpuWatts;
+            StoreGpuWatts(gpuWatts);
+            int gpuTrip = (int)Math.Round(SliderGpuTripPoint.Value);
+            StoreGpuTripPoint(vm, gpuTrip);
+            if (updateActiveValues)
+            {
+                vm.Pl1Watts = pl1;
+                vm.Pl2Watts = pl2;
+                vm.GpuThermalTripPointCelsius = gpuTrip;
+            }
+            return (pl1, pl2, tau);
+        }
+
+        private void StoreGpuTripPoint(MainViewModel vm, int value)
+        {
+            switch (_selectedModeIndex)
+            {
+                case 0: vm.CustomEcoGpuTripPoint = value; break;
+                case 1: vm.CustomQuietGpuTripPoint = value; break;
+                case 2: vm.CustomBalancedGpuTripPoint = value; break;
+                case 3: vm.CustomPerfGpuTripPoint = value; break;
+                case 4: vm.CustomTurboGpuTripPoint = value; break;
+            }
         }
 
         private void StoreCpuBoost(MainViewModel vm)

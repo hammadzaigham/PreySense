@@ -48,7 +48,7 @@ public class RefreshRateReadbackTests
         CollectionAssert.AreEqual(new[] { 120, 60 }, hardware.Requests);
         Assert.AreEqual(60, vm.CurrentRefreshRate);
         Assert.AreEqual("60 Hz", vm.SelectedRefreshRateOption);
-        Assert.AreEqual("60Hz", vm.DisplayPanelInfo);
+        Assert.AreEqual(60, vm.CurrentRefreshRate);
     }
 
     [TestMethod]

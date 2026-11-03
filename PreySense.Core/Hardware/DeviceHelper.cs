@@ -62,6 +62,42 @@ namespace PreySense.Helpers
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern bool SetupDiGetDeviceRegistryProperty(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, int property, out int propertyRegDataType, StringBuilder propertyBuffer, int propertyBufferSize, out int requiredSize);
 
+        [DllImport("setupapi.dll", EntryPoint = "SetupDiGetDeviceRegistryPropertyW", SetLastError = true)]
+        private static extern bool ReadDeviceProperty(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData,
+            int property, out int dataType, byte[] buffer, int bufferSize, out int requiredSize);
+
+        /// <summary>Reads Windows-maintained CM_POWER_DATA; does not query the GPU driver.</summary>
+        public static int? GetDisplayDevicePowerState(string hardwareIdSubstring)
+        {
+            Guid displayGuid = DisplayClassGuid;
+            IntPtr devices = SetupDiGetClassDevs(ref displayGuid, null, IntPtr.Zero, DIGCF_PRESENT);
+            if (devices == IntPtr.Zero || devices == new IntPtr(-1)) return null;
+            try
+            {
+                var info = new SP_DEVINFO_DATA { cbSize = Marshal.SizeOf<SP_DEVINFO_DATA>() };
+                var ids = new byte[4096];
+                for (int index = 0; SetupDiEnumDeviceInfo(devices, index, ref info); index++)
+                {
+                    if (!ReadDeviceProperty(devices, ref info, 1, out _, ids, ids.Length, out int size)) continue;
+                    if (!Encoding.Unicode.GetString(ids, 0, size).Contains(hardwareIdSubstring, StringComparison.OrdinalIgnoreCase)) continue;
+                    var power = new byte[256];
+                    return ReadDeviceProperty(devices, ref info, 0x1E, out _, power, power.Length, out size)
+                        ? DecodeDisplayDevicePowerState(power.AsSpan(0, size)) : null;
+                }
+                return null;
+            }
+            finally { SetupDiDestroyDeviceInfoList(devices); }
+        }
+
+        public static int? DecodeDisplayDevicePowerState(ReadOnlySpan<byte> powerData)
+        {
+            if (powerData.Length < 8) return null;
+            uint size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(powerData);
+            if (size < 8 || size > powerData.Length) return null;
+            int state = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(powerData.Slice(4));
+            return state is >= 1 and <= 4 ? state : null;
+        }
+
         /// <summary>
         /// Disables or Enables any display device matching the hardware ID substring (e.g. "VEN_10DE" for NVIDIA dGPU).
         /// </summary>
@@ -166,14 +202,6 @@ namespace PreySense.Helpers
                                 }
                             }
 
-                            // Second attempt fallback: Quick Disable-then-Enable cycle
-                            if (!success)
-                            {
-                                AppLogger.Log($"DICS_PROPCHANGE fallback: cycling Disable -> Enable for {hwId}");
-                                SetDeviceState(hardwareIdSubstring, false);
-                                System.Threading.Thread.Sleep(500);
-                                success = SetDeviceState(hardwareIdSubstring, true);
-                            }
                             break;
                         }
                     }

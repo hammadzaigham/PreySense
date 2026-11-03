@@ -11,7 +11,7 @@ namespace PreySense.Frontend.Services
 {
     public static class UpdateCheckService
     {
-        public const string CurrentVersion = "2.4.9";
+        public const string CurrentVersion = "2.5.0";
         private const string LatestReleaseApi = "https://api.github.com/repos/hammadzaigham/PreySense/releases/latest";
         private const string ReleasesUrl = "https://github.com/hammadzaigham/PreySense/releases";
 
@@ -90,7 +90,8 @@ namespace PreySense.Frontend.Services
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"Update check failed: {ex.Message}");
+                string msg = (ex is HttpRequestException || ex is System.Net.Sockets.SocketException) ? $"Update check skipped (network unreachable: {ex.Message})" : $"Update check failed: {ex.Message}";
+                AppLogger.Log(msg);
             }
         }
 

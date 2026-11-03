@@ -82,6 +82,8 @@ namespace PreySense.Frontend
                 return;
             }
 
+            _ = Task.Run(PreySense.Overlay.WinRing0Cleanup.RemoveInstalledDriver);
+
             // Start cross-process show event listener
             try
             {

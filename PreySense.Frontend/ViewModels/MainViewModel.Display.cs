@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -14,7 +14,6 @@ namespace PreySense.Frontend.ViewModels
     {
         // Display & Vision
         [ObservableProperty] private int _currentRefreshRate = 240;
-        [ObservableProperty] private string _displayPanelInfo = "240Hz";
         [ObservableProperty] private bool _isAutoRefreshRateEnabled = false;
         [ObservableProperty] private bool _isBlueLightShieldEnabled = false;
         [ObservableProperty] private int _blueLightShieldMode = 0;
@@ -170,7 +169,6 @@ namespace PreySense.Frontend.ViewModels
             }
             else
             {
-                RefreshActiveGpuDisplayMode();
             }
             NotifyGpuSelectionsChanged();
 
@@ -193,7 +191,6 @@ namespace PreySense.Frontend.ViewModels
                 string option = $"{hz} Hz";
                 if (!AvailableRefreshRates.Contains(option)) AvailableRefreshRates.Add(option);
                 SelectedRefreshRateOption = option;
-                DisplayPanelInfo = $"{hz}Hz" + (IsLcdOverdriveEnabled ? " • Overdrive" : "");
                 NotifyRefreshRateChanged();
             }
             finally { _isUpdatingRefreshRateSelection = false; }
@@ -227,7 +224,6 @@ namespace PreySense.Frontend.ViewModels
 
                 SelectedRefreshRateOption = $"{CurrentRefreshRate} Hz";
 
-                DisplayPanelInfo = $"{CurrentRefreshRate}Hz" + (IsLcdOverdriveEnabled ? " • Overdrive" : "");
                 NotifyRefreshRateChanged();
             }
             finally
@@ -353,7 +349,6 @@ namespace PreySense.Frontend.ViewModels
             }
 
             IsLcdOverdriveEnabled = requestedState;
-            DisplayPanelInfo = $"{CurrentRefreshRate}Hz" + (requestedState ? " • Overdrive" : "");
             StatusMessage = requestedState ? "LCD 3ms Response Overdrive: Enabled" : "LCD Response Overdrive: Off";
             try
             {

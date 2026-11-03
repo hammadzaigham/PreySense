@@ -11,6 +11,11 @@
                 <ResourceDictionary Source="Styles/Cards.xaml" />
                 <ResourceDictionary Source="Styles/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="AppWindowRenderingStyle" TargetType="{x:Type Window}">
+                <Setter Property="UseLayoutRounding" Value="True" />
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+                <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

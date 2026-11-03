@@ -363,7 +363,7 @@ namespace PreySense.Frontend.ViewModels
                 }
             }
 
-            SetStatusMessageSafe($"Dynamic Animation: {ActiveEffectName}");
+            SetStatusMessageSafe($"Software Effect: {ActiveEffectName}");
         }
 
         public static bool TryGetZonePresetColors(string? presetName, out Color[] colors, out string displayName)
@@ -565,15 +565,15 @@ namespace PreySense.Frontend.ViewModels
 
         private int _startupLightingRan;
 
-        public void ApplyStartupLighting()
+        public Task ApplyStartupLightingAsync()
         {
             if (_disposed)
-                return;
+                return Task.CompletedTask;
 
             if (Interlocked.CompareExchange(ref _startupLightingRan, 1, 0) != 0)
-                return;
+                return Task.CompletedTask;
 
-            _ = Task.Run(async () =>
+            return Task.Run(async () =>
             {
                 AppLogger.Log("ApplyStartupLighting: Starting startup lighting application sequence.");
 
@@ -612,9 +612,7 @@ namespace PreySense.Frontend.ViewModels
                 // Pass 1: Immediate application upon connection
                 try
                 {
-                    ApplyKeyboardLightingNow();
-                    if (!IsCoverSyncWithKeyboard)
-                        ApplyCoverLighting(saveSettings: false);
+                    ApplySavedLighting();
                     AppLogger.Log("ApplyStartupLighting: Pass 1 applied.");
                 }
                 catch (Exception ex)
@@ -623,22 +621,30 @@ namespace PreySense.Frontend.ViewModels
                 }
 
                 // Pass 2: Delayed reinforcement after 2.5 seconds to override any OEM firmware POST reset
-                try
+                _ = Task.Run(async () =>
                 {
-                    await Task.Delay(2500).ConfigureAwait(false);
-                    if (!_disposed)
+                    try
                     {
-                        ApplyKeyboardLightingNow();
-                        if (!IsCoverSyncWithKeyboard)
-                            ApplyCoverLighting(saveSettings: false);
-                        AppLogger.Log("ApplyStartupLighting: Pass 2 (reinforcement) applied.");
+                        await Task.Delay(2500).ConfigureAwait(false);
+                        if (!_disposed)
+                        {
+                            ApplySavedLighting();
+                            AppLogger.Log("ApplyStartupLighting: Pass 2 (reinforcement) applied.");
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Log($"ApplyStartupLighting Pass 2 error: {ex.Message}");
-                }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log($"ApplyStartupLighting Pass 2 error: {ex.Message}");
+                    }
+                });
             });
+        }
+
+        private void ApplySavedLighting()
+        {
+            ApplyKeyboardLightingNow();
+            if (!IsCoverSyncWithKeyboard)
+                ApplyCoverLighting(saveSettings: false);
         }
 
         private void ApplyKeyboardLightingNow()

@@ -22,31 +22,10 @@ namespace PreySense.Overlay
             }
         }
 
-        public static bool Exists(string name)
-        {
-            try
-            {
-                return Read(name) != Missing;
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        public static bool Exists(string name) => Read(name) != Missing;
 
-        public static int Get(string name, int empty = -1)
-        {
-            try
-            {
-                string value = Read(name);
-                if (value != Missing && int.TryParse(value, out int result))
-                {
-                    return result;
-                }
-            }
-            catch { }
-            return empty;
-        }
+        public static int Get(string name, int empty = -1) =>
+            int.TryParse(Read(name), out int result) ? result : empty;
 
         public static bool Is(string name)
         {
@@ -55,15 +34,8 @@ namespace PreySense.Overlay
 
         public static string GetString(string name, string empty = "")
         {
-            try
-            {
-                string value = Read(name);
-                return value == Missing ? empty : value;
-            }
-            catch
-            {
-                return empty;
-            }
+            string value = Read(name);
+            return value == Missing ? empty : value;
         }
 
         public static void Set(string name, int value)

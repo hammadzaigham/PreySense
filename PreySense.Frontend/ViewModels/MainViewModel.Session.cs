@@ -47,7 +47,7 @@ namespace PreySense.Frontend.ViewModels
                 using var key = Registry.CurrentUser.OpenSubKey(SessionRegistryPath);
                 if (key == null)
                 {
-                    _currentPowerSource = _hw.GetPowerSource();
+                    UpdatePowerSourceState(_hw.GetPowerSource());
                     return;
                 }
 
@@ -120,7 +120,7 @@ namespace PreySense.Frontend.ViewModels
                     IsExtendedCpuBoostEnabled = extendedBoost == 1;
                 if (key.GetValue("LastPluggedSource") is int lastPlugged && lastPlugged is 1 or 4)
                     _hw.NotePluggedSource(lastPlugged == 4 ? PowerSourceKind.UsbC : PowerSourceKind.Ac);
-                _currentPowerSource = _hw.GetPowerSource();
+                UpdatePowerSourceState(_hw.GetPowerSource());
                 _suppressPowerProfile = false;
             }
             catch (Exception ex)
@@ -233,7 +233,7 @@ namespace PreySense.Frontend.ViewModels
         {
             await _applicationReady.Task;
             if (_disposed) return;
-            ApplyStartupLighting();
+            _ = ApplyStartupLightingAsync();
             var pawnInstallation = await _dispatcher.InvokeAsync(() => PawnIoInstallService.EnsureInstalledAsync(
                 System.Windows.Application.Current.MainWindow, message => StatusMessage = message));
             await pawnInstallation;
@@ -313,6 +313,8 @@ namespace PreySense.Frontend.ViewModels
                     if (IsBatteryEnergySaverEnabled)
                         PowerLimitController.SetEnergySaverOnBattery(true);
 
+                    if (!string.Equals(reason, "startup", StringComparison.OrdinalIgnoreCase))
+                        ApplySavedLighting();
                     restoreWarning = ApplyPersistedHardwareSettings(mode);
                     if (string.Equals(reason, "startup", StringComparison.OrdinalIgnoreCase))
                         ApplyStartupBatteryRefreshRate();
@@ -325,13 +327,12 @@ namespace PreySense.Frontend.ViewModels
                 {
                     if (_disposed)
                         return;
-                    _currentPowerSource = source;
+                    UpdatePowerSourceState(source);
                     ActivePowerMode = mode;
                     UpdateModeName(mode);
                     NotifyModeSelectionsChanged();
                     bool onAc = source != PowerSourceKind.Battery;
                     _lastAcState = onAc;
-                    _lastPowerSource = source;
                     ApplyAutoRefreshForPower(onAc);
                     ApplyGpuBatteryAuto(onAc);
                     StatusMessage = reason.Equals("startup", StringComparison.OrdinalIgnoreCase)
@@ -364,8 +365,6 @@ namespace PreySense.Frontend.ViewModels
         {
             byte mode = modeOverride ?? ActivePowerMode;
             var failures = new System.Collections.Generic.List<string>();
-            ApplyKeyboardLightingNow();
-            ApplyCoverLighting(saveSettings: false);
             if (!_hw.SetPowerMode(mode))
                 throw new InvalidOperationException("The saved Acer mode could not be activated; its custom limits were not applied.");
 

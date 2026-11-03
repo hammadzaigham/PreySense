@@ -10,7 +10,7 @@ namespace PreySense.Overlay
     /// Older builds installed LibreHardwareMonitor's WinRing0 as the kernel service
     /// R0PreySense. Defender flags that driver. Remove the service and the file.
     /// </summary>
-    internal static class WinRing0Cleanup
+    public static class WinRing0Cleanup
     {
         private static int _started;
 

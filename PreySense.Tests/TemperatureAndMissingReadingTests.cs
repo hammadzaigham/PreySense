@@ -31,19 +31,4 @@ public class TemperatureAndMissingReadingTests
         Assert.AreEqual("52°C", TelemetryText.Format(52, "°C", allowZero: false));
     }
 
-    [TestMethod]
-    public void MainWindowDistinguishesMissingSensorsFromStoppedFans()
-    {
-        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
-        vm.CpuTemp = -1;
-        vm.GpuTemp = -1;
-        vm.CpuRpm = -1;
-        vm.GpuRpm = 0;
-        Assert.AreEqual("N/A", vm.CpuTemperatureText);
-        Assert.AreEqual("N/A", vm.GpuTemperatureText);
-        Assert.AreEqual("N/A", vm.CpuFanText);
-        Assert.AreEqual("0 RPM", vm.GpuFanText);
-        vm.CpuTemp = 53;
-        Assert.AreEqual("53°C", vm.CpuTemperatureText);
-    }
 }

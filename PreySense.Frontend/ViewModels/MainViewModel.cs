@@ -17,7 +17,6 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel : ObservableObject, IDisposable
     {
-        private const double TelemetryIntervalMs = 1000;
         private readonly IHardwareService _hw;
         private readonly Dispatcher _dispatcher;
         private readonly TurboKeyWatcher _turboKeyWatcher;
@@ -25,10 +24,6 @@ namespace PreySense.Frontend.ViewModels
         private DateTime _lastPhysicalModeKeyUtc;
         private int _pendingBrightnessDelta;
         private int _powerSourceUpdateQueued;
-        private int _telemetryPollInProgress;
-        private int _uiTelemetryUpdateQueued;
-        private volatile bool _telemetryWindowVisible;
-        private bool ShouldPollTelemetry => _telemetryWindowVisible || OverlayBridge.IsShowing;
         private bool _disposed;
         private int? _gpuModeDeferredForBattery;
 
@@ -36,39 +31,21 @@ namespace PreySense.Frontend.ViewModels
 
         public DtsAudioViewModel Dts { get; }
 
-        // Telemetry Properties
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuTemperatureText))] private int _cpuTemp = -1;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(GpuTemperatureText))] private int _gpuTemp = -1;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuFanText))] private int _cpuRpm = -1;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(GpuFanText))] private int _gpuRpm = -1;
-        [ObservableProperty] private float _batteryPercent = 85;
         [ObservableProperty] private bool _isAcConnected = true;
-        [ObservableProperty] private string _batteryStatusText = "85% (Plugged in)";
-        [ObservableProperty] private float _cpuPackagePowerWatts = 0f;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuUsageText))] private int? _cpuUsage;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuMaxCoreUsageText))] private int? _cpuMaxCoreUsage;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuPCoreUsageText))] private int? _cpuPCoreUsage;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(CpuECoreUsageText))] private int? _cpuECoreUsage;
-        [ObservableProperty, NotifyPropertyChangedFor(nameof(RamUsageText))] private int? _ramUsage;
-        [ObservableProperty] private int? _ramUsedMb;
-
-        public string CpuTemperatureText => CpuTemp > 0 ? $"{CpuTemp}°C" : "N/A";
-        public string GpuTemperatureText => GpuTemp > 0 ? $"{GpuTemp}°C" : "N/A";
-        public string CpuFanText => CpuRpm >= 0 ? $"{CpuRpm} RPM" : "N/A";
-        public string GpuFanText => GpuRpm >= 0 ? $"{GpuRpm} RPM" : "N/A";
-        public string CpuUsageText => CpuUsage.HasValue ? $"{CpuUsage.Value}%" : "N/A";
-        public string CpuMaxCoreUsageText => CpuMaxCoreUsage.HasValue ? $"{CpuMaxCoreUsage.Value}%" : "N/A";
-        public string CpuPCoreUsageText => CpuPCoreUsage.HasValue ? $"{CpuPCoreUsage.Value}%" : "N/A";
-        public string CpuECoreUsageText => CpuECoreUsage.HasValue ? $"{CpuECoreUsage.Value}%" : "N/A";
-        public string RamUsageText => RamUsage.HasValue ? $"{RamUsage.Value}%" : "N/A";
 
         // Status Feedback
         [ObservableProperty] private string _statusMessage = "Ready";
         [ObservableProperty] private bool _isBusy = false;
 
         private bool? _lastAcState = null;
-        private PowerSourceKind? _lastPowerSource;
         private PowerSourceKind _currentPowerSource = PowerSourceKind.Ac;
+
+        private bool UpdatePowerSourceState(PowerSourceKind source)
+        {
+            _currentPowerSource = source;
+            IsAcConnected = source != PowerSourceKind.Battery;
+            return IsAcConnected;
+        }
 
         private void OnPowerSourceReceived(object? sender, PowerSourceKind source)
         {
@@ -92,18 +69,15 @@ namespace PreySense.Frontend.ViewModels
                         return;
 
                     PowerSourceKind source = _hw.GetPowerSource();
-                    bool onAc = source != PowerSourceKind.Battery;
-                    _currentPowerSource = source;
+                    bool onAc = UpdatePowerSourceState(source);
                     if (_lastAcState.HasValue && _lastAcState.Value != onAc)
                     {
-                        IsAcConnected = onAc;
                         NotifyModeSelectionsChanged();
                         ApplyAutoRefreshForPower(onAc);
                         ApplyGpuBatteryAuto(onAc);
                     }
 
                     _lastAcState = onAc;
-                    _lastPowerSource = source;
                     ApplyPowerProfileForSource(source);
                 }
                 finally
@@ -135,8 +109,6 @@ namespace PreySense.Frontend.ViewModels
             _turboKeyWatcher.BrightnessKeyPressed += OnBrightnessKeyPressed;
             StartGameLaunchWatcher();
 
-            PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnCoordinatorSnapshotAvailable;
-            PreySense.Core.Services.TelemetryCoordinator.DisplayTick += OnCoordinatorDisplayTick;
             UpdateFanDemand();
 
             try
@@ -197,7 +169,6 @@ namespace PreySense.Frontend.ViewModels
 
             ActiveGpuMuxMode = LoadGpuModePreference();
             GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
-            DisplayPanelInfo = $"{CurrentRefreshRate}Hz" + (IsLcdOverdriveEnabled ? " • Overdrive" : "");
 
             LoadCoverLightingSettings();
             LoadRgbSettings();
@@ -229,11 +200,6 @@ namespace PreySense.Frontend.ViewModels
             Pl1Watts = startupPl1;
             Pl2Watts = startupPl2;
             TauSeconds = TauForMode(ActivePowerMode);
-
-            if (_hw is ProductionHardwareService)
-            {
-                ApplyStartupLighting();
-            }
 
             _ = InitializeSessionAsync();
             if (_hw is MockHardwareService)
@@ -315,216 +281,6 @@ namespace PreySense.Frontend.ViewModels
 
         }
 
-        private void PollTelemetry()
-        {
-            if (_disposed) return;
-            if (!ShouldPollTelemetry && !RequiresFanTemperatures) return;
-
-            if (_dispatcher.CheckAccess())
-            {
-                Task.Run(PollTelemetry);
-                return;
-            }
-
-            if (Interlocked.Exchange(ref _telemetryPollInProgress, 1) != 0)
-                return;
-
-            try
-            {
-                using var lease = HardwareOperationGate.TryEnterTelemetry();
-                if (lease == null) return;
-                int displayRevision = Volatile.Read(ref _gpuDisplayRevision);
-                bool fullTelemetry = ShouldPollTelemetry;
-                var telemetry = fullTelemetry ? _hw.GetCurrentTelemetry() : _hw.GetFanTemperatures();
-                ProcessFanCurves(telemetry);
-                if (!fullTelemetry) return;
-                _dispatcher.InvokeAsync(() =>
-                {
-                    if (!_disposed && ShouldPollTelemetry)
-                    {
-                        UpdateTelemetry(telemetry);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                ReleaseCustomFans();
-                AppLogger.Log($"Fan/telemetry read failed: {ex.Message}");
-            }
-            finally
-            {
-                Volatile.Write(ref _telemetryPollInProgress, 0);
-            }
-        }
-
-        private void UpdateTelemetry(HardwareTelemetry t)
-        {
-            CpuTemp = t.CpuTemp;
-            GpuTemp = t.GpuTemp;
-            CpuRpm = t.CpuRpm;
-            GpuRpm = t.GpuRpm;
-            CpuPackagePowerWatts = t.CpuPkgPowerWatts;
-            var cpu = CpuUsageMonitor.GetSnapshot();
-            if (cpu.HasValue)
-            {
-                CpuUsage = cpu.Value.TotalUsage;
-                CpuMaxCoreUsage = cpu.Value.MaxCoreUsage;
-                CpuPCoreUsage = cpu.Value.PCoreUsage;
-                CpuECoreUsage = cpu.Value.ECoreUsage;
-            }
-            else
-            {
-                CpuUsage = CpuUsageMonitor.GetCpuUsage();
-                CpuMaxCoreUsage = CpuUsageMonitor.GetMaxCoreUsage();
-                CpuPCoreUsage = CpuUsageMonitor.GetPCoreUsage();
-                CpuECoreUsage = CpuUsageMonitor.GetECoreUsage();
-            }
-            var ram = SystemMemoryMonitor.GetMemoryInfo();
-            RamUsage = ram?.UsedPercent;
-            RamUsedMb = ram?.UsedMb;
-            BatteryPercent = t.BatteryPercent;
-            IsAcConnected = t.IsAcConnected;
-            _currentPowerSource = t.PowerSource;
-            string sourceLabel = t.PowerSource switch
-            {
-                PowerSourceKind.UsbC => "USB-C",
-                PowerSourceKind.Battery => "Battery",
-                _ => "AC"
-            };
-            var batteryStatus = $"{Math.Round(t.BatteryPercent)}% ({sourceLabel})";
-            if (!string.Equals(BatteryStatusText, batteryStatus, StringComparison.Ordinal))
-                BatteryStatusText = batteryStatus;
-
-            if (_lastPowerSource.HasValue && _lastPowerSource.Value != t.PowerSource)
-            {
-                if (_lastAcState != t.IsAcConnected)
-                {
-                    NotifyModeSelectionsChanged();
-                    ApplyAutoRefreshForPower(t.IsAcConnected);
-
-                    ApplyGpuBatteryAuto(t.IsAcConnected);
-                }
-
-                ApplyPowerProfileForSource(t.PowerSource);
-            }
-            else if (!_lastPowerSource.HasValue)
-            {
-                ApplyGpuBatteryAuto(t.IsAcConnected);
-            }
-            _lastAcState = t.IsAcConnected;
-            _lastPowerSource = t.PowerSource;
-        }
-
-        private void OnCoordinatorSnapshotAvailable(TelemetrySnapshot snapshot)
-        {
-            if (_disposed) return;
-
-            var telemetry = snapshot.ToHardwareTelemetry();
-            ProcessFanCurves(telemetry);
-
-            if (!snapshot.IsFanOnly)
-            {
-                bool onAc = snapshot.IsAcConnected;
-                PowerSourceKind source = snapshot.PowerSource;
-                if (_lastPowerSource.HasValue && _lastPowerSource.Value != source)
-                {
-                    if (_lastAcState != onAc)
-                    {
-                        _dispatcher.InvokeAsync(() =>
-                        {
-                            if (_disposed) return;
-                            NotifyModeSelectionsChanged();
-                            ApplyAutoRefreshForPower(onAc);
-                            ApplyGpuBatteryAuto(onAc);
-                        });
-                    }
-
-                    _dispatcher.InvokeAsync(() =>
-                    {
-                        if (_disposed) return;
-                        ApplyPowerProfileForSource(source);
-                    });
-                }
-                else if (!_lastPowerSource.HasValue)
-                {
-                    _dispatcher.InvokeAsync(() =>
-                    {
-                        if (_disposed) return;
-                        ApplyGpuBatteryAuto(onAc);
-                    });
-                }
-                _lastAcState = onAc;
-                _lastPowerSource = source;
-            }
-        }
-
-        private void OnCoordinatorDisplayTick(TelemetrySnapshot snapshot)
-        {
-            if (_disposed || !_telemetryWindowVisible) return;
-
-            if (Interlocked.Exchange(ref _uiTelemetryUpdateQueued, 1) != 0)
-                return;
-
-            _dispatcher.InvokeAsync(() =>
-            {
-                try
-                {
-                    if (_disposed || !_telemetryWindowVisible) return;
-                    UpdateTelemetryFromSnapshot(snapshot);
-                }
-                finally
-                {
-                    Volatile.Write(ref _uiTelemetryUpdateQueued, 0);
-                }
-            });
-        }
-
-        private void UpdateTelemetryFromSnapshot(TelemetrySnapshot snapshot)
-        {
-            CpuTemp = snapshot.CpuTemp ?? 0;
-            GpuTemp = snapshot.GpuTemp ?? 0;
-            if (snapshot.CpuRpm.HasValue) CpuRpm = snapshot.CpuRpm.Value;
-            if (snapshot.GpuRpm.HasValue) GpuRpm = snapshot.GpuRpm.Value;
-
-            if (snapshot.IsFanOnly)
-            {
-                // Fan-only partial update: preserve existing CPU, RAM, battery, and power source telemetry
-                return;
-            }
-
-            CpuPackagePowerWatts = snapshot.CpuPkgPowerWatts ?? 0f;
-            CpuUsage = snapshot.CpuUsage;
-            CpuMaxCoreUsage = snapshot.CpuMaxCoreUsage;
-            CpuPCoreUsage = snapshot.CpuPCoreUsage;
-            CpuECoreUsage = snapshot.CpuECoreUsage;
-            RamUsage = snapshot.RamUsage;
-            RamUsedMb = snapshot.RamUsedMb;
-            BatteryPercent = snapshot.BatteryPercent;
-            IsAcConnected = snapshot.IsAcConnected;
-            _currentPowerSource = snapshot.PowerSource;
-
-            string sourceLabel = _currentPowerSource switch
-            {
-                PowerSourceKind.UsbC => "USB-C",
-                PowerSourceKind.Battery => "Battery",
-                _ => "AC"
-            };
-            var batteryStatus = $"{Math.Round(BatteryPercent)}% ({sourceLabel})";
-            if (!string.Equals(BatteryStatusText, batteryStatus, StringComparison.Ordinal))
-                BatteryStatusText = batteryStatus;
-        }
-
-        public void SetTelemetryPollingActive(bool windowVisible)
-        {
-            _telemetryWindowVisible = windowVisible;
-            PreySense.Core.Services.TelemetryCoordinator.SetDemand(
-                PreySense.Core.Services.TelemetryDemand.MainWindow, windowVisible);
-            if (windowVisible)
-            {
-                TriggerDisplayStateRefresh();
-            }
-        }
-
         private void OnPowerModeChanged(object? sender, byte mode)
         {
             App.Current?.Dispatcher?.InvokeAsync(() =>
@@ -537,9 +293,7 @@ namespace PreySense.Frontend.ViewModels
                     || (DateTime.UtcNow - _lastPhysicalModeKeyUtc).TotalMilliseconds < 1500
                     || ActivePowerMode == mode)
                     return;
-                lock (_fanControlGate)
-                    ResetFanFollower();
-                UpdateFanDemand();
+                _ = Task.Run(RestoreFanMode);
                 ActivePowerMode = mode;
                 ApplyCpuBoostForMode(mode);
                 UpdateModeName(mode);
@@ -563,7 +317,7 @@ namespace PreySense.Frontend.ViewModels
                 _lastPhysicalModeKeyUtc = DateTime.UtcNow;
                 byte current = PeekPendingOrActiveMode();
                 byte next = CyclePerformanceMode(current);
-                AppLogger.Log($"TurboKey: queued mode 0x{next:X2} (was 0x{current:X2}); hardware apply debounced.");
+                AppLogger.Log($"TurboKey: mode 0x{next:X2} (was 0x{current:X2}); applying.");
                 await SetModeAsync(next);
             });
         }
@@ -573,10 +327,7 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed) return;
             _disposed = true;
             _applicationReady.TrySetResult();
-            PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnCoordinatorSnapshotAvailable;
-            PreySense.Core.Services.TelemetryCoordinator.DisplayTick -= OnCoordinatorDisplayTick;
-            PreySense.Core.Services.TelemetryCoordinator.SetDemand(
-                PreySense.Core.Services.TelemetryDemand.MainWindow, false);
+            DisposeFanTelemetry();
             ReleaseCustomFans();
             PreySense.Mode.PawnCpuPowerControl.Dispose();
             PersistSessionSettings();
@@ -592,12 +343,7 @@ namespace PreySense.Frontend.ViewModels
             _hidModeKeyWatcher.Dispose();
             _gameLaunchWatcher?.Dispose();
             _gameLaunchWatcher = null;
-            lock (_modeSwitchDebounceLock)
-            {
-                _modeSwitchDebounceCts?.Cancel();
-                _modeSwitchDebounceCts?.Dispose();
-                _modeSwitchDebounceCts = null;
-            }
+            CancelPendingModeSwitch();
             _modeSwitchGate.Dispose();
             Dts.DisposeManager();
             _usbChargingDebouncer.Dispose();

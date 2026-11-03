@@ -83,48 +83,93 @@ namespace PreySense.Frontend.Views
         private void RestoreLightingModeUi(MainViewModel vm)
         {
             string tag = vm.LightingEffectTag;
-            bool dynamic = tag.StartsWith("DYN:", StringComparison.Ordinal) ||
-                           (tag.StartsWith("HW:", StringComparison.Ordinal) && tag != "HW:0");
+            bool isSoftwareEffect = tag.StartsWith("DYN:", StringComparison.Ordinal);
+            bool isHardwareDyn = tag.StartsWith("HW:", StringComparison.Ordinal) && tag != "HW:0";
 
+            int modeIndex = isSoftwareEffect ? 2 : (isHardwareDyn ? 1 : 0);
             if (ComboLightingMode != null)
-                ComboLightingMode.SelectedIndex = dynamic ? 1 : 0;
+                ComboLightingMode.SelectedIndex = modeIndex;
 
             if (PanelStaticControls != null)
-                PanelStaticControls.Visibility = dynamic ? Visibility.Collapsed : Visibility.Visible;
+                PanelStaticControls.Visibility = modeIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
             if (PanelDynamicControls != null)
-                PanelDynamicControls.Visibility = dynamic ? Visibility.Visible : Visibility.Collapsed;
+                PanelDynamicControls.Visibility = modeIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (PanelSoftwareControls != null)
+                PanelSoftwareControls.Visibility = modeIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
 
-            if (dynamic && ComboAnimationSelect != null)
+            // Always sync static presets so "Custom" (or the active preset) is selected
+            SyncStaticPresetSelection(vm);
+
+            // Sync dynamic hardware selection
+            if (ComboDynamicSelect != null)
             {
-                for (int i = 0; i < ComboAnimationSelect.Items.Count; i++)
+                int defaultDynIndex = 0;
+                for (int i = 0; i < ComboDynamicSelect.Items.Count; i++)
                 {
-                    if (ComboAnimationSelect.Items[i] is ComboBoxItem item &&
+                    if (ComboDynamicSelect.Items[i] is ComboBoxItem item &&
                         item.Tag is string itemTag &&
                         string.Equals(itemTag, tag, StringComparison.Ordinal))
                     {
-                        ComboAnimationSelect.SelectedIndex = i;
+                        defaultDynIndex = i;
                         break;
                     }
                 }
+                ComboDynamicSelect.SelectedIndex = defaultDynIndex;
+            }
+
+            // Sync software effect selection
+            if (ComboSoftwareSelect != null)
+            {
+                int defaultAnimIndex = 0;
+                for (int i = 0; i < ComboSoftwareSelect.Items.Count; i++)
+                {
+                    if (ComboSoftwareSelect.Items[i] is ComboBoxItem item &&
+                        item.Tag is string itemTag &&
+                        string.Equals(itemTag, tag, StringComparison.Ordinal))
+                    {
+                        defaultAnimIndex = i;
+                        break;
+                    }
+                }
+                ComboSoftwareSelect.SelectedIndex = defaultAnimIndex;
             }
 
             _pendingLightingEffectTag = tag;
+        }
 
-            if (!dynamic && ComboPresetStatic != null)
+        private void SyncStaticPresetSelection(MainViewModel vm)
+        {
+            if (ComboPresetStatic == null) return;
+
+            int targetIndex = 0; // Default to "Custom" (index 0)
+            string preset = vm.SelectedZonePreset;
+            if (!string.IsNullOrWhiteSpace(preset) &&
+                !string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
             {
-                int targetIndex = 0;
                 for (int i = 0; i < ComboPresetStatic.Items.Count; i++)
                 {
                     if (ComboPresetStatic.Items[i] is ComboBoxItem presetItem &&
                         presetItem.Tag is string presetTag &&
-                        string.Equals(presetTag, vm.SelectedZonePreset, StringComparison.OrdinalIgnoreCase))
+                        string.Equals(presetTag, preset, StringComparison.OrdinalIgnoreCase))
                     {
                         targetIndex = i;
                         break;
                     }
                 }
-                if (ComboPresetStatic.SelectedIndex != targetIndex)
+            }
+
+            if (ComboPresetStatic.SelectedIndex != targetIndex)
+            {
+                bool wasLoaded = _isLoaded;
+                _isLoaded = false;
+                try
+                {
                     ComboPresetStatic.SelectedIndex = targetIndex;
+                }
+                finally
+                {
+                    _isLoaded = wasLoaded;
+                }
             }
         }
 
@@ -238,19 +283,9 @@ namespace PreySense.Frontend.Views
                 UpdateCoverModePanels(vm.CoverLightingMode);
             }
             else if (e.PropertyName == nameof(MainViewModel.SelectedZonePreset) &&
-                     DataContext is MainViewModel mainVm && ComboPresetStatic != null)
+                     DataContext is MainViewModel mainVm)
             {
-                for (int i = 0; i < ComboPresetStatic.Items.Count; i++)
-                {
-                    if (ComboPresetStatic.Items[i] is ComboBoxItem presetItem &&
-                        presetItem.Tag is string presetTag &&
-                        string.Equals(presetTag, mainVm.SelectedZonePreset, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (ComboPresetStatic.SelectedIndex != i)
-                            ComboPresetStatic.SelectedIndex = i;
-                        break;
-                    }
-                }
+                SyncStaticPresetSelection(mainVm);
             }
         }
 
@@ -322,33 +357,72 @@ namespace PreySense.Frontend.Views
 
         private void ComboLightingMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (!_isLoaded || PanelStaticControls == null || PanelDynamicControls == null) return;
+            if (!_isLoaded) return;
 
-            if (ComboLightingMode.SelectedIndex == 0) // Static
+            int selected = ComboLightingMode?.SelectedIndex ?? 0;
+            if (PanelStaticControls != null)
+                PanelStaticControls.Visibility = selected == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (PanelDynamicControls != null)
+                PanelDynamicControls.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (PanelSoftwareControls != null)
+                PanelSoftwareControls.Visibility = selected == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+            if (selected == 0) // Static
             {
-                PanelStaticControls.Visibility = Visibility.Visible;
-                PanelDynamicControls.Visibility = Visibility.Collapsed;
                 _pendingLightingEffectTag = "HW:0";
                 if (DataContext is MainViewModel staticVm)
-                    staticVm.SetLightingEffect(_pendingLightingEffectTag);
-            }
-            else // Dynamic
-            {
-                PanelStaticControls.Visibility = Visibility.Collapsed;
-                PanelDynamicControls.Visibility = Visibility.Visible;
-                if (ComboAnimationSelect?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
                 {
-                    _pendingLightingEffectTag = tag;
-                    if (DataContext is MainViewModel dynVm)
-                        dynVm.SetLightingEffect(tag);
+                    staticVm.SetLightingEffect(_pendingLightingEffectTag);
+                    SyncStaticPresetSelection(staticVm);
+                }
+            }
+            else if (selected == 1) // Dynamic (Hardware)
+            {
+                if (ComboDynamicSelect != null)
+                {
+                    if (ComboDynamicSelect.SelectedIndex < 0)
+                        ComboDynamicSelect.SelectedIndex = 0;
+
+                    if (ComboDynamicSelect.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+                    {
+                        _pendingLightingEffectTag = tag;
+                        if (DataContext is MainViewModel dynVm)
+                            dynVm.SetLightingEffect(tag);
+                    }
+                }
+            }
+            else if (selected == 2) // Software
+            {
+                if (ComboSoftwareSelect != null)
+                {
+                    if (ComboSoftwareSelect.SelectedIndex < 0)
+                        ComboSoftwareSelect.SelectedIndex = 0;
+
+                    if (ComboSoftwareSelect.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+                    {
+                        _pendingLightingEffectTag = tag;
+                        if (DataContext is MainViewModel animVm)
+                            animVm.SetLightingEffect(tag);
+                    }
                 }
             }
         }
 
-        private void ComboAnimationSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void ComboDynamicSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_isLoaded) return;
-            if (ComboAnimationSelect?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            if (ComboDynamicSelect?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            {
+                _pendingLightingEffectTag = tag;
+                if (DataContext is MainViewModel vm)
+                    vm.SetLightingEffect(tag);
+            }
+        }
+
+        private void ComboSoftwareSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isLoaded) return;
+            if (ComboSoftwareSelect?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
             {
                 _pendingLightingEffectTag = tag;
                 if (DataContext is MainViewModel vm)

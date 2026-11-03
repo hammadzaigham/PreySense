@@ -55,12 +55,14 @@ public static class LocalizationService
         key?.SetValue(LanguageValue, CurrentLanguage, RegistryValueKind.String);
         if (Application.Current == null)
             return;
+        var viewModels = new HashSet<ViewModels.MainViewModel>();
         foreach (Window window in Application.Current.Windows)
         {
             LocalizeWindow(window);
             if (window.DataContext is ViewModels.MainViewModel vm)
-                vm.RefreshLocalizedText();
+                viewModels.Add(vm);
         }
+        foreach (var vm in viewModels) vm.RefreshLocalizedText();
     }
 
     public static string Translate(string? text)

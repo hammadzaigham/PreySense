@@ -11,10 +11,6 @@ public sealed class WpfFanCurveControl : FrameworkElement
 {
     public static readonly DependencyProperty ValuesProperty = DependencyProperty.Register(
         nameof(Values), typeof(int[]), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
-    public static readonly DependencyProperty TemperatureProperty = DependencyProperty.Register(
-        nameof(Temperature), typeof(double), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
-    public static readonly DependencyProperty CurrentDutyProperty = DependencyProperty.Register(
-        nameof(CurrentDuty), typeof(double), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(-1d, FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty AccentProperty = DependencyProperty.Register(
         nameof(Accent), typeof(Brush), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(Brushes.SkyBlue, FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty TextBrushProperty = DependencyProperty.Register(
@@ -24,8 +20,6 @@ public sealed class WpfFanCurveControl : FrameworkElement
     public static readonly DependencyProperty SurfaceProperty = DependencyProperty.Register(
         nameof(Surface), typeof(Brush), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(Brushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
     public int[] Values { get => (int[]?)GetValue(ValuesProperty) ?? Array.Empty<int>(); set => SetValue(ValuesProperty, value); }
-    public double Temperature { get => (double)GetValue(TemperatureProperty); set => SetValue(TemperatureProperty, value); }
-    public double CurrentDuty { get => (double)GetValue(CurrentDutyProperty); set => SetValue(CurrentDutyProperty, value); }
     public Brush Accent { get => (Brush)GetValue(AccentProperty); set => SetValue(AccentProperty, value); }
     public Brush TextBrush { get => (Brush)GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
     public Brush GridBrush { get => (Brush)GetValue(GridBrushProperty); set => SetValue(GridBrushProperty, value); }
@@ -81,31 +75,11 @@ public sealed class WpfFanCurveControl : FrameworkElement
             if (i % 2 == 0) Label(dc, (FanCurveProfile.MinimumTemperature + i * FanCurveProfile.TemperatureStep) + "°", x - 10, plot.Bottom + 7);
         }
         if (Values.Length != FanCurveProfile.PointCount) return;
-        if (CurrentDuty is >= 0 and <= 100)
-        {
-            double y = plot.Bottom - plot.Height * CurrentDuty / 100;
-            dc.DrawLine(new Pen(Accent, 1.5) { DashStyle = DashStyles.Dash }, new(plot.Left, y), new(plot.Right, y));
-        }
         var line = new Pen(Accent, 2);
         for (int i = 1; i < Values.Length; i++)
         {
             Point previous = At(i - 1, Values[i - 1]), next = At(i, Values[i]);
-            Point corner = new(next.X, previous.Y);
-            dc.DrawLine(line, previous, corner);
-            dc.DrawLine(line, corner, next);
-        }
-        if (Temperature > 0)
-        {
-            double clampedTemp = Math.Clamp(Temperature, FanCurveProfile.MinimumTemperature, FanCurveProfile.MaximumTemperature);
-            double x = plot.Left + plot.Width * (clampedTemp - FanCurveProfile.MinimumTemperature) / (FanCurveProfile.MaximumTemperature - FanCurveProfile.MinimumTemperature);
-            dc.DrawLine(new Pen(TextBrush, 1) { DashStyle = DashStyles.Dash }, new(x, plot.Top), new(x, plot.Bottom));
-        }
-        if (CurrentDuty is >= 0 and <= 100 && Temperature > 0)
-        {
-            double clampedTemp = Math.Clamp(Temperature, FanCurveProfile.MinimumTemperature, FanCurveProfile.MaximumTemperature);
-            double x = plot.Left + plot.Width * (clampedTemp - FanCurveProfile.MinimumTemperature) / (FanCurveProfile.MaximumTemperature - FanCurveProfile.MinimumTemperature);
-            double y = plot.Bottom - plot.Height * CurrentDuty / 100;
-            dc.DrawEllipse(Accent, null, new Point(x, y), 3.5, 3.5);
+            dc.DrawLine(line, previous, next);
         }
         for (int i = 0; i < Values.Length; i++)
             dc.DrawEllipse(i == SelectedIndex ? Accent : Surface, line, At(i, Values[i]), i == SelectedIndex ? 5 : 3, i == SelectedIndex ? 5 : 3);

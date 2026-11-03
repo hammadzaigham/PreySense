@@ -98,12 +98,10 @@ namespace PreySense.Frontend
             catch { }
 
 
-            IsVisibleChanged += (_, _) => vm.SetTelemetryPollingActive(IsVisible && WindowState != WindowState.Minimized);
             StateChanged += (_, _) =>
             {
                 if (WindowState == WindowState.Minimized)
                     HideApplicationWindowsForAutoHide();
-                vm.SetTelemetryPollingActive(IsVisible && WindowState != WindowState.Minimized);
             };
 
             Closed += (s, e) =>
@@ -156,18 +154,25 @@ namespace PreySense.Frontend
                     }
                 }
 
-                Window activationTarget = _autoHiddenActiveWindow is { IsVisible: true }
-                    ? _autoHiddenActiveWindow
-                    : this;
+                Window activationTarget = _autoHiddenActiveWindow is { IsLoaded: true, IsVisible: true } target
+                    && new WindowInteropHelper(target).Handle != IntPtr.Zero
+                        ? target
+                        : this;
                 _autoHiddenWindows.Clear();
                 _autoHiddenActiveWindow = null;
 
-                Dispatcher.BeginInvoke(DispatcherPriority.Input, () => ForceToForeground(activationTarget));
+                ForceToForeground(activationTarget);
             });
         }
 
         private static void ForceToForeground(Window window)
         {
+            if (!window.Dispatcher.CheckAccess())
+            {
+                window.Dispatcher.BeginInvoke(() => ForceToForeground(window));
+                return;
+            }
+
             if (!window.IsVisible)
             {
                 window.Show();
@@ -178,37 +183,54 @@ namespace PreySense.Frontend
             }
 
             IntPtr hwnd = new WindowInteropHelper(window).EnsureHandle();
-            IntPtr foreground = GetForegroundWindow();
-            uint thisThread = GetCurrentThreadId();
-            uint foregroundThread = GetWindowThreadProcessId(foreground, IntPtr.Zero);
-            bool attached = foregroundThread != 0 && foregroundThread != thisThread
-                && AttachThreadInput(foregroundThread, thisThread, true);
 
-            try
+            ShowWindow(hwnd, SwRestore);
+            BringWindowToTop(hwnd);
+
+            // 1. Primary activation path: standard OS foreground request and WPF activation
+            SetForegroundWindow(hwnd);
+            window.Activate();
+
+            // 2. Fallback: If the window is not yet foreground, try guarded thread input attachment
+            if (GetForegroundWindow() != hwnd)
             {
-                ShowWindow(hwnd, SwRestore);
-                SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
-                BringWindowToTop(hwnd);
-                SetForegroundWindow(hwnd);
-                window.Activate();
-                window.Focus();
-                SetWindowPos(hwnd, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
-            }
-            finally
-            {
-                if (attached)
+                IntPtr foreground = GetForegroundWindow();
+                uint targetThread = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
+                if (targetThread == 0)
                 {
-                    AttachThreadInput(foregroundThread, thisThread, false);
+                    targetThread = GetCurrentThreadId();
                 }
+
+                uint foregroundThread = foreground != IntPtr.Zero ? GetWindowThreadProcessId(foreground, IntPtr.Zero) : 0;
+
+                if (foregroundThread != 0 && foregroundThread != targetThread)
+                {
+                    if (AttachThreadInput(targetThread, foregroundThread, true))
+                    {
+                        try
+                        {
+                            BringWindowToTop(hwnd);
+                            SetForegroundWindow(hwnd);
+                            window.Activate();
+                        }
+                        finally
+                        {
+                            AttachThreadInput(targetThread, foregroundThread, false);
+                        }
+                    }
+                }
+            }
+
+            // 3. Verification and diagnostic logging
+            IntPtr currentForeground = GetForegroundWindow();
+            if (currentForeground != hwnd && !IsApplicationHwnd(currentForeground))
+            {
+                string procInfo = string.Empty; try { GetWindowThreadProcessId(currentForeground, out uint pid); if (pid != 0) { using var proc = System.Diagnostics.Process.GetProcessById((int)pid); procInfo = $" [{proc.ProcessName}, PID {pid}]"; } } catch { }
+                AppLogger.Log($"ForceToForeground: Failed to activate window {window.GetType().Name} to foreground (external foreground HWND: 0x{currentForeground:X}{procInfo}).");
             }
         }
 
         private const int SwRestore = 9;
-        private static readonly IntPtr HwndTopmost = new(-1);
-        private static readonly IntPtr HwndNoTopmost = new(-2);
-        private const uint SwpNoMove = 0x0002;
-        private const uint SwpNoSize = 0x0001;
-        private const uint SwpShowWindow = 0x0040;
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -220,20 +242,18 @@ namespace PreySense.Frontend
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll")]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
-        [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll")]
         private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
-
         public void HideApplicationWindowsForAutoHide()
         {
             RunOnUi(() =>
@@ -287,16 +307,49 @@ namespace PreySense.Frontend
         {
             RunOnUi(() =>
             {
-                bool anyVisible = Application.Current.Windows
-                    .OfType<Window>()
-                    .Any(window => window.IsVisible);
-                if (anyVisible)
+                if (IsApplicationActive())
                     HideApplicationWindowsForAutoHide();
                 else
                     ShowAndRestore();
             });
         }
 
+        private static bool IsApplicationHwnd(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero || Application.Current == null) return false;
+
+            foreach (Window window in Application.Current.Windows.OfType<Window>())
+            {
+                if (window is Views.ModeToastWindow) continue;
+                if (!window.IsVisible) continue;
+
+                IntPtr handle = new WindowInteropHelper(window).Handle;
+                if (handle != IntPtr.Zero && handle == hwnd)
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool IsApplicationActive()
+        {
+            if (Application.Current == null) return false;
+
+            IntPtr foreground = GetForegroundWindow();
+
+            // Authoritative Win32 check: Does the OS foreground window belong to a visible PreySense window?
+            if (IsApplicationHwnd(foreground))
+                return true;
+
+            // Secondary fallback: WPF window activation state
+            foreach (Window window in Application.Current.Windows.OfType<Window>())
+            {
+                if (window is Views.ModeToastWindow) continue;
+                if (window.IsVisible && window.IsActive)
+                    return true;
+            }
+
+            return false;
+        }
         private void ApplyResponsivePercentageSize()
         {
             var workArea = SystemParameters.WorkArea;
@@ -357,7 +410,6 @@ namespace PreySense.Frontend
         private void ShowModeSettingsWindow()
         {
             var dialog = CreateModeSettingsWindow();
-            dialog.SyncFromViewModel();
             dialog.ShowDialog();
         }
 

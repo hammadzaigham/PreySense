@@ -16,6 +16,7 @@ namespace PreySense.Tests
         public void Setup()
         {
             TelemetryCoordinator.Reset();
+            TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.All);
         }
 
         [TestCleanup]
@@ -80,7 +81,7 @@ namespace PreySense.Tests
                 TelemetryCoordinator.SnapshotAvailable += sub1;
                 TelemetryCoordinator.SnapshotAvailable += sub2;
 
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow | TelemetryDemand.Overlay, true);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay | TelemetryDemand.Overlay, true);
                 TelemetryCoordinator.Poll();
 
                 // Exactly ONE hardware read should have been performed
@@ -123,7 +124,7 @@ namespace PreySense.Tests
                 fanOnlySampler: null);
 
             // Initially no demand -> Poll() should do nothing
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, false);
 
@@ -132,7 +133,7 @@ namespace PreySense.Tests
             Assert.AreEqual(0, hardwarePolls, "No hardware reads when all consumers are idle/hidden");
 
             // MainWindow becomes visible
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             Assert.IsTrue(TelemetryCoordinator.HasActiveDemand);
             Assert.IsTrue(TelemetryCoordinator.HasUiDemand);
 
@@ -142,18 +143,18 @@ namespace PreySense.Tests
             // HardwareOverlay also becomes visible -> still only 1 poll per tick (not 2x)
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             Assert.IsTrue(TelemetryCoordinator.HasUiDemand);
-            Assert.AreEqual(TelemetryDemand.MainWindow | TelemetryDemand.Overlay, TelemetryCoordinator.ActiveDemand);
+            Assert.AreEqual(TelemetryDemand.Overlay | TelemetryDemand.Overlay, TelemetryCoordinator.ActiveDemand);
 
             TelemetryCoordinator.Poll();
-            Assert.AreEqual(2, hardwarePolls, "Shared pipeline polls once even with both UIs visible");
+            Assert.AreEqual(1, hardwarePolls, "Showing another UI cannot bypass the one-second sampling limit.");
 
             // Both windows hide
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             Assert.IsFalse(TelemetryCoordinator.HasActiveDemand);
 
             TelemetryCoordinator.Poll();
-            Assert.AreEqual(2, hardwarePolls, "Telemetry paused when both windows hidden");
+            Assert.AreEqual(1, hardwarePolls, "Telemetry paused when both windows hidden");
         }
 
         [TestMethod]
@@ -171,11 +172,11 @@ namespace PreySense.Tests
                 fanOnlySampler: () =>
                 {
                     Interlocked.Increment(ref fanReads);
-                    return new TelemetrySnapshot { IsValid = true, CpuTemp = 62, GpuTemp = 57 };
+                    return new TelemetrySnapshot { IsValid = true, CpuTemp = 62, GpuTemp = 57, ThermalTimestampTicks = Stopwatch.GetTimestamp() };
                 });
 
             // Scenario 1: Windows are hidden, Fan Controller is in Custom mode (needs temperatures)
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
 
@@ -196,10 +197,10 @@ namespace PreySense.Tests
             Assert.AreEqual(0, fullReads);
             Assert.AreEqual(1, fanReads, "No polling occurs when fan is Auto/Max and windows are hidden");
 
-            // Scenario 3: Independent fresh temperature request (Emergency cooling / mode change)
-            var fresh = TelemetryCoordinator.RequestFreshFanTemperatures();
-            Assert.AreEqual(62, fresh.CpuTemp, "RequestFreshFanTemperatures returned fresh sensor reading independently");
-            Assert.AreEqual(2, fanReads, "Direct temperature query invoked fan sampler independently");
+            // Scenario 3: Independent fresh temperature request (Fan profile apply)
+            var fresh = TelemetryCoordinator.GetFanTemperaturesSnapshot();
+            Assert.AreEqual(62, fresh.CpuTemp, "Fan settings consume the last shared sample.");
+            Assert.AreEqual(1, fanReads, "Fan snapshot access must not invoke the sampler.");
         }
 
         [TestMethod]
@@ -209,7 +210,7 @@ namespace PreySense.Tests
                 fullSampler: () => new TelemetrySnapshot { IsValid = true, CpuTemp = 70 },
                 fanOnlySampler: null);
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
             // Simulate another hardware operation holding the gate
             using (var blockingLease = HardwareOperationGate.TryEnterTelemetry(100))
@@ -242,7 +243,7 @@ namespace PreySense.Tests
                 fullSampler: () => new TelemetrySnapshot { IsValid = true, CpuUsage = 50 },
                 fanOnlySampler: null);
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             Assert.AreEqual(50, TelemetryCoordinator.CurrentSnapshot.CpuUsage);
@@ -275,7 +276,7 @@ namespace PreySense.Tests
             try
             {
                 TelemetryCoordinator.SnapshotAvailable += handler;
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
                 TelemetryCoordinator.Poll();
 
                 Assert.IsTrue(subscriberAcquiredLock, "Subscriber must be able to acquire HardwareOperationGate because coordinator released it prior to event dispatch");
@@ -324,10 +325,10 @@ namespace PreySense.Tests
 
             TelemetryCoordinator.ConfigureSampler(
                 fullSampler: () => initial,
-                fanOnlySampler: () => new TelemetrySnapshot { IsValid = true, CpuTemp = 82, GpuTemp = 78, IsFanOnly = true, TimestampTicks = 0, ThermalTimestampTicks = now + 100 });
+                fanOnlySampler: () => new TelemetrySnapshot { IsValid = true, CpuTemp = 82, GpuTemp = 78, IsFanOnly = true, TimestampTicks = 0, ThermalTimestampTicks = now }, timestampProvider: () => now);
 
             // 1. Full sample runs
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             var snap1 = TelemetryCoordinator.CurrentSnapshot;
@@ -335,8 +336,10 @@ namespace PreySense.Tests
             Assert.AreEqual(70, snap1.CpuTemp);
             Assert.AreEqual(75.0f, snap1.GpuPowerWatts);
 
-            // 2. UI demand is turned off, Custom fan demand runs
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            // 2. Advance one second before the next shared sample.
+            now += Stopwatch.Frequency;
+            // UI demand is turned off, Custom fan demand runs
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
             TelemetryCoordinator.Poll();
 
@@ -344,8 +347,8 @@ namespace PreySense.Tests
             Assert.IsTrue(snap2.IsValid);
             Assert.AreEqual(82, snap2.CpuTemp, "CPU temperature updated by fan-only sample");
             Assert.AreEqual(78, snap2.GpuTemp, "GPU temperature updated by fan-only sample");
-            Assert.AreEqual(now, snap2.TimestampTicks, "Full telemetry timestamp must NOT be refreshed by fan-only sample");
-            Assert.AreEqual(now + 100, snap2.EffectiveThermalTicks, "Thermal timestamp updated by fan-only sample");
+            Assert.AreEqual(initial.TimestampTicks, snap2.TimestampTicks, "Full telemetry timestamp must NOT be refreshed by fan-only sample");
+            Assert.AreEqual(now, snap2.EffectiveThermalTicks, "Thermal timestamp updated by fan-only sample");
 
             // Non-thermal fields MUST BE PRESERVED (not wiped or set to null/0)
             Assert.AreEqual(35, snap2.CpuUsage, "CPU usage preserved during fan-only update");
@@ -358,7 +361,7 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void PromptSampleOnDemandResume_TriggersImmediateSample()
+        public void DemandResumeUsesTheSingleTimer()
         {
             int polls = 0;
             var resetEvent = new ManualResetEventSlim(false);
@@ -372,8 +375,7 @@ namespace PreySense.Tests
                 },
                 fanOnlySampler: null);
 
-            TelemetryCoordinator.AutoPromptOnDemandResume = true;
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
             bool signaled = resetEvent.Wait(2000);
             Assert.IsTrue(signaled, "Prompt sample on demand resume executed immediately on thread pool without waiting for timer interval");
@@ -389,7 +391,7 @@ namespace PreySense.Tests
                 fanOnlySampler: null,
                 timestampProvider: () => mockTime);
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             Assert.IsFalse(TelemetryCoordinator.IsSnapshotExpired(), "Fresh snapshot is not expired");
@@ -401,14 +403,15 @@ namespace PreySense.Tests
             Assert.IsTrue(TelemetryCoordinator.IsSnapshotExpired(), "Snapshot older than 4 seconds is marked expired");
 
             // Demand resume from 0 purges expired reading
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             Assert.AreEqual(0, TelemetryCoordinator.CurrentSnapshot.TimestampTicks, "Expired reading invalidated on demand resume");
         }
 
         [TestMethod]
         public void InstrumentedReadCounts_MeasuresExactHardwareReads_AcrossAllVisibilityConditions()
         {
+            long mockTicks = Stopwatch.Frequency * 100;
             int ecThermalCount = 0;
             int gpuNvmlCount = 0;
             int cpuCount = 0;
@@ -446,7 +449,7 @@ namespace PreySense.Tests
                         GpuTemp = 51,
                         IsFanOnly = true
                     };
-                });
+                }, timestampProvider: () => mockTicks);
 
             var mwSnapshots = new List<TelemetrySnapshot>();
             var ovSnapshots = new List<TelemetrySnapshot>();
@@ -460,15 +463,15 @@ namespace PreySense.Tests
                 TelemetryCoordinator.SnapshotAvailable += ovHandler;
 
                 // --- CONDITION 1: MainWindow only visible (5 ticks) ---
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, false);
 
-                for (int i = 0; i < 5; i++) TelemetryCoordinator.Poll();
+                for (int i = 0; i < 5; i++) { mockTicks += Stopwatch.Frequency; TelemetryCoordinator.Poll(); }
 
-                Assert.AreEqual(5, ecThermalCount, "Condition 1 (MW only): exactly 5 EC reads for 5 ticks");
-                Assert.AreEqual(5, gpuNvmlCount, "Condition 1 (MW only): exactly 5 GPU reads for 5 ticks");
-                Assert.AreEqual(5, mwSnapshots.Count, "Condition 1 (MW only): MainWindow received 5 snapshots");
+                Assert.AreEqual(0, ecThermalCount, "The control window has no telemetry demand.");
+                Assert.AreEqual(0, gpuNvmlCount, "The control window must not read GPU metrics.");
+                Assert.AreEqual(0, mwSnapshots.Count, "No snapshots are produced without overlay or Custom fan demand.");
 
                 // Reset counters
                 ecThermalCount = gpuNvmlCount = cpuCount = ramCount = 0;
@@ -477,10 +480,10 @@ namespace PreySense.Tests
                 TelemetryInstrumentation.Reset();
 
                 // --- CONDITION 2: Overlay only visible (5 ticks) ---
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
-                for (int i = 0; i < 5; i++) TelemetryCoordinator.Poll();
+                for (int i = 0; i < 5; i++) { mockTicks += Stopwatch.Frequency; TelemetryCoordinator.Poll(); }
 
                 Assert.AreEqual(5, ecThermalCount, "Condition 2 (Overlay only): exactly 5 EC reads for 5 ticks");
                 Assert.AreEqual(5, gpuNvmlCount, "Condition 2 (Overlay only): exactly 5 GPU reads for 5 ticks");
@@ -495,10 +498,10 @@ namespace PreySense.Tests
                 // --- CONDITION 3: Both Visible (MainWindow + Overlay) (5 ticks) ---
                 // Deterministic single-producer verification: in an uncoordinated model where two consumers poll independently,
                 // 10 reads would occur across 5 ticks; with the coordinator, exactly 5 reads occur (single producer eliminated duplicate polling in this deterministic harness).
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
-                for (int i = 0; i < 5; i++) TelemetryCoordinator.Poll();
+                for (int i = 0; i < 5; i++) { mockTicks += Stopwatch.Frequency; TelemetryCoordinator.Poll(); }
 
                 Assert.AreEqual(5, ecThermalCount, "Condition 3 (Both visible): exactly 5 EC reads (NOT 10 duplicate reads)");
                 Assert.AreEqual(5, gpuNvmlCount, "Condition 3 (Both visible): exactly 5 GPU reads (NOT 10 duplicate reads)");
@@ -514,11 +517,11 @@ namespace PreySense.Tests
                 TelemetryInstrumentation.Reset();
 
                 // --- CONDITION 4: Both Hidden, Auto/Max Fan mode (5 ticks) ---
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
                 TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, false);
 
-                for (int i = 0; i < 5; i++) TelemetryCoordinator.Poll();
+                for (int i = 0; i < 5; i++) { mockTicks += Stopwatch.Frequency; TelemetryCoordinator.Poll(); }
 
                 Assert.AreEqual(0, ecThermalCount, "Condition 4 (Both hidden, Auto/Max): 0 EC reads (100% idle)");
                 Assert.AreEqual(0, gpuNvmlCount, "Condition 4 (Both hidden, Auto/Max): 0 GPU reads (100% idle)");
@@ -527,7 +530,7 @@ namespace PreySense.Tests
                 // --- CONDITION 5: Both Hidden, Custom Fan curve (5 ticks) ---
                 TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
 
-                for (int i = 0; i < 5; i++) TelemetryCoordinator.Poll();
+                for (int i = 0; i < 5; i++) { mockTicks += Stopwatch.Frequency; TelemetryCoordinator.Poll(); }
 
                 Assert.AreEqual(5, ecThermalCount, "Condition 5 (Both hidden, Custom fan): exactly 5 thermal EC reads for curve safety");
                 Assert.AreEqual(0, gpuNvmlCount, "Condition 5 (Both hidden, Custom fan): 0 GPU NVML reads (GPU remains asleep)");
@@ -620,8 +623,10 @@ namespace PreySense.Tests
                 },
                 timestampProvider: () => mockTime);
 
-            // Initial successful read
-            var initial = TelemetryCoordinator.RequestFreshFanTemperatures();
+            // Initial successful shared poll
+            TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
+            TelemetryCoordinator.Poll();
+            var initial = TelemetryCoordinator.GetFanTemperaturesSnapshot();
             Assert.AreEqual(65, initial.CpuTemp);
             Assert.AreEqual(60, initial.GpuTemp);
 
@@ -632,24 +637,19 @@ namespace PreySense.Tests
 
                 // Advance mock time by 1.0 second (within 3.0s safety grace interval)
                 mockTime += 1 * Stopwatch.Frequency;
-                var graceReading = TelemetryCoordinator.RequestFreshFanTemperatures();
+                var graceReading = TelemetryCoordinator.GetFanTemperaturesSnapshot();
                 Assert.AreEqual(65, graceReading.CpuTemp, "Within grace interval, cached temperature is permitted");
 
                 // Now advance mock time to 3.5 seconds (exceeding 3.0s MaxThermalStalenessSeconds)
                 mockTime += (long)(2.5 * Stopwatch.Frequency);
                 Assert.IsTrue(TelemetryCoordinator.IsThermalExpired(3.0), "Thermals must be flagged as expired");
 
-                var staleFallbackReading = TelemetryCoordinator.RequestFreshFanTemperatures();
-                Assert.AreEqual(-1, staleFallbackReading.CpuTemp, "Stale thermal read must return -1 to trigger safety fallback");
-                Assert.AreEqual(-1, staleFallbackReading.GpuTemp, "Stale thermal read must return -1 to trigger safety fallback");
+                var staleFallbackReading = TelemetryCoordinator.GetFanTemperaturesSnapshot();
+                Assert.AreEqual(-1, staleFallbackReading.CpuTemp, "Stale thermal read must return -1 to skip fan curve updates");
+                Assert.AreEqual(-1, staleFallbackReading.GpuTemp, "Stale thermal read must return -1 to skip fan curve updates");
                 Assert.IsFalse(PreySense.Mode.FanCurveProfile.ValidTemperatures(staleFallbackReading.CpuTemp, staleFallbackReading.GpuTemp),
                     "Readings must be invalid for fan curve processing");
 
-                // Verify that emergency cooling latch is PRESERVED when -1 is passed
-                var safety = new PreySense.Mode.FanCoolingSafety();
-                safety.Evaluate(96, 75); // Activated emergency cooling
-                bool emergencyActive = safety.Evaluate(staleFallbackReading.CpuTemp, staleFallbackReading.GpuTemp);
-                Assert.IsTrue(emergencyActive, "Emergency cooling latch must remain active even during sensor failure/gate contention");
             }
         }
 
@@ -725,7 +725,7 @@ namespace PreySense.Tests
                 timestampProvider: () => mockTime);
 
             // Produce initial full snapshot
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             var initial = TelemetryCoordinator.CurrentSnapshot;
@@ -735,7 +735,7 @@ namespace PreySense.Tests
             Assert.IsFalse(TelemetryCoordinator.IsSnapshotExpired(), "Initial snapshot should not be expired");
 
             // Switch to fan-only demand (e.g. MainWindow and Overlay hidden, Custom fan curve active)
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
             TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
 
             // Advance time by 30 minutes (1800 seconds)
@@ -760,7 +760,7 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void DemandResumption_ConcurrencyAndImmediateSample()
+        public void DemandResumptionDoesNotCreateExtraSamplingWork()
         {
             int pollExecutions = 0;
             TelemetryCoordinator.ConfigureSampler(
@@ -771,13 +771,12 @@ namespace PreySense.Tests
                     return new TelemetrySnapshot { IsValid = true, CpuUsage = 15, CpuTemp = 55, GpuTemp = 50 };
                 });
 
-            TelemetryCoordinator.AutoPromptOnDemandResume = true;
 
             // Resuming demand triggers immediate sample
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             Thread.Sleep(50); // Allow threadpool task to execute
 
-            Assert.IsTrue(pollExecutions >= 1, "Demand resumption should prompt immediate hardware sample");
+            Assert.AreEqual(0, pollExecutions, "Demand changes must wait for the shared timer.");
 
             // Verify that 20 parallel threads calling Poll() cannot overlap or create concurrency bugs
             int parallelCompleted = 0;
@@ -805,7 +804,7 @@ namespace PreySense.Tests
                     return new TelemetrySnapshot { IsValid = true, CpuUsage = 10, CpuTemp = 50, GpuTemp = 45 };
                 });
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             Assert.AreEqual(1, sampler1Calls, "Sampler 1 executed");
@@ -828,11 +827,99 @@ namespace PreySense.Tests
                     return new TelemetrySnapshot { IsValid = true, CpuUsage = 20, CpuTemp = 55, GpuTemp = 50 };
                 });
 
+            TelemetryCoordinator.SetOverlayMetrics(TelemetryMetrics.CpuUsage);
             TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
             TelemetryCoordinator.Poll();
 
             Assert.AreEqual(0, sampler1Calls - 1, "Old sampler was never invoked");
             Assert.AreEqual(1, sampler2Calls, "New sampler 2 cleanly took over");
+        }
+
+        [TestMethod]
+        public void SharedBudgetSurvivesFanRequestsInvalidationAndDemandChanges()
+        {
+            long ticks = Stopwatch.Frequency * 100;
+            int reads = 0;
+            TelemetrySnapshot Sample()
+            {
+                reads++;
+                return TelemetrySnapshot.Empty with
+                {
+                    IsValid = true, CpuTemp = 60, GpuTemp = 50,
+                    TimestampTicks = ticks, ThermalTimestampTicks = ticks
+                };
+            }
+            TelemetryCoordinator.ConfigureSampler(Sample, Sample, () => ticks);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
+            TelemetryCoordinator.Poll();
+            for (int i = 0; i < 20; i++)
+            {
+                TelemetryCoordinator.GetFanTemperaturesSnapshot();
+                TelemetryCoordinator.Poll();
+            }
+            Assert.AreEqual(1, reads);
+            ticks += Stopwatch.Frequency / 2;
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
+            TelemetryCoordinator.InvalidateCurrentSnapshot();
+            TelemetryCoordinator.Poll();
+            Assert.AreEqual(1, reads, "Neither invalidation nor fan demand may reset the sampling budget.");
+            ticks += Stopwatch.Frequency / 2;
+            TelemetryCoordinator.Poll();
+            Assert.AreEqual(2, reads);
+        }
+
+        [TestMethod]
+        public void SingleTimerRunsOverlayHousekeepingAndPublishesOneSnapshotThenStops()
+        {
+            int heartbeats = 0, reads = 0, deliveries = 0;
+            using var delivered = new ManualResetEventSlim();
+            TelemetryCoordinator.ConfigureSampler(() =>
+            {
+                Interlocked.Increment(ref reads);
+                return TelemetrySnapshot.Empty with { IsValid = true, TimestampTicks = Stopwatch.GetTimestamp() };
+            });
+            TelemetryCoordinator.Heartbeat += () =>
+            {
+                Interlocked.Increment(ref heartbeats);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
+            };
+            TelemetryCoordinator.SnapshotAvailable += _ =>
+            {
+                Interlocked.Increment(ref deliveries);
+                delivered.Set();
+            };
+            TelemetryCoordinator.SetOverlayActive(true);
+            Assert.IsTrue(delivered.Wait(2500), "The shared timer must drive both visibility and sampling.");
+            Assert.AreEqual(1, heartbeats);
+            Assert.AreEqual(1, reads);
+            Assert.AreEqual(1, deliveries);
+            TelemetryCoordinator.SetOverlayActive(false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
+            Thread.Sleep(1100);
+            Assert.AreEqual(1, heartbeats, "No second timer may keep the overlay ticking after it stops.");
+            Assert.AreEqual(1, reads);
+        }
+
+        [TestMethod]
+        public void SlowReadRequiresAnotherSecondAfterCompletion()
+        {
+            long ticks = Stopwatch.Frequency * 100;
+            int reads = 0;
+            TelemetryCoordinator.ConfigureSampler(() =>
+            {
+                reads++;
+                ticks += Stopwatch.Frequency * 2;
+                return TelemetrySnapshot.Empty with { IsValid = true, TimestampTicks = ticks };
+            }, timestampProvider: () => ticks);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
+            TelemetryCoordinator.Poll();
+            ticks += Stopwatch.Frequency / 2;
+            TelemetryCoordinator.Poll();
+            Assert.AreEqual(1, reads);
+            ticks += Stopwatch.Frequency / 2;
+            TelemetryCoordinator.Poll();
+            Assert.AreEqual(2, reads);
         }
 
         [TestMethod]
@@ -850,26 +937,26 @@ namespace PreySense.Tests
                 fanOnlySampler: null,
                 timestampProvider: () => mockTicks);
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
             // First poll produces snapshot
-            TelemetryCoordinator.Poll(bypassDebounce: false);
+            TelemetryCoordinator.Poll();
             Assert.AreEqual(1, sampleCount, "Initial poll must execute");
 
             // Rapid follow-up polls within 500ms (Stopwatch.Frequency / 2 ticks)
             mockTicks += (long)(Stopwatch.Frequency * 0.5);
-            TelemetryCoordinator.Poll(bypassDebounce: false);
-            TelemetryCoordinator.Poll(bypassDebounce: false);
+            TelemetryCoordinator.Poll();
+            TelemetryCoordinator.Poll();
             Assert.AreEqual(1, sampleCount, "Subsequent demand polls within 1.0s must be throttled to prevent rapid updates");
 
             // Advance time past 1 second (1000ms + 10ms margin)
             mockTicks += (long)(Stopwatch.Frequency * 0.51); // Total > 1.0s elapsed
-            TelemetryCoordinator.Poll(bypassDebounce: false);
+            TelemetryCoordinator.Poll();
             Assert.AreEqual(2, sampleCount, "Poll after 1.0s interval must be permitted");
         }
 
         [TestMethod]
-        public void MasterTimer_BypassesDebounce_ButHonorsConcurrency()
+        public void MasterTimer_HonorsRateLimitAndConcurrency()
         {
             int sampleCount = 0;
             long mockTicks = 20_000_000;
@@ -887,30 +974,31 @@ namespace PreySense.Tests
                 fanOnlySampler: null,
                 timestampProvider: () => mockTicks);
 
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
             // 1. Initial master tick produces sample
             blockGate.Set();
-            TelemetryCoordinator.Poll(bypassDebounce: true);
+            TelemetryCoordinator.Poll();
             Assert.AreEqual(1, sampleCount);
 
             // 2. Authoritative master timer ticks at 995ms (slightly under 1.0s due to timer jitter)
             mockTicks += (long)(Stopwatch.Frequency * 0.995);
-            TelemetryCoordinator.Poll(bypassDebounce: true);
-            Assert.AreEqual(2, sampleCount, "Master timer tick must bypass debounce to prevent 2-second stutter");
+            TelemetryCoordinator.Poll();
+            Assert.AreEqual(1, sampleCount, "Even a timer tick cannot sample before one second.");
+            mockTicks += Stopwatch.Frequency;
 
             // 3. Concurrency protection: if a slow read is in-flight, MasterTimer tick must NOT overlap
             blockGate.Reset();
             inSampler.Reset();
-            var task = System.Threading.Tasks.Task.Run(() => TelemetryCoordinator.Poll(bypassDebounce: true));
+            var task = System.Threading.Tasks.Task.Run(() => TelemetryCoordinator.Poll());
             Assert.IsTrue(inSampler.Wait(500), "Background task must enter sampler");
 
             // A second master tick arrives while the slow read is still in flight
-            TelemetryCoordinator.Poll(bypassDebounce: true);
+            TelemetryCoordinator.Poll();
             blockGate.Set();
             task.Wait();
 
-            Assert.AreEqual(3, sampleCount, "In-flight poll concurrency protection must prevent overlapping reads");
+            Assert.AreEqual(2, sampleCount, "In-flight poll concurrency protection must prevent overlapping reads");
         }
 
         [TestMethod]
@@ -935,17 +1023,16 @@ namespace PreySense.Tests
                 fanOnlySampler: null,
                 timestampProvider: () => mockTicks);
 
-            TelemetryCoordinator.AutoPromptOnDemandResume = true;
 
             // Initially establish demand and sample
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
-            TelemetryCoordinator.Poll(bypassDebounce: true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
+            TelemetryCoordinator.Poll();
             Assert.AreEqual(1, sampleCount);
 
             // Demand toggles within 200ms (snapshot is fresh, < 1.0s old)
             mockTicks += (long)(Stopwatch.Frequency * 0.2);
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
-            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, false);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
             // Give ThreadPool a short window if anything was queued
             Thread.Sleep(50);
@@ -953,7 +1040,7 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void DisplayClock_EnforcesStrict1Hz_DecoupledFromFastHardwareSnapshots()
+        public void SharedSnapshotsDeliverToAllConsumersAtOneHz()
         {
             var rawSnapshots = new List<TelemetrySnapshot>();
             var displaySnapshots = new List<TelemetrySnapshot>();
@@ -986,15 +1073,15 @@ namespace PreySense.Tests
             }
 
             TelemetryCoordinator.SnapshotAvailable += OnRaw;
-            TelemetryCoordinator.DisplayTick += OnDisplay;
+            TelemetryCoordinator.SnapshotAvailable += OnDisplay;
 
             try
             {
                 // Enable UI demand (MainWindow visible)
-                TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+                TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
                 // Initial poll produces first snapshot (Temp = 52)
-                TelemetryCoordinator.Poll(bypassDebounce: true);
+                TelemetryCoordinator.Poll();
                 Assert.AreEqual(1, rawSnapshots.Count, "Raw hardware snapshot produced for fan safety");
                 Assert.AreEqual(1, displaySnapshots.Count, "Initial display tick primes UI display");
                 Assert.AreEqual(52, displaySnapshots[0].CpuTemp);
@@ -1003,22 +1090,22 @@ namespace PreySense.Tests
                 for (int i = 0; i < 4; i++)
                 {
                     mockTicks += (long)(Stopwatch.Frequency * 0.1); // +100ms
-                    TelemetryCoordinator.Poll(bypassDebounce: true);
+                    TelemetryCoordinator.Poll();
                 }
 
                 // Fan safety received all 5 hardware readings immediately
-                Assert.AreEqual(5, rawSnapshots.Count, "Fan safety / emergency cooling received all 5 hardware reads");
-                Assert.AreEqual(60, rawSnapshots.Last().CpuTemp, "Latest raw temperature updated in cache");
+                Assert.AreEqual(1, rawSnapshots.Count, "Fan curves cannot receive separate rapid hardware samples.");
+                Assert.AreEqual(52, rawSnapshots.Last().CpuTemp, "Latest raw temperature updated in cache");
 
                 // BUT visual display clock MUST NOT have fired on any of the rapid hardware samples!
                 Assert.AreEqual(1, displaySnapshots.Count, "Display clock decoupled: visual metrics did NOT flicker during rapid hardware reads");
 
                 // Advance clock by remaining time to reach a full 1,000 ms display tick
                 mockTicks += (long)(Stopwatch.Frequency * 0.6); // Total 1.0s elapsed
-                TelemetryCoordinator.TriggerDisplayTick();
+                TelemetryCoordinator.Poll();
 
                 Assert.AreEqual(2, displaySnapshots.Count, "1 Hz display clock delivered next synchronized visual update");
-                Assert.AreEqual(60, displaySnapshots[1].CpuTemp, "Visual update consumed the latest cached hardware snapshot");
+                Assert.AreEqual(54, displaySnapshots[1].CpuTemp, "Visual update consumed the latest cached hardware snapshot");
 
                 // Explicitly check the time between visible metric updates
                 double secondsBetweenUpdates = (double)(displayTimestamps[1] - displayTimestamps[0]) / Stopwatch.Frequency;
@@ -1027,12 +1114,12 @@ namespace PreySense.Tests
             finally
             {
                 TelemetryCoordinator.SnapshotAvailable -= OnRaw;
-                TelemetryCoordinator.DisplayTick -= OnDisplay;
+                TelemetryCoordinator.SnapshotAvailable -= OnDisplay;
             }
         }
 
         [TestMethod]
-        public void HistoricalGraphs_ReceiveExactlyOneSamplePerDisplayTick()
+        public void HistoricalGraphsReceiveExactlyOneSamplePerSharedSnapshot()
         {
             var graphHistory = new List<float>();
             int currentTemp = 40;
@@ -1061,7 +1148,7 @@ namespace PreySense.Tests
                 graphHistory.Add((float)(snapshot.CpuTemp ?? 0));
             }
 
-            TelemetryCoordinator.DisplayTick += OnOverlayDisplayTick;
+            TelemetryCoordinator.SnapshotAvailable += OnOverlayDisplayTick;
 
             try
             {
@@ -1069,7 +1156,7 @@ namespace PreySense.Tests
                 TelemetryCoordinator.SetDemand(TelemetryDemand.Overlay, true);
 
                 // Initial poll on startup/show primes graph with 1st point (Temp = 41)
-                TelemetryCoordinator.Poll(bypassDebounce: true);
+                TelemetryCoordinator.Poll();
                 Assert.AreEqual(1, graphHistory.Count, "Initial display tick records initial graph sample");
                 Assert.AreEqual(41f, graphHistory[0]);
 
@@ -1079,12 +1166,13 @@ namespace PreySense.Tests
                     for (int subPoll = 0; subPoll < 3; subPoll++)
                     {
                         mockTicks += (long)(Stopwatch.Frequency * 0.25); // +250ms
-                        TelemetryCoordinator.Poll(bypassDebounce: true);
+                        TelemetryCoordinator.Poll();
                     }
 
                     // Advance clock to the 1-second display tick boundary
                     mockTicks += (long)(Stopwatch.Frequency * 0.25); // Completes the full second
-                    TelemetryCoordinator.TriggerDisplayTick();
+                    TelemetryCoordinator.Poll();
+                    TelemetryCoordinator.Poll();
 
                     // Graph must have added exactly ONE sample for this second
                     Assert.AreEqual(second + 1, graphHistory.Count, $"Graph history must have exactly {second + 1} samples after second {second}");
@@ -1095,13 +1183,13 @@ namespace PreySense.Tests
                 Assert.AreEqual(4, graphHistory.Count, "Historical graphs must receive exactly one sample per display tick regardless of hardware poll bursts");
                 // The recorded temperatures must reflect the latest hardware state at each tick
                 Assert.AreEqual(41f, graphHistory[0]);
-                Assert.AreEqual(44f, graphHistory[1]);
-                Assert.AreEqual(47f, graphHistory[2]);
-                Assert.AreEqual(50f, graphHistory[3]);
+                Assert.AreEqual(42f, graphHistory[1]);
+                Assert.AreEqual(43f, graphHistory[2]);
+                Assert.AreEqual(44f, graphHistory[3]);
             }
             finally
             {
-                TelemetryCoordinator.DisplayTick -= OnOverlayDisplayTick;
+                TelemetryCoordinator.SnapshotAvailable -= OnOverlayDisplayTick;
             }
         }
     }

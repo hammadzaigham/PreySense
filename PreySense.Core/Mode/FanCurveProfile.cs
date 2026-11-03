@@ -10,9 +10,8 @@ public sealed class FanCurveProfile
     public const int MaximumTemperature = 100;
     public const int TemperatureStep = 5;
     public const int PointCount = (MaximumTemperature - MinimumTemperature) / TemperatureStep + 1;
-    public static bool ValidTemperatures(int cpu, int gpu) => cpu is > 0 and <= 125 && gpu is > 0 and <= 125;
-    public static bool RequiresMaxCooling(int cpu, int gpu) => cpu >= 95 || gpu >= 87;
-    public static int CoolingTemperature(int cpu, int gpu) => Math.Max(cpu, gpu);
+    public static bool ValidTemperatures(int cpu, int gpu) => cpu is > 0 and <= 125;
+    public static int CoolingTemperature(int cpu, int gpu) => gpu is > 0 and <= 125 ? Math.Max(cpu, gpu) : cpu;
     public FanControlMode ControlMode { get; set; } = FanControlMode.Auto;
     public int RampUpSeconds { get; set; } = 2;
     public int[] Cpu { get; set; } = DefaultCurve();

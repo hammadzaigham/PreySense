@@ -9,13 +9,13 @@ using PreySense.Rgb;
 
 namespace PreySense.Frontend.Services
 {
-    public sealed class ProductionHardwareService : IHardwareService, IDisposable
+    public sealed class ProductionHardwareService : IHardwareService, ITelemetrySources, IDisposable
     {
         private readonly WmiController _wmi;
         private readonly Lazy<CustomLightingEffectsEngine> _lightingEngine;
         private readonly Lazy<PdhCpuPowerMonitor> _powerMonitor;
         private readonly Lazy<PdhCpuFrequencyMonitor> _frequencyMonitor;
-        private readonly object _telemetryLock = new();
+        private readonly Lazy<int?> _memorySpeed = new(ReadMemorySpeed);
         private int _kbdTimeoutSeconds;
 
         public event EventHandler<byte>? PowerModeChanged;
@@ -53,199 +53,66 @@ namespace PreySense.Frontend.Services
             };
             // Power source events are unified and listened to via TurboKeyWatcher on APGeEvent
             // to prevent WMI quota violations from duplicate event subscriptions.
-            TelemetryCoordinator.AutoPromptOnDemandResume = true;
-            TelemetryCoordinator.ConfigureSampler(SampleFullTelemetrySnapshot, SampleFanOnlyTelemetrySnapshot);
+            TelemetryCoordinator.ConfigureSampler(SampleTelemetrySnapshot);
         }
 
         public PowerSourceKind GetPowerSource() => _wmi.ReadPowerSource();
 
         public void NotePluggedSource(PowerSourceKind kind) => _wmi.NotePluggedSource(kind);
 
-        public HardwareTelemetry GetCurrentTelemetry()
-        {
-            lock (_telemetryLock)
-            {
-                var thermal = _wmi.ReadThermalSensors(includeTemperatures: false);
-                int cpuTemp = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-                int gpuTemp = Gpu.ReadCurrentTemperature() ?? -1;
-                int cpuRpm = thermal.CpuRpm;
-                int gpuRpm = thermal.GpuRpm;
-                _wmi.TryGetPowerStatus(out bool onAc, out float batteryPercent);
-                PowerSourceKind source = _wmi.ReadPowerSource();
-                float pkgPower = _powerMonitor.Value.GetPackagePowerWatts();
 
-                return new HardwareTelemetry(
-                    CpuTemp: cpuTemp,
-                    GpuTemp: gpuTemp,
-                    CpuRpm: cpuRpm,
-                    GpuRpm: gpuRpm,
-                    CpuFanMaxRpm: 5800,
-                    GpuFanMaxRpm: 5600,
-                    BatteryPercent: batteryPercent,
-                    IsAcConnected: onAc,
-                    BatteryDischargeRateMw: 0,
-                    CpuPkgPowerWatts: pkgPower,
-                    PowerSource: source
-                );
+        private TelemetrySnapshot SampleTelemetrySnapshot() =>
+            TelemetryCollector.Read(TelemetryCoordinator.RequestedMetrics, this, !TelemetryCoordinator.HasUiDemand);
+
+        CpuTelemetrySnapshot? ITelemetrySources.ReadCpuUsage() => CpuUsageMonitor.GetSnapshot();
+        int? ITelemetrySources.ReadCpuTemperature() => PawnCpuPowerControl.ReadPackageTemperature();
+        float? ITelemetrySources.ReadCpuVoltage() => PawnCpuPowerControl.ReadCoreVid();
+        float? ITelemetrySources.ReadCpuPower() => _powerMonitor.Value.GetPackagePowerWatts();
+        int? ITelemetrySources.ReadRamSpeed() => _memorySpeed.Value;
+        NvidiaGpuControl.Metrics ITelemetrySources.ReadGpu(TelemetryMetrics metrics)
+        {
+            // Read Windows' cached power data before touching NVAPI/NVML or even
+            // constructing the GPU client. Missing/asleep adapters remain asleep.
+            if (DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1)
+            {
+                NvmlHelper.Shutdown();
+                return default;
             }
+            return Gpu.ReadMetrics(metrics);
         }
 
-        public HardwareTelemetry GetFanTemperatures()
+        (int? Performance, int? Efficiency) ITelemetrySources.ReadCpuClocks()
         {
-            // Custom curves need temperatures, not power, battery, RPM or utilization.
-            int cpu = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-            int gpu = Gpu.ReadCurrentTemperature() ?? 0;
-            return new HardwareTelemetry(cpu, gpu, 0, 0, 5800, 5600, 0, false, 0);
+            return _frequencyMonitor.Value.TrySampleFrequencies(out int performance, out _, out _, out int efficiency)
+                ? (performance > 0 ? performance : null, efficiency > 0 ? efficiency : null) : default;
         }
 
-        private TelemetrySnapshot SampleFullTelemetrySnapshot()
+        (int? Percent, int? UsedMb) ITelemetrySources.ReadRamUsage()
         {
-            lock (_telemetryLock)
+            var memory = SystemMemoryMonitor.GetMemoryInfo();
+            return (memory?.UsedPercent, memory?.UsedMb);
+        }
+
+        (int? Cpu, int? Gpu) ITelemetrySources.ReadFanRpms(bool cpu, bool gpu)
+        {
+            var fans = _wmi.ReadThermalSensors(includeTemperatures: false, readCpuRpm: cpu, readGpuRpm: gpu);
+            return (fans.CpuRpm >= 0 ? fans.CpuRpm : null, fans.GpuRpm >= 0 ? fans.GpuRpm : null);
+        }
+
+        private static int? ReadMemorySpeed()
+        {
+            try
             {
-                long timestamp = System.Diagnostics.Stopwatch.GetTimestamp();
-
-                // 1. CPU / RAM (throttled & non-blocking native syscalls)
-                var cpu = CpuUsageMonitor.GetSnapshot();
-                Interlocked.Increment(ref TelemetryInstrumentation.CpuTelemetryReadCount);
-
-                var ram = SystemMemoryMonitor.GetMemoryInfo();
-                Interlocked.Increment(ref TelemetryInstrumentation.RamTelemetryReadCount);
-
-                // 2. EC Thermals & Fans & Battery
-                var thermal = _wmi.ReadThermalSensors(includeTemperatures: false);
-                Interlocked.Increment(ref TelemetryInstrumentation.EcThermalReadCount);
-
-                int cpuTemp = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-                int gpuTemp = Gpu.ReadCurrentTemperature() ?? -1;
-                int cpuRpm = thermal.CpuRpm;
-                int gpuRpm = thermal.GpuRpm;
-                _wmi.TryGetPowerStatus(out bool onAc, out float batteryPercent);
-                PowerSourceKind source = _wmi.ReadPowerSource();
-                float pkgPower = _powerMonitor.Value.GetPackagePowerWatts();
-
-                // 3. GPU metrics (only if dGPU is in use, avoiding waking dormant GPU)
-                bool gpuInUse = Gpu.IsDiscreteGpuInUse();
-                int? gpuUsage = null;
-                int? gpuMhz = null;
-                float? gpuVoltage = null;
-                float? gpuPower = null;
-                int? vramUsedMb = null;
-                int? vramTotalMb = null;
-                int? vramSpeedMhz = null;
-
-                if (gpuInUse)
+                using var searcher = new System.Management.ManagementObjectSearcher("SELECT ConfiguredClockSpeed FROM Win32_PhysicalMemory");
+                using var results = searcher.Get();
+                foreach (System.Management.ManagementObject module in results)
                 {
-                    try
-                    {
-                        gpuUsage = Gpu.GetGpuUse();
-                        gpuMhz = Gpu.GetGpuClock();
-                        gpuVoltage = Gpu.GetGpuVoltage();
-                        gpuPower = (float?)Gpu.GetGpuPower();
-                        if (Gpu.GetVramInfo() is { } v && v.totalMb > 0)
-                        {
-                            vramUsedMb = (int)v.usedMb;
-                            vramTotalMb = (int)v.totalMb;
-                        }
-                        vramSpeedMhz = Gpu.GetGpuMemoryClock();
-                        Interlocked.Increment(ref TelemetryInstrumentation.GpuTelemetryReadCount);
-                    }
-                    catch { }
+                    using (module)
+                        if (module["ConfiguredClockSpeed"] is uint speed && speed > 0) return (int)speed;
                 }
-
-                float? cpuVid = PreySense.Mode.PawnCpuPowerControl.ReadCoreVid();
-
-                int? cpuClockMhz = null;
-                int? eCoreClockMhz = null;
-                try
-                {
-                    if (_frequencyMonitor.Value.TrySampleFrequencies(out int maxMhz, out _, out _, out int eMaxMhz))
-                    {
-                        if (maxMhz > 0) cpuClockMhz = maxMhz;
-                        if (eMaxMhz > 0) eCoreClockMhz = eMaxMhz;
-                    }
-                }
-                catch { }
-
-                return new TelemetrySnapshot(
-                    TimestampTicks: timestamp,
-                    CpuUsage: cpu?.TotalUsage,
-                    CpuMaxCoreUsage: cpu?.MaxCoreUsage,
-                    CpuPCoreUsage: cpu?.PCoreUsage,
-                    CpuECoreUsage: cpu?.ECoreUsage,
-                    RamUsage: ram?.UsedPercent,
-                    RamUsedMb: ram?.UsedMb,
-                    CpuTemp: cpuTemp,
-                    GpuTemp: gpuTemp,
-                    CpuRpm: cpuRpm,
-                    GpuRpm: gpuRpm,
-                    CpuFanMaxRpm: 5800,
-                    GpuFanMaxRpm: 5600,
-                    CpuPkgPowerWatts: pkgPower,
-                    GpuPowerWatts: gpuPower,
-                    CpuVoltage: cpuVid,
-                    GpuVoltage: gpuVoltage,
-                    CpuClockMhz: cpuClockMhz,
-                    ECoreClockMhz: eCoreClockMhz,
-                    GpuClockMhz: gpuMhz,
-                    GpuUsage: gpuUsage,
-                    VramUsedMb: vramUsedMb,
-                    VramTotalMb: vramTotalMb,
-                    VramSpeedMhz: vramSpeedMhz,
-                    GpuInUse: gpuInUse,
-                    BatteryPercent: batteryPercent,
-                    IsAcConnected: onAc,
-                    PowerSource: source,
-                    IsValid: true,
-                    IsFanOnly: false,
-                    ThermalTimestampTicks: timestamp);
             }
-        }
-
-        private TelemetrySnapshot SampleFanOnlyTelemetrySnapshot()
-        {
-            long timestamp = System.Diagnostics.Stopwatch.GetTimestamp();
-            int cpu = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature() ?? -1;
-            int gpu = Gpu.ReadCurrentTemperature() ?? 0;
-            Interlocked.Increment(ref TelemetryInstrumentation.EcThermalReadCount);
-
-            var curr = TelemetryCoordinator.CurrentSnapshot;
-            if (curr.IsValid)
-            {
-                return curr.WithFanTemperatures(cpu, gpu, timestamp) with { IsFanOnly = true };
-            }
-
-            return new TelemetrySnapshot(
-                TimestampTicks: 0,
-                CpuUsage: null,
-                CpuMaxCoreUsage: null,
-                CpuPCoreUsage: null,
-                CpuECoreUsage: null,
-                RamUsage: null,
-                RamUsedMb: null,
-                CpuTemp: cpu,
-                GpuTemp: gpu,
-                CpuRpm: null,
-                GpuRpm: null,
-                CpuFanMaxRpm: 5800,
-                GpuFanMaxRpm: 5600,
-                CpuPkgPowerWatts: null,
-                GpuPowerWatts: null,
-                CpuVoltage: null,
-                GpuVoltage: null,
-                CpuClockMhz: null,
-                ECoreClockMhz: null,
-                GpuClockMhz: null,
-                GpuUsage: null,
-                VramUsedMb: null,
-                VramTotalMb: null,
-                VramSpeedMhz: null,
-                GpuInUse: false,
-                BatteryPercent: 0,
-                IsAcConnected: false,
-                PowerSource: PowerSourceKind.Ac,
-                IsValid: cpu > 0 || gpu > 0,
-                IsFanOnly: true,
-                ThermalTimestampTicks: timestamp);
+            catch (System.Management.ManagementException) { }
+            return null;
         }
 
         public bool EnableDiscreteGpu()

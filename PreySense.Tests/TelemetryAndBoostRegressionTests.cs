@@ -18,16 +18,16 @@ public class TelemetryAndBoostRegressionTests
     private static MainViewModel Create(RecordingHardware hardware)
     {
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        Set(vm, "<AvailableRefreshRates>k__BackingField", new System.Collections.ObjectModel.ObservableCollection<string>());
         Set(vm, "_hw", hardware);
         Set(vm, "_dispatcher", Dispatcher.CurrentDispatcher);
         Set(vm, "_fanControlGate", new object());
         Set(vm, "_displaySettingsDebounceLock", new object());
         Set(vm, "_cpuFanFollower", new FanCurveFollower());
         Set(vm, "_gpuFanFollower", new FanCurveFollower());
-        Set(vm, "_fanCoolingSafety", new FanCoolingSafety());
         Set(vm, "_runningFanProfileMode", (byte)1);
         Set(vm, "_runningFanProfile", new FanCurveProfile { ControlMode = FanControlMode.Auto });
-        Set(vm, "_fanFallbackActive", true);
+        Set(vm, "_autoFanModeApplied", true);
         return vm;
     }
 
@@ -43,18 +43,6 @@ public class TelemetryAndBoostRegressionTests
     }
 
     [TestMethod]
-    [DataRow(false, 0)]
-    [DataRow(true, 1)]
-    public async Task WindowVisibilityControlsSensorReads(bool windowVisible, int expectedReads)
-    {
-        var hardware = new RecordingHardware();
-        var vm = Create(hardware);
-        vm.SetTelemetryPollingActive(windowVisible);
-        await RunOnSensorThread(() => typeof(MainViewModel).GetMethod("PollTelemetry", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(vm, null));
-        Assert.AreEqual(expectedReads, hardware.Reads);
-    }
-
-    [TestMethod]
     public async Task HiddenCustomFansReadOnlyTemperaturesAndKeepFollowingTheCurve()
     {
         var hardware = new RecordingHardware();
@@ -66,10 +54,11 @@ public class TelemetryAndBoostRegressionTests
             Gpu = Enumerable.Repeat(50, FanCurveProfile.PointCount).ToArray()
         });
         Set(vm, "_fanOverrideActive", true);
-        var poll = typeof(MainViewModel).GetMethod("PollTelemetry", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        await RunOnSensorThread(() => { poll.Invoke(vm, null); poll.Invoke(vm, null); });
+        Set(vm, "_fanSnapshotsSubscribed", true);
+        await RunOnSensorThread(() => { TelemetryCoordinator.Poll(); TelemetryCoordinator.Poll(); });
+        typeof(MainViewModel).GetMethod("OnFanSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(vm, new object[] { TelemetrySnapshot.Empty with { IsValid = true, IsFanOnly = true, CpuTemp = 55, GpuTemp = 45 } });
         Assert.AreEqual(0, hardware.Reads);
-        Assert.AreEqual(2, hardware.TemperatureReads);
+        Assert.AreEqual(0, hardware.TemperatureReads, "Fan control must not perform independent reads.");
         Assert.AreEqual(0, hardware.AutoWrites);
         Assert.AreEqual(40, vm.AppliedCpuFanPercent);
         Assert.AreEqual(50, vm.AppliedGpuFanPercent);
@@ -113,12 +102,11 @@ public class TelemetryAndBoostRegressionTests
     {
         var hardware = new RecordingHardware();
         var vm = Create(hardware);
-        vm.SetTelemetryPollingActive(true);
 
         hardware.DdsReads = 0;
         hardware.RefreshRateReads = 0;
 
-        var onSnapshot = typeof(MainViewModel).GetMethod("OnCoordinatorSnapshotAvailable", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var onSnapshot = typeof(MainViewModel).GetMethod("OnFanSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!;
         var snapshot = TelemetrySnapshot.Empty with
         {
             CpuTemp = 55,
@@ -139,8 +127,7 @@ public class TelemetryAndBoostRegressionTests
             IsValid = true
         };
 
-        onSnapshot.Invoke(vm, new object[] { snapshot });
-        await Task.Delay(50);
+        await RunOnSensorThread(() => onSnapshot.Invoke(vm, new object[] { snapshot }));
 
         Assert.AreEqual(0, hardware.DdsReads, "Telemetry snapshot must not poll DDS status.");
         Assert.AreEqual(0, hardware.RefreshRateReads, "Telemetry snapshot must not poll display refresh rate.");

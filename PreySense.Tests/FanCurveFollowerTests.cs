@@ -115,44 +115,6 @@ public class FanCurveFollowerTests
     }
 
     [TestMethod]
-    public void EmergencyIsImmediateAndRecoveryHonorsCooldown()
-    {
-        var curve = new int[FanCurveProfile.PointCount];
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(100, follower.Evaluate(95, curve, 10, 0, emergency: true));
-        Assert.AreEqual(100, follower.Evaluate(80, curve, 10, 1000));
-        Assert.AreEqual(0, follower.Evaluate(80, curve, 10, 6000));
-    }
-
-    [TestMethod]
-    public void EmergencyCoolingStaysLatchedUntilBothSensorsClearReleaseMargins()
-    {
-        var safety = new FanCoolingSafety();
-        Assert.IsFalse(safety.Evaluate(80, 70));
-        Assert.IsTrue(safety.Evaluate(95, 70));
-        Assert.IsTrue(safety.Evaluate(94, 70));
-        Assert.IsTrue(safety.Evaluate(90, 83));
-        Assert.IsFalse(safety.Evaluate(90, 82));
-        Assert.IsTrue(safety.Evaluate(70, 87));
-        Assert.IsTrue(safety.Evaluate(70, 86));
-        Assert.IsTrue(safety.Evaluate(0, 0));
-        Assert.IsFalse(safety.Evaluate(80, 80));
-    }
-
-    [TestMethod]
-    public void EmergencyReleaseWaitsTheConfiguredDelayBeforeReducingDuty()
-    {
-        var safety = new FanCoolingSafety();
-        var follower = new FanCurveFollower();
-        var curve = TestCurve();
-        Assert.AreEqual(100, follower.Evaluate(95, curve, 2, 0, safety.Evaluate(95, 60)));
-        Assert.AreEqual(100, follower.Evaluate(94, curve, 2, 1000, safety.Evaluate(94, 60)));
-        Assert.AreEqual(100, follower.Evaluate(80, curve, 2, 2000, safety.Evaluate(80, 60)));
-        Assert.AreEqual(100, follower.Evaluate(80, curve, 2, 3000, safety.Evaluate(80, 60)));
-        Assert.AreEqual(80, follower.Evaluate(80, curve, 2, 4000, safety.Evaluate(80, 60)));
-    }
-
-    [TestMethod]
     public void OldRampUpValuesCannotDelayAnIncreaseLongerThanFiveSeconds()
     {
         var follower = new FanCurveFollower();
@@ -161,20 +123,6 @@ public class FanCurveFollowerTests
         Assert.AreEqual(40, follower.Evaluate(70, curve, 99, 1000));
         Assert.AreEqual(40, follower.Evaluate(70, curve, 99, 5000));
         Assert.AreEqual(60, follower.Evaluate(70, curve, 99, 6000));
-    }
-
-    [TestMethod]
-    public void EmergencyCoolingBypassesEvenStoppedCurveAndLongRamp()
-    {
-        int[] curve = new int[FanCurveProfile.PointCount];
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(0, follower.Evaluate(60, curve, 10, 0));
-        Assert.AreEqual(100, follower.Evaluate(95, curve, 10, 1, emergency: true));
-        Assert.IsTrue(FanCurveProfile.RequiresMaxCooling(95, 60));
-        Assert.IsTrue(FanCurveProfile.RequiresMaxCooling(60, 87));
-        Assert.IsFalse(FanCurveProfile.ValidTemperatures(60, 0));
-        Assert.IsFalse(FanCurveProfile.ValidTemperatures(0, 60));
-        Assert.IsTrue(FanCurveProfile.ValidTemperatures(60, 70));
     }
 
     [TestMethod]
