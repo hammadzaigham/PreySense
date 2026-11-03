@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v2.4.7** adds automatic GitHub release downloading, safer self-update handoff, event-driven power/game monitoring, and continued overlay/WMI code organization improvements. See the [release notes](docs/releases/v2.4.7.md).
+**v2.4.9** introduces a demand-driven shared telemetry coordinator, unified ACPI event handling, reliable RGB startup and preset theme persistence, and overlay performance improvements. See the [release notes](docs/releases/v2.4.9.md).
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 
@@ -51,7 +51,7 @@ Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)*
 - **Battery** — charge limit and USB power-off charging cutoff. The embedded controller only accepts 80% or 100%. PreySense cannot set any other charge limit.
 - **Startup and tray** — run on Windows startup, hide to the tray, Predator key (next to Num Lock) to show or hide; tray menu follows the app's light/dark theme
 - **Languages** — English, Simplified Chinese, Hindi, Spanish, and French
-- **OpenCore installer** — optional boot-drive or USB install from Advanced for live power limits, plus an in-place **Re-install** button with file verification, backups, and a Y/N restart prompt
+- **OpenCore installer** — optional boot-drive or USB install from Advanced for live power limits, plus an in-place **Re-install** button with file verification and a Y/N restart prompt
 - **Factory defaults** — required first-time calibration when OpenCore is active, immutable saved defaults, and a compact profile summary with common metrics shown once
 
 ## Requirements
@@ -95,7 +95,7 @@ USB install is the same files on a FAT32 stick. Restart, press F12, and select t
 
 ### Updating from an older version
 
-v2.4.0 uses ACPI interface **0x0201**. If PreySense reports outdated ACPI files, choose **Re-install** in Advanced. This updates the existing PREYSENSE partition in place, preserves unrelated EFI files, backs up replaced files, and verifies copied files with SHA256. The PowerShell window shows the completed update and asks whether to restart now (Y/N). Restart through the PreySense/OpenCore boot entry to load the new table.
+v2.4.0 uses ACPI interface **0x0201**. If PreySense reports outdated ACPI files, choose **Re-install** in Advanced. This updates the existing PREYSENSE partition in place, preserves unrelated EFI files, replaces files without creating backups, and verifies copied files with SHA256. The PowerShell window shows the completed update and asks whether to restart now (Y/N). Restart through the PreySense/OpenCore boot entry to load the new table.
 
 If the current ACPI table is already loaded but Windows still has an older PreySense WMI definition, the elevated app detects the full method-signature mismatch and rebuilds that definition automatically.
 

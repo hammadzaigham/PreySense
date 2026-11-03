@@ -6,6 +6,41 @@ namespace PreySense.Tests;
 public class GpuPowerOffsetsTests
 {
     [TestMethod]
+    [DoNotParallelize]
+    public void SavedOffsetsAreReadFreshWhileUnsavedEditsArePreserved()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\GpuOffsets");
+        string[] names = { "BalancedDelta", "BalancedBoost" };
+        var original = names.ToDictionary(n => n, n => key.GetValue(n));
+        var kinds = names.Where(n => original[n] != null).ToDictionary(n => n, n => key.GetValueKind(n));
+        try
+        {
+            var vm = (PreySense.Frontend.ViewModels.MainViewModel)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PreySense.Frontend.ViewModels.MainViewModel));
+            var drafts = new Dictionary<int, GpuPowerOffsets>();
+            typeof(PreySense.Frontend.ViewModels.MainViewModel).GetField("_gpuOffsets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, drafts);
+            key.SetValue(names[0], 10);
+            key.SetValue(names[1], 15);
+            Assert.AreEqual(new GpuPowerOffsets(10, 15), vm.GpuOffsetsForMode(2, 130));
+            key.SetValue(names[0], 20);
+            Assert.AreEqual(new GpuPowerOffsets(20, 15), vm.GpuOffsetsForMode(2, 130));
+            vm.StoreGpuOffsets(2, new GpuPowerOffsets(30, 5));
+            Assert.AreEqual(new GpuPowerOffsets(30, 5), vm.GpuOffsetsForMode(2, 130));
+            typeof(PreySense.Frontend.ViewModels.MainViewModel).GetMethod("SaveGpuOffsets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(vm, null);
+            Assert.AreEqual(30, key.GetValue(names[0]));
+            Assert.AreEqual(5, key.GetValue(names[1]));
+            Assert.AreEqual(0, drafts.Count);
+            key.SetValue(names[0], 40);
+            Assert.AreEqual(new GpuPowerOffsets(40, 5), vm.GpuOffsetsForMode(2, 130));
+        }
+        finally
+        {
+            foreach (string name in names)
+                if (original[name] is { } value) key.SetValue(name, value, kinds[name]);
+                else key.DeleteValue(name, throwOnMissingValue: false);
+        }
+    }
+
+    [TestMethod]
     public void PlatformBudgetIsIndependentOfGpuCeiling()
     {
         var value = new GpuPowerOffsets(35, 20);

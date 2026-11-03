@@ -242,6 +242,8 @@ namespace PreySense.Overlay
         #endregion
 
         #region IDisposable Members
+        public bool IsDisposed => _disposed;
+
         public void Dispose()
         {
             Dispose(true);

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using Microsoft.Win32;
 
 namespace PreySense.Overlay
@@ -8,22 +7,17 @@ namespace PreySense.Overlay
     {
         private const string RegistryKeyPath = @"SOFTWARE\PreySense";
         private const string Missing = "\u0000";
-        private static readonly ConcurrentDictionary<string, string> Cache = new(StringComparer.Ordinal);
 
         private static string Read(string name)
         {
-            if (Cache.TryGetValue(name, out string? cached))
-                return cached;
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
                 string value = key?.GetValue(name)?.ToString() ?? Missing;
-                Cache[name] = value;
                 return value;
             }
             catch
             {
-                Cache[name] = Missing;
                 return Missing;
             }
         }
@@ -78,7 +72,6 @@ namespace PreySense.Overlay
             {
                 using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
                 key?.SetValue(name, value, RegistryValueKind.DWord);
-                Cache[name] = value.ToString();
             }
             catch { }
         }
@@ -89,7 +82,6 @@ namespace PreySense.Overlay
             {
                 using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
                 key?.SetValue(name, value, RegistryValueKind.String);
-                Cache[name] = value;
             }
             catch { }
         }
@@ -101,7 +93,14 @@ namespace PreySense.Overlay
 
         public static bool IsOverlayGameOnly()
         {
-            return Is("overlay_game_only");
+            return false;
+        }
+
+        public static void MigrateGameOnlySetting()
+        {
+            if (!Is("overlay_game_only")) return;
+            Set("overlay", 1);
+            Set("overlay_game_only", 0);
         }
 
         public static bool ShouldRunOverlay()
@@ -225,7 +224,7 @@ namespace PreySense.Overlay
             string trimmed = metric.Trim();
             return trimmed switch
             {
-                "Usage" or "Temperature" or "P-Core" or "E-Core" or "Clock" or "Voltage"
+                "Usage" or "Max Core" or "Max Core Usage" or "P-Core Usage" or "E-Core Usage" or "Temperature" or "P-Core" or "E-Core" or "Clock" or "Voltage"
                     or "Power" or "Memory" or "Memory Speed" or "Fan Speed" => trimmed,
                 _ => "None"
             };

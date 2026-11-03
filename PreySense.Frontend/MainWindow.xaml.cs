@@ -47,12 +47,6 @@ namespace PreySense.Frontend
             ApplyResponsivePercentageSize();
 
             OverlayBridge.Configure(() => (hw as ProductionHardwareService)?.Wmi);
-            Loaded += (_, _) =>
-            {
-                vm.NotifyMainWindowLoaded();
-                OverlayBridge.Warmup();
-                OverlayBridge.StartIfNeeded();
-            };
             // Setup Predator Sense Key & Combos
             try
             {
@@ -103,8 +97,14 @@ namespace PreySense.Frontend
             }
             catch { }
 
+
             IsVisibleChanged += (_, _) => vm.SetTelemetryPollingActive(IsVisible && WindowState != WindowState.Minimized);
-            StateChanged += (_, _) => vm.SetTelemetryPollingActive(IsVisible && WindowState != WindowState.Minimized);
+            StateChanged += (_, _) =>
+            {
+                if (WindowState == WindowState.Minimized)
+                    HideApplicationWindowsForAutoHide();
+                vm.SetTelemetryPollingActive(IsVisible && WindowState != WindowState.Minimized);
+            };
 
             Closed += (s, e) =>
             {
@@ -129,13 +129,13 @@ namespace PreySense.Frontend
         {
             RunOnUi(() =>
             {
-                if (!IsVisible)
-                {
-                    Show();
-                }
                 if (WindowState == WindowState.Minimized)
                 {
                     WindowState = WindowState.Normal;
+                }
+                if (!IsVisible)
+                {
+                    Show();
                 }
 
                 if (_autoHiddenWindows.Count > 0)
@@ -308,7 +308,7 @@ namespace PreySense.Frontend
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
-            WindowState = WindowState.Minimized;
+            HideApplicationWindowsForAutoHide();
         }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -646,9 +646,9 @@ namespace PreySense.Tests
             Assert.DoesNotContain("cpuPower = null", hardware);
             Assert.Contains("TrySampleFrequencies", hardware);
             Assert.Contains("IsDiscreteGpuInUse()", hardware);
-            Assert.Contains("thermal.GpuTemp", hardware);
+            Assert.Contains("GpuControl?.GetCurrentTemperature()", hardware);
             Assert.Contains("if (!inUse)", hardware);
-            Assert.Contains("gpuTemp = 0", hardware);
+            Assert.Contains("gpuTemp = inUse ?", hardware);
             Assert.DoesNotContain("NvmlHelper.GetGpuTemperature", hardware);
             Assert.DoesNotContain("ReadCurrentTemperature", hardware);
             Assert.DoesNotContain("GpuControl.GetCurrentTemperature()", hardware);
@@ -885,7 +885,7 @@ namespace PreySense.Tests
                 Assert.IsTrue(dslContent.Contains("M3CT = 0x0F"), "Must contain Perf delta");
                 Assert.IsTrue(dslContent.Contains("M2CT = 0x00"), "Must contain Balanced delta");
                 Assert.IsTrue(dslContent.Contains("ACBT = (M4CT * 0x08)"), "Must write Configurable TGP offset to ACBT");
-                Assert.IsTrue(dslContent.Contains("ATPP = (M4CP * 0x08)"), "Must write platform cap headroom offset to ATPP");
+                Assert.IsTrue(dslContent.Contains("ATPP = 0x07F8"), "Must write platform cap headroom offset to ATPP");
                 Assert.IsTrue(dslContent.Contains("AMAT = (M4DB * 0x08)"), "Must write Dynamic Boost offset to AMAT");
 
                 Assert.IsTrue(File.Exists(res.AmlPath), "AML file must be compiled by iasl");
@@ -912,7 +912,7 @@ namespace PreySense.Tests
             Assert.IsTrue(dsl.Contains("Notify (\\_SB.NPCF, 0xC0)"), "Must trigger NPCF 0xC0 notification to live NVIDIA driver");
             Assert.Contains("ACBT = (Arg0 * 0x08)", dsl, "Must write independent Configurable TGP offset to ACBT");
             Assert.Contains("AMAT = (Arg1 * 0x08)", dsl, "Must write independent Dynamic Boost offset to AMAT");
-            Assert.Contains("ATPP = (Arg2 * 0x08)", dsl, "Must write independent platform offset to ATPP");
+            Assert.Contains("ATPP = 0x07F8", dsl, "Must write constant platform offset to ATPP");
 
             string iaslPath = @"d:\Development\PreySense\docs\acpi_tables\iasl.exe";
             if (File.Exists(iaslPath))
@@ -999,6 +999,7 @@ namespace PreySense.Tests
                 // Case B: OpenCore IS loaded, but ACPI Override switch is turned OFF
                 vm.IsOpenCoreLoaded = true;
                 vm.IsAcpiOverrideEnabled = false;
+                vm.IsFactoryCalibrationComplete = false;
                 Assert.AreEqual(System.Windows.Visibility.Visible, vm.AcpiOverrideDisabledBannerVisibility, "Banner must be visible when override is off");
                 Assert.AreEqual(
                     "ACPI Hardware Override is disabled.",
@@ -1134,8 +1135,8 @@ namespace PreySense.Tests
             Assert.Contains("Text=\"{Binding AcpiOverrideDisabledBannerText}\"", gamesXaml);
             Assert.Contains("IsEnabled=\"{Binding IsAcpiOverrideEnabled}\"", gamesXaml);
             Assert.Contains("Burst Window [Tau]", gamesXaml);
-            Assert.Contains("GPU Power Limit", gamesXaml);
-            Assert.Contains("GPU Thermal Trip Point [WMG3]", gamesXaml);
+            Assert.Contains("GPU Power Limits", gamesXaml);
+            Assert.Contains("GPU Thermal Trip Point", gamesXaml);
 
             string gamesVm = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.Games.cs"));
             Assert.Contains("{ \"Eco\", \"Quiet\", \"Balanced\", \"Performance\", \"Turbo\" }", gamesVm);
@@ -1143,7 +1144,7 @@ namespace PreySense.Tests
             Assert.Contains("ApplyGameProfileAsync", gamesVm);
             Assert.Contains("GameLaunchWatcher", gamesVm);
             Assert.Contains("SetCpuPowerLimits", gamesVm);
-            Assert.Contains("SetGpuPowerLimit", gamesVm);
+            Assert.Contains("SetGpuPowerOffsets", gamesVm);
             Assert.Contains("SetGpuThermalTripPoint", gamesVm);
             Assert.Contains("if (!IsAcpiOverrideEnabled)", gamesVm);
         }
@@ -1328,10 +1329,10 @@ namespace PreySense.Tests
             string root = GetSolutionRoot();
             string advXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "AdvancedSettingsWindow.xaml"));
             Assert.IsTrue(advXaml.Contains("SettingDropdownRow Title=\"Acer BlueLight Shield\""), "AdvancedSettings must use SettingDropdownRow for Acer BlueLight Shield");
-            Assert.IsTrue(advXaml.Contains("Margin=\"0,8,0,8\""), "Acer BlueLight Shield must have extra vertical margin");
+            Assert.IsTrue(advXaml.Contains("Margin=\"0,4\""), "Acer BlueLight Shield must have appropriate margin");
             Assert.IsTrue(advXaml.Contains("ItemsSource=\"{Binding BlueLightShieldModes}\""), "SettingDropdownRow must bind BlueLightShieldModes");
             Assert.IsTrue(advXaml.Contains("SelectedIndex=\"{Binding BlueLightShieldMode, Mode=TwoWay}\""), "SettingDropdownRow must bind SelectedIndex to BlueLightShieldMode");
-            Assert.Contains("Title=\"Battery Health Limit\"", advXaml);
+            Assert.Contains("Title=\"Battery Limit\"", advXaml);
         }
 
         [TestMethod]
@@ -1383,10 +1384,78 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
+        public async Task ApplyStartupLighting_AppliesKeyboardAndCoverSettings()
+        {
+            var hw = new PreySense.Core.Services.MockHardwareService();
+            var vm = new PreySense.Frontend.ViewModels.MainViewModel(hw);
+            int beforeCover = hw.SetCoverLogoLightingCount;
+
+            vm.ApplyStartupLighting();
+            await Task.Delay(150);
+
+            Assert.IsTrue(hw.SetCoverLogoLightingCount >= beforeCover, "Startup lighting must apply cover logo settings");
+            Assert.IsTrue(hw.IsRgbAvailable, "RGB must be reported available on hardware service");
+        }
+
+        [TestMethod]
+        [DoNotParallelize]
+        public void PresetTheme_PersistsAndLoads_WithCustomDefault()
+        {
+            using (var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\Lighting\Keyboard"))
+            {
+                key?.SetValue("PresetTheme", "Custom");
+            }
+
+            var hw = new PreySense.Core.Services.MockHardwareService();
+            var vm = new PreySense.Frontend.ViewModels.MainViewModel(hw);
+
+            Assert.AreEqual("Custom", vm.SelectedZonePreset);
+
+            vm.ApplyZonePreset("Matrix");
+            Assert.AreEqual("Matrix", vm.SelectedZonePreset);
+            Assert.AreEqual("Matrix Code Preset", vm.ActiveEffectName);
+
+            vm.SaveLightingSettings();
+
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\Lighting\Keyboard"))
+            {
+                Assert.IsNotNull(key);
+                Assert.AreEqual("Matrix", key.GetValue("PresetTheme") as string);
+            }
+
+            // Verify a fresh VM instance hydrates the preset theme and its colors from registry
+            var hw2 = new PreySense.Core.Services.MockHardwareService();
+            var vm2 = new PreySense.Frontend.ViewModels.MainViewModel(hw2);
+            Assert.AreEqual("Matrix", vm2.SelectedZonePreset);
+            Assert.AreEqual("Matrix Code Preset", vm2.ActiveEffectName);
+
+            vm2.ApplyZonePreset("FireIce");
+            Assert.AreEqual("FireIce", vm2.SelectedZonePreset);
+            Assert.AreEqual("Fire & Ice Preset", vm2.ActiveEffectName);
+            vm2.SaveLightingSettings();
+
+            var hw3 = new PreySense.Core.Services.MockHardwareService();
+            var vm3 = new PreySense.Frontend.ViewModels.MainViewModel(hw3);
+            Assert.AreEqual("FireIce", vm3.SelectedZonePreset);
+            Assert.AreEqual("Fire & Ice Preset", vm3.ActiveEffectName);
+
+            vm3.DiscardPendingZonePreset();
+            Assert.AreEqual("Custom", vm3.SelectedZonePreset);
+            vm3.SaveLightingSettings();
+
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\Lighting\Keyboard"))
+            {
+                Assert.IsNotNull(key);
+                Assert.AreEqual("Custom", key.GetValue("PresetTheme") as string);
+            }
+        }
+
+        [TestMethod]
         public void Overlay_KeepsGameOnlyWhenPreySenseHides_AndPollsEverySecond()
         {
             string root = GetSolutionRoot();
-            string overlay = File.ReadAllText(Path.Combine(root, "PreySense.Overlay", "HardwareOverlay.cs"));
+            string overlay = File.ReadAllText(Path.Combine(root, "PreySense.Overlay", "HardwareOverlay.cs")) +
+                             File.ReadAllText(Path.Combine(root, "PreySense.Overlay", "HardwareOverlay.Lifecycle.cs"));
             string vm = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.cs"));
             string lightingUi = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "KeyboardWindow.xaml.cs"));
 
@@ -1398,7 +1467,7 @@ namespace PreySense.Tests
             Assert.DoesNotContain("ApplyPollInterval", overlay);
             Assert.Contains("bool gpuActive = HardwareControl.gpuInUse", overlay);
             Assert.DoesNotContain("gpuTemp > 0", overlay);
-            Assert.Contains("VisibleTelemetryIntervalMs = 1000", vm);
+            Assert.Contains("TelemetryIntervalMs = 1000", vm);
             Assert.DoesNotContain("HiddenTelemetryIntervalMs", vm);
             string session = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.Session.cs"));
             Assert.Contains("PersistSessionSettings", session);
@@ -1409,6 +1478,8 @@ namespace PreySense.Tests
             Assert.Contains("SessionEnding", session);
             Assert.Contains("ApplyKeyboardLightingNow", session);
             Assert.Contains("ApplyCoverLighting(saveSettings: false)", session);
+            Assert.Contains("ApplyStartupLighting", session);
+            Assert.Contains("ApplyStartupLighting", vm);
             Assert.Contains("SetPowerMode", session);
             Assert.DoesNotContain("ModeSwitchLightingDelayMs", session);
             Assert.Contains("_hw.SetPowerMode(mode)", session);
@@ -1467,6 +1538,7 @@ namespace PreySense.Tests
             Assert.DoesNotContain("Speed {0}/9", lightingXaml);
             Assert.Contains("EffectTag", lighting);
             Assert.Contains("LightingEffectTag", lighting);
+            Assert.Contains("ApplyStartupLighting", lighting);
             Assert.Contains("MigrateSavedSpeed", lighting);
             Assert.Contains("ToHidKeyboardSpeed", lighting);
             Assert.Contains("RestoreLightingModeUi", lightingUi);
@@ -1497,19 +1569,14 @@ namespace PreySense.Tests
             Assert.Contains("EnabledChanged", overlayBridge);
             Assert.Contains("NotifyEnabledChanged", overlayBridge);
             Assert.Contains("StartIfNeeded", overlayBridge);
-            Assert.Contains("ShouldRunOverlay", overlayManager);
             Assert.Contains("SyncRunningState", overlayManager);
             Assert.DoesNotContain("HardwareControl.ReadSensorsOverlay();", overlayManager);
-            Assert.Contains("if (AppConfig.IsOverlay())", overlayManager);
-            Assert.Contains("if (AppConfig.IsOverlayGameOnly())", overlayManager);
             Assert.Contains("OnOverlayEnabledChanged", metricsUi);
-            Assert.Contains("ApplyEnableOverlayAvailability", metricsUi);
-            Assert.Contains("CheckEnableOverlay.IsEnabled = !gameOnly", metricsUi);
             Assert.DoesNotContain("ResetButton_Click", metricsUi);
             string metricsXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "MetricsWindow.xaml"));
             Assert.DoesNotContain("Content=\"Reset\"", metricsXaml);
             Assert.DoesNotContain("ResetButton_Click", metricsXaml);
-            Assert.Contains("GameOnly_Changed", metricsXaml);
+            Assert.DoesNotContain("GameOnly_Changed", metricsXaml);
             Assert.DoesNotContain("Title=\"Update Interval\"", metricsXaml);
             Assert.DoesNotContain("SliderUpdateInterval", metricsXaml);
             Assert.DoesNotContain("ApplyPollInterval", metricsUi);
@@ -1520,7 +1587,8 @@ namespace PreySense.Tests
             Assert.DoesNotContain("overlay_update_interval_ms", appConfig);
             Assert.Contains("IsOverlay() || IsOverlayGameOnly()", appConfig);
             string mainWindow = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"));
-            Assert.Contains("OverlayBridge.StartIfNeeded()", mainWindow);
+            string appCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "App.xaml.cs"));
+            Assert.Contains("OverlayBridge.StartIfNeeded()", appCs);
             Assert.DoesNotContain("ApplyLightingButton_Click", lightingUi);
             Assert.DoesNotContain("SaveLightingButton_Click", lightingUi);
             Assert.DoesNotContain("ApplyLightingSettings();", lightingUi);

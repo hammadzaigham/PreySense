@@ -17,6 +17,8 @@ namespace PreySense.Mode
         public int TauSeconds { get; set; } = 56;
         public int CpuBoost { get; set; } = 1; // 0 = Disabled, 1 = Enabled, 2 = Aggressive, etc.
 
+        public int? ExtendedCpuBoost { get; set; }
+
         // Apply flags — each category can be independently enabled/disabled per mode
         public bool ApplyCpuLimits { get; set; } = false;
         public bool ApplyGpuLimits { get; set; } = false;

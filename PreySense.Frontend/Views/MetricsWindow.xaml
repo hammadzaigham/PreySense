@@ -44,18 +44,6 @@
                             <controls:RectangularSwitch Grid.Column="1" x:Name="CheckEnableOverlay" Width="56" Height="28" VerticalAlignment="Center" Checked="OverlayToggle_Changed" Unchecked="OverlayToggle_Changed"/>
                         </Grid>
 
-                        <!-- Show in Games Only -->
-                        <Grid Margin="0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
-                                <TextBlock Text="Enabled in Games Only" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                            </StackPanel>
-                            <controls:RectangularSwitch Grid.Column="1" x:Name="CheckGameOnly" Width="56" Height="28" VerticalAlignment="Center" Checked="GameOnly_Changed" Unchecked="GameOnly_Changed"/>
-                        </Grid>
-
                         <Separator Margin="0,4,0,8"/>
 
                         <!-- HUD Scale -->

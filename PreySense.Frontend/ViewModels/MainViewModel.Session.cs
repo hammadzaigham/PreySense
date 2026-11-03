@@ -17,9 +17,8 @@ namespace PreySense.Frontend.ViewModels
         private const string SessionRegistryPath = @"SOFTWARE\PreySense\Session";
         private bool _sessionHooksAttached;
         private bool _isRestoringSession;
-        private readonly TaskCompletionSource _startupWindowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal void NotifyMainWindowLoaded() => _startupWindowReady.TrySetResult();
-        private DateTime _lastSessionRestoreUtc = DateTime.MinValue;
+        private readonly TaskCompletionSource _applicationReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal void NotifyApplicationReady() => _applicationReady.TrySetResult();
 
         private void AttachSessionLifecycleHooks()
         {
@@ -229,8 +228,9 @@ namespace PreySense.Frontend.ViewModels
 
         private async Task InitializeSessionAsync()
         {
-            await _startupWindowReady.Task;
+            await _applicationReady.Task;
             if (_disposed) return;
+            ApplyStartupLighting();
             var pawnInstallation = await _dispatcher.InvokeAsync(() => PawnIoInstallService.EnsureInstalledAsync(
                 System.Windows.Application.Current.MainWindow, message => StatusMessage = message));
             await pawnInstallation;
@@ -279,19 +279,13 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed || IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete)
                 return;
 
-            if ((DateTime.UtcNow - _lastSessionRestoreUtc).TotalSeconds < 3 &&
-                !string.Equals(reason, "startup", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            _lastSessionRestoreUtc = DateTime.UtcNow;
-            _isRestoringSession = true;
             bool gateHeld = false;
             try
             {
                 await _modeSwitchGate.WaitAsync();
                 gateHeld = true;
+                if (_disposed) return;
+                _isRestoringSession = true;
                 AppLogger.Log($"Restoring PreySense session settings ({reason}).");
                 byte mode = ActivePowerMode;
                 PowerSourceKind source = PowerSourceKind.Ac;
@@ -321,9 +315,9 @@ namespace PreySense.Frontend.ViewModels
                 });
 
                 if (string.Equals(reason, "resume", StringComparison.OrdinalIgnoreCase) && OverlayBridge.ShouldRun)
-                    _ = App.Current?.Dispatcher.InvokeAsync(OverlayBridge.StartIfNeeded);
+                    await _dispatcher.InvokeAsync(OverlayBridge.StartIfNeeded);
 
-                _ = App.Current?.Dispatcher.InvokeAsync(() =>
+                await _dispatcher.InvokeAsync(() =>
                 {
                     if (_disposed)
                         return;
@@ -348,9 +342,9 @@ namespace PreySense.Frontend.ViewModels
             }
             finally
             {
-                _isRestoringSession = false;
                 if (gateHeld)
                 {
+                    _isRestoringSession = false;
                     try { _modeSwitchGate.Release(); }
                     catch (ObjectDisposedException) { }
                 }
@@ -405,13 +399,13 @@ namespace PreySense.Frontend.ViewModels
             {
                 if (!PowerLimitController.SetCpuPowerLimits(limitedPl1, LimitPl2(limitedPl1, pl2), true, TauSeconds))
                     failures.Add("CPU limits: " + PowerLimitController.LastCpuPowerLimitStatus);
-                ApplyCpuBoostForMode(mode);
                 if (!ApplyGpuModePower(mode, gpuWatts))
                     failures.Add("GPU offsets could not be verified");
                 if (!PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)gpuTrip))
                     failures.Add("GPU thermal trip point could not be applied");
             }
 
+            if (!ApplyCpuBoostForMode(mode)) failures.Add("CPU boost could not be applied by Windows");
             RestoreFanMode();
 
             if (IsLcdOverdriveEnabled)
@@ -434,7 +428,7 @@ namespace PreySense.Frontend.ViewModels
             int hz = 0;
             try
             {
-                onBattery = !_hw.GetCurrentTelemetry().IsAcConnected;
+                onBattery = _hw.GetPowerSource() == PowerSourceKind.Battery;
                 hz = _hw.GetDisplayRefreshRate();
             }
             catch
@@ -451,11 +445,16 @@ namespace PreySense.Frontend.ViewModels
             if (e.Mode != PowerModes.Resume)
                 return;
 
+            PreySense.Core.Services.CpuUsageMonitor.InvalidateBaseline();
+            PreySense.Core.Services.TelemetryCoordinator.InvalidateCurrentSnapshot();
+
             _ = App.Current?.Dispatcher.InvokeAsync(async () =>
             {
                 if (_disposed)
                     return;
                 await RestoreSessionSettingsAsync("resume");
+                if (!_disposed && _gameLaunchWatcher != null)
+                    await _gameLaunchWatcher.RecheckForegroundAfterResumeAsync();
             });
         }
 

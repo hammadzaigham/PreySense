@@ -165,7 +165,7 @@
 
                             <ComboBox Grid.Column="1" x:Name="ComboLightingMode" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
                                       SelectionChanged="ComboLightingMode_SelectionChanged">
-                                <ComboBoxItem Content="Static" IsSelected="True"/>
+                                <ComboBoxItem Content="Static"/>
                                 <ComboBoxItem Content="Dynamic"/>
                             </ComboBox>
                         </Grid>
@@ -201,7 +201,7 @@
                                 <ComboBox Grid.Column="1" x:Name="ComboPresetStatic" Width="210" Height="28" MaxDropDownHeight="360"
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
                                           SelectionChanged="ComboPresetStatic_SelectionChanged">
-                                    <ComboBoxItem Content="None" Tag="None" IsSelected="True"/>
+                                    <ComboBoxItem Content="Custom" Tag="Custom"/>
                                     <ComboBoxItem Content="Predator" Tag="Predator"/>
                                     <ComboBoxItem Content="Cyberpunk" Tag="Cyberpunk"/>
                                     <ComboBoxItem Content="Fire &amp; Ice" Tag="FireIce"/>
@@ -292,7 +292,7 @@
                                 <ComboBox Grid.Column="1" x:Name="ComboAnimationSelect" Width="210" Height="28" MaxDropDownHeight="360"
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
                                           SelectionChanged="ComboAnimationSelect_SelectionChanged">
-                                    <ComboBoxItem Content="Breathing" Tag="HW:1" IsSelected="True"/>
+                                    <ComboBoxItem Content="Breathing" Tag="HW:1"/>
                                     <ComboBoxItem Content="Neon Wave" Tag="HW:2"/>
                                     <ComboBoxItem Content="Color Wave" Tag="HW:3"/>
                                     <ComboBoxItem Content="Ripple" Tag="HW:4"/>
@@ -424,7 +424,7 @@
                                 <ComboBox Grid.Column="1" x:Name="ComboCoverPresets" Width="210" Height="28" MaxDropDownHeight="360"
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
                                           SelectionChanged="ComboCoverPresets_SelectionChanged">
-                                    <ComboBoxItem Content="None" Tag="None" IsSelected="True"/>
+                                    <ComboBoxItem Content="Custom" Tag="Custom"/>
                                     <ComboBoxItem Content="Predator Cyan" Tag="Predator"/>
                                     <ComboBoxItem Content="Hellfire Red" Tag="Fire"/>
                                     <ComboBoxItem Content="Tactical Amber" Tag="Amber"/>

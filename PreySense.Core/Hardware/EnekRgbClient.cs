@@ -34,9 +34,7 @@ namespace PreySense
 
         private readonly object _lock = new();
         private SafeFileHandle? _deviceHandle;
-        private string? _cachedDevicePath;
         private bool _isDisposed;
-        private bool _isDeviceProbed;
 
         public bool IsAvailable
         {
@@ -45,11 +43,7 @@ namespace PreySense
                 lock (_lock)
                 {
                     if (_isDisposed) return false;
-                    if (!_isDeviceProbed)
-                    {
-                        EnsureDeviceOpen();
-                    }
-                    return _deviceHandle != null && !_deviceHandle.IsInvalid;
+                    return EnsureDeviceOpen();
                 }
             }
         }
@@ -66,17 +60,15 @@ namespace PreySense
             if (_deviceHandle != null && !_deviceHandle.IsInvalid)
                 return true;
 
-            _isDeviceProbed = true;
             try
             {
-                string? path = _cachedDevicePath ?? FindEnekDevicePath();
+                string? path = FindEnekDevicePath();
                 if (string.IsNullOrEmpty(path))
                 {
                     AppLogger.Log("EnekRgbClient: ENEK5130 device not detected on system.");
                     return false;
                 }
 
-                _cachedDevicePath = path;
                 var handle = CreateFile(
                     path,
                     0xC0000000, // GENERIC_READ | GENERIC_WRITE
@@ -88,9 +80,9 @@ namespace PreySense
 
                 if (handle.IsInvalid)
                 {
-                    // Fall back to query-only access if shared write is contested
+                    // Fall back to write-only access if read access is contested
                     handle.Dispose();
-                    handle = CreateFile(path, 0, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
+                    handle = CreateFile(path, 0x40000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero); // GENERIC_WRITE
                 }
 
                 if (!handle.IsInvalid)
@@ -101,6 +93,7 @@ namespace PreySense
                 }
 
                 int err = Marshal.GetLastWin32Error();
+                handle.Dispose();
                 AppLogger.Log($"EnekRgbClient: failed to open ENEK5130 handle (Win32 error {err}).");
             }
             catch (Exception ex)
@@ -251,7 +244,11 @@ namespace PreySense
 
         private bool SendFeatureReport(byte target, byte effect, byte brightness, byte speed, byte direction, byte r, byte g, byte b, byte zoneMask)
         {
-            if (_deviceHandle == null || _deviceHandle.IsInvalid) return false;
+            if (_deviceHandle == null || _deviceHandle.IsInvalid)
+            {
+                if (!EnsureDeviceOpen() || _deviceHandle == null || _deviceHandle.IsInvalid)
+                    return false;
+            }
 
             byte[] packet = new byte[ExpectedReportLength];
             packet[0] = ReportId;
@@ -272,11 +269,15 @@ namespace PreySense
                 if (!success)
                 {
                     int err = Marshal.GetLastWin32Error();
-                    AppLogger.Log($"EnekRgbClient: HidD_SetFeature failed with Win32 error {err}. Reopening device...");
                     CloseHandle();
-                    if (EnsureDeviceOpen() && _deviceHandle != null)
+                    AppLogger.Error($"EnekRgbClient: HidD_SetFeature failed with Win32 error {err}. Reopening device and retrying report.");
+                    if (EnsureDeviceOpen() && _deviceHandle != null && !_deviceHandle.IsInvalid)
                     {
-                        return HidD_SetFeature(_deviceHandle, packet, packet.Length);
+                        success = HidD_SetFeature(_deviceHandle, packet, packet.Length);
+                        if (!success)
+                        {
+                            CloseHandle();
+                        }
                     }
                 }
                 return success;

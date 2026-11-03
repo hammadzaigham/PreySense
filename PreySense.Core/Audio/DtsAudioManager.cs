@@ -384,7 +384,7 @@ namespace PreySense.Core.Audio
                 object? next = endpoints.Next();
                 return next == null ? null : (IDTSEndpointInfo)next;
             }
-            catch (COMException)
+            catch (Exception)
             {
                 return null;
             }
@@ -397,7 +397,7 @@ namespace PreySense.Core.Audio
                 object? next = modes.Next();
                 return next == null ? null : (IDTSOperatingMode)next;
             }
-            catch (COMException)
+            catch (Exception)
             {
                 return null;
             }

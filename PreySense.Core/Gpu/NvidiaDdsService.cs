@@ -25,7 +25,16 @@ namespace PreySense.Gpu
         DdsActiveMux ActiveMux,
         uint KmdResponse,
         uint SrType
-    );
+    )
+    {
+        public bool Matches(DdsDisplayMode mode) => IsSupported && KmdResponse == 0 && mode switch
+        {
+            DdsDisplayMode.Automatic => IsAutomatic && ActiveMux != DdsActiveMux.Unknown,
+            DdsDisplayMode.Optimus => !IsAutomatic && ActiveMux == DdsActiveMux.Optimus,
+            DdsDisplayMode.NvidiaGpuOnly => !IsAutomatic && ActiveMux == DdsActiveMux.dGPU,
+            _ => false
+        };
+    }
 
     /// <summary>
     /// Native NVIDIA Advanced Optimus (Dynamic Display Switch / DDS) Service.
@@ -90,6 +99,8 @@ namespace PreySense.Gpu
         private NvCplApiGetSettingDelegate? _getSetting;
         private NvCplApiSetSettingDelegate? _setSetting;
         private NvCplApiExecuteDelegate? _execute;
+        private int _lastGetInfoRet;
+        private DateTime _lastGetInfoLogTime = DateTime.MinValue;
 
         public bool IsAvailable
         {
@@ -216,6 +227,11 @@ namespace PreySense.Gpu
                     for (int i = 0; i < 16; i++) Marshal.WriteByte(pStatus, i, 0);
 
                     int ret = _getInfo(InfoTypeDdsStatus, 0, pStatus, ref size);
+                    if (ret == 0 && _lastGetInfoRet != 0)
+                    {
+                        AppLogger.Log("NvidiaDdsService: NvCplApiGetInfo(0x17) recovered.");
+                        _lastGetInfoRet = 0;
+                    }
                     if (ret == 0)
                     {
                         var info = Marshal.PtrToStructure<NativeDdsStatusInfo>(pStatus);
@@ -235,7 +251,12 @@ namespace PreySense.Gpu
                         );
                     }
 
-                    AppLogger.Log($"NvidiaDdsService: NvCplApiGetInfo(0x17) failed with ret={ret}.");
+                    if (ret != _lastGetInfoRet || (DateTime.UtcNow - _lastGetInfoLogTime).TotalSeconds >= 30)
+                    {
+                        _lastGetInfoRet = ret;
+                        _lastGetInfoLogTime = DateTime.UtcNow;
+                        AppLogger.Log($"NvidiaDdsService: NvCplApiGetInfo(0x17) failed with ret={ret}.");
+                    }
                     return null;
                 }
                 finally
@@ -254,9 +275,10 @@ namespace PreySense.Gpu
                 IntPtr pBlocker = Marshal.AllocHGlobal(4);
                 try
                 {
+                    Marshal.WriteInt32(pBlocker, 0);
                     uint status;
                     int ret = _getSetting(1, out status, SettingIdBlockingApps, pBlocker, 1);
-                    if (ret == 0)
+                    if (ret == 0 && status == 0)
                     {
                         byte val = Marshal.ReadByte(pBlocker);
                         return val != 0;
@@ -302,10 +324,10 @@ namespace PreySense.Gpu
 
                     uint status = 0;
                     int setRet = _setSetting(1, out status, SettingIdDdsState, pBuf, 16);
-                    if (setRet != 0)
+                    if (setRet != 0 || status != 0)
                     {
                         AppLogger.Log($"NvidiaDdsService: NvCplApiSetSetting failed (ret={setRet}, status=0x{status:X}).");
-                        return (false, $"Setting DDS state failed (Code {setRet}).");
+                        return (false, $"Setting DDS state failed (Code {setRet}, driver status 0x{status:X}).");
                     }
 
                     // Apply staged display settings immediately (NVCPL_COMMAND_COMMIT)

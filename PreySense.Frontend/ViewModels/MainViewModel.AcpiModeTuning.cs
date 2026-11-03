@@ -38,13 +38,49 @@ public partial class MainViewModel
         }
     }
 
-    public void ApplyCpuBoostForMode(byte mode)
+    public int CpuBoostModeForMode(byte mode)
     {
-        int boost = CpuBoostForMode(mode) ? 1 : 0;
+        if (!IsExtendedCpuBoostEnabled) return CpuBoostForMode(mode) ? 1 : 0;
+        var profile = ProfileManager.LoadProfile(mode);
+        return profile.ExtendedCpuBoost ?? profile.CpuBoost;
+    }
+
+    public int CpuBoostModeForModeIndex(int index) => CpuBoostModeForMode(BoostModeIndexToByte(index));
+
+    private static byte BoostModeIndexToByte(int index) => index switch
+    {
+        0 => 0x06, 1 => 0x00, 3 => 0x04, 4 => 0x05, _ => 0x01
+    };
+
+    public void SetExtendedCpuBoostForModeIndex(int index, int boost)
+    {
+        byte mode = BoostModeIndexToByte(index);
+        var profile = ProfileManager.LoadProfile(mode);
+        profile.CpuBoost = Math.Clamp(boost, 0, 6);
+        profile.ExtendedCpuBoost = profile.CpuBoost;
+        if (!ProfileManager.SaveProfile(profile))
+        {
+            StatusMessage = "CPU boost settings could not be saved.";
+            return;
+        }
+        if (mode == ActivePowerMode)
+            ApplyCpuBoostForMode(mode);
+    }
+
+    private bool _lastCpuBoostApplySucceeded = true;
+
+    public bool ApplyCpuBoostForMode(byte mode)
+    {
+        int boost = CpuBoostModeForMode(mode);
         if (CpuBoostMode != boost)
             CpuBoostMode = boost;
         else
-            PowerLimitController.SetCpuBoost(boost);
+        {
+            _lastCpuBoostApplySucceeded = PowerLimitController.SetCpuBoost(boost);
+            if (!_lastCpuBoostApplySucceeded)
+                StatusMessage = "CPU boost preference could not be applied by Windows. See debug.log.";
+        }
+        return _lastCpuBoostApplySucceeded;
     }
 
     public int TauForMode(byte mode) => Math.Clamp(mode switch

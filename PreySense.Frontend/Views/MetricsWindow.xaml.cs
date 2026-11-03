@@ -12,6 +12,9 @@ namespace PreySense.Frontend.Views
         {
             new("None", "None"),
             new("Usage", "CPU Usage"),
+            new("Max Core", "CPU Max Core Usage"),
+            new("P-Core Usage", "CPU P-Core Usage"),
+            new("E-Core Usage", "CPU E-Core Usage"),
             new("Temperature", "CPU Temperature"),
             new("P-Core", "CPU P-Core"),
             new("E-Core", "CPU E-Core"),
@@ -38,8 +41,6 @@ namespace PreySense.Frontend.Views
         private static readonly string[] VerticalPositions = { "Top", "Center", "Bottom" };
 
         private bool _isInitializing = true;
-        private readonly UiDebouncer _hudScaleDebouncer = new(TimeSpan.FromMilliseconds(100));
-        private readonly UiDebouncer _opacityDebouncer = new(TimeSpan.FromMilliseconds(100));
 
         public MetricsWindow()
         {
@@ -51,8 +52,6 @@ namespace PreySense.Frontend.Views
             Closed += (_, _) =>
             {
                 OverlayBridge.EnabledChanged -= OnOverlayEnabledChanged;
-                _hudScaleDebouncer.Dispose();
-                _opacityDebouncer.Dispose();
             };
         }
 
@@ -60,9 +59,6 @@ namespace PreySense.Frontend.Views
         {
             void Apply()
             {
-                if (CheckGameOnly.IsChecked == true)
-                    return;
-
                 if (CheckEnableOverlay.IsChecked == enabled)
                     return;
 
@@ -118,7 +114,6 @@ namespace PreySense.Frontend.Views
         private void LoadSettings()
         {
             bool isOverlayEnabled = AppConfig.IsOverlay();
-            bool showInGamesOnly = GetRegInt("overlay_game_only", 0) == 1;
             bool showFps = GetRegInt("overlay_show_fps", 1) == 1;
 
             int rawScale = GetRegInt("overlay_scale_percent", 100);
@@ -138,9 +133,7 @@ namespace PreySense.Frontend.Views
             opacityPercent = Math.Clamp(opacityPercent, 0, 100);
 
             CheckEnableOverlay.IsChecked = isOverlayEnabled;
-            CheckGameOnly.IsChecked = showInGamesOnly;
             CheckShowFps.IsChecked = showFps;
-            ApplyEnableOverlayAvailability();
             SliderHudScale.Value = scale;
             SliderOpacity.Value = opacityPercent;
 
@@ -276,12 +269,6 @@ namespace PreySense.Frontend.Views
         private void OverlayToggle_Changed(object sender, RoutedEventArgs e)
         {
             if (_isInitializing) return;
-            if (CheckGameOnly.IsChecked == true)
-            {
-                CheckEnableOverlay.IsChecked = false;
-                return;
-            }
-
             bool enabled = CheckEnableOverlay.IsChecked == true;
             if (enabled)
             {
@@ -291,31 +278,6 @@ namespace PreySense.Frontend.Views
             {
                 HardwareOverlayManager.Stop();
             }
-        }
-
-        private void GameOnly_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_isInitializing) return;
-            SetRegInt("overlay_game_only", CheckGameOnly.IsChecked == true ? 1 : 0);
-            ApplyEnableOverlayAvailability();
-            HardwareOverlayManager.RefreshDisplayFlags();
-        }
-
-        private void ApplyEnableOverlayAvailability()
-        {
-            bool gameOnly = CheckGameOnly.IsChecked == true;
-            CheckEnableOverlay.IsEnabled = !gameOnly;
-            if (!gameOnly)
-                return;
-
-            if (CheckEnableOverlay.IsChecked == true)
-            {
-                _isInitializing = true;
-                CheckEnableOverlay.IsChecked = false;
-                _isInitializing = false;
-            }
-
-            HardwareOverlayManager.Stop();
         }
 
         private void SettingChanged(object sender, RoutedEventArgs e)
@@ -338,7 +300,7 @@ namespace PreySense.Frontend.Views
                 LabelHudScale.Text = $"{val}%";
                 if (!_isInitializing)
                 {
-                    _hudScaleDebouncer.Debounce(SaveHudScale);
+                    SaveHudScale();
                 }
             }
         }
@@ -355,7 +317,7 @@ namespace PreySense.Frontend.Views
                 LabelOpacity.Text = $"{val}%";
                 if (!_isInitializing)
                 {
-                    _opacityDebouncer.Debounce(SaveOpacity);
+                    SaveOpacity();
                 }
             }
         }

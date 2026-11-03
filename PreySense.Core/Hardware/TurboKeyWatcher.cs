@@ -44,6 +44,7 @@ namespace PreySense
         public event EventHandler<HotKeyEventArgs>? TurboKeyPressed;
         public event EventHandler<int>? BrightnessKeyPressed;
         public event EventHandler<HotKeyEventArgs>? HotKeyReceived;
+        public event EventHandler<PreySense.Core.Services.PowerSourceKind>? PowerSourceReceived;
 
         public bool IsRunning
         {
@@ -71,7 +72,10 @@ namespace PreySense
             try
             {
                 _apgeWatcher = StartClassWatcher("APGeEvent");
-                _genericWatcher = StartClassWatcher("AcerGenericEvent");
+                if (_apgeWatcher == null)
+                {
+                    _genericWatcher = StartClassWatcher("AcerGenericEvent");
+                }
                 AppLogger.Log($"TurboKey: MTA WMI listeners started (APGe={_apgeWatcher != null}, Generic={_genericWatcher != null}).");
                 _stop?.Wait();
             }
@@ -88,11 +92,12 @@ namespace PreySense
 
         private ManagementEventWatcher? StartClassWatcher(string className)
         {
+            ManagementEventWatcher? watcher = null;
             try
             {
-                var scope = new ManagementScope(@"\\localhost\root\wmi");
+                var scope = new ManagementScope(@"root\wmi");
                 scope.Connect();
-                var watcher = new ManagementEventWatcher(scope, new EventQuery($"SELECT * FROM {className}"));
+                watcher = new ManagementEventWatcher(scope, new EventQuery($"SELECT * FROM {className}"));
                 watcher.EventArrived += OnEventArrived;
                 watcher.Start();
                 AppLogger.Log($"TurboKey: subscribed {className}.");
@@ -101,6 +106,11 @@ namespace PreySense
             catch (Exception ex)
             {
                 AppLogger.Log($"TurboKey: failed to start {className}: {ex.Message}");
+                if (watcher != null)
+                {
+                    try { watcher.Stop(); } catch { }
+                    try { watcher.Dispose(); } catch { }
+                }
                 return null;
             }
         }
@@ -225,8 +235,15 @@ namespace PreySense
                 var args = new HotKeyEventArgs(category, subEventId, param);
                 HotKeyReceived?.Invoke(this, args);
 
-                // Old PreySense: OnHotkeyEvent(detail) if detail == 5 (GHKE).
-                if (IsPhysicalModeKey(category, subEventId, param))
+                if (category == 0x08)
+                {
+                    if (PreySense.Helpers.WmiController.TryParseAcerPowerEvent(new byte[] { category, subEventId }, out var source))
+                    {
+                        AppLogger.Log($"TurboKey: ACPI power source event: {source}.");
+                        PowerSourceReceived?.Invoke(this, source);
+                    }
+                }
+                else if (IsPhysicalModeKey(category, subEventId, param))
                 {
                     AppLogger.Log("TurboKey: chassis Mode / Turbo key detected.");
                     TurboKeyPressed?.Invoke(this, args);

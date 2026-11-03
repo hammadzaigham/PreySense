@@ -38,6 +38,9 @@ public class OpenCoreReinstallTests
         using var reader = new System.IO.StreamReader(script);
         string text = reader.ReadToEnd();
         Assert.Contains("Copy-Item -LiteralPath $entry.Source", text);
+        Assert.DoesNotContain("EfiBackups", text);
+        Assert.DoesNotContain("$backupRoot", text);
+        Assert.DoesNotContain("$entry.Backup", text);
         Assert.DoesNotContain("Format-Volume", text);
         Assert.DoesNotContain("Remove-Partition ", text);
     }

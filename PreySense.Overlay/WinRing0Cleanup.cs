@@ -51,23 +51,13 @@ namespace PreySense.Overlay
 
         private static void TryDelete(string path)
         {
-            for (int attempt = 0; attempt < 5; attempt++)
+            try
             {
-                try
-                {
-                    if (!File.Exists(path))
-                        return;
-                    File.Delete(path);
-                    return;
-                }
-                catch (Exception ex) when (attempt == 4)
-                {
-                    AppLogger.Log($"WinRing0Cleanup: could not delete {path}: {ex.Message}");
-                }
-                catch
-                {
-                    Thread.Sleep(200);
-                }
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"WinRing0Cleanup: could not delete {path}: {ex.Message}");
             }
         }
 

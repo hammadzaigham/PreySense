@@ -68,7 +68,7 @@ public class FactoryDefaultsProtectionTests
         int start = session.IndexOf("private async Task InitializeSessionAsync()", StringComparison.Ordinal);
         int end = session.IndexOf("public async Task RestoreSessionSettingsAsync", start, StringComparison.Ordinal);
         string startup = session[start..end];
-        int window = startup.IndexOf("await _startupWindowReady.Task", StringComparison.Ordinal);
+        int window = startup.IndexOf("await _applicationReady.Task", StringComparison.Ordinal);
         int validation = startup.IndexOf("await ValidateOpenCoreIntegrationAsync()", StringComparison.Ordinal);
         int prompt = startup.IndexOf("await PromptStartupFactoryCalibrationAsync()", StringComparison.Ordinal);
         int restore = startup.IndexOf("await RestoreSessionSettingsAsync(\"startup\")", StringComparison.Ordinal);
@@ -93,7 +93,16 @@ public class FactoryDefaultsProtectionTests
         string modes = Read("PreySense.Frontend/ViewModels/MainViewModel.PowerModes.cs");
         Assert.Contains("IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete", modes);
         Assert.Contains("!IsAcpiOverrideEnabled || !IsOpenCoreLoaded || !IsFactoryCalibrationComplete", modes);
-        Assert.Contains("vm.NotifyMainWindowLoaded()", Read("PreySense.Frontend/MainWindow.xaml.cs"));
+        string app = Read("PreySense.Frontend/App.xaml.cs");
+        int ready = app.IndexOf("NotifyApplicationReady()", StringComparison.Ordinal);
+        int assigned = app.IndexOf("MainWindow = mainWindow;", StringComparison.Ordinal);
+        int show = app.IndexOf("if (!startMinimized)", StringComparison.Ordinal);
+        Assert.IsTrue(assigned >= 0 && assigned < ready && ready < show,
+            "Session startup must be released after assigning the owner and before the visibility branch.");
+        Assert.DoesNotContain("!owner.IsLoaded", body);
+        Assert.Contains("SetTelemetryPollingActive(IsVisible", Read("PreySense.Frontend/MainWindow.xaml.cs"));
+        Assert.DoesNotContain("Loaded +=", Read("PreySense.Frontend/MainWindow.xaml.cs"));
+        Assert.Contains("Services.OverlayBridge.StartIfNeeded()", Read("PreySense.Frontend/App.xaml.cs"));
     }
 
     [TestMethod]

@@ -8,8 +8,23 @@ public static class PawnCpuPowerControl
 {
     private static readonly object Gate = new();
     private static PawnIO.IntelMsr? _msr;
-    private static long _nextVoltageAttempt;
     private static readonly bool VoltageSupported = IntelCpuVoltage.IsSupportedCpu();
+    private static readonly bool TemperatureSupported = IntelCpuTemperature.IsSupportedCpu();
+
+    public static int? ReadPackageTemperature()
+    {
+        if (!TemperatureSupported) return null;
+        lock (Gate)
+        {
+            try
+            {
+                if (!EnsureMsr(out _) || !_msr!.ReadMsr(0x1A2, out ulong target) ||
+                    !_msr.ReadMsr(0x1B1, out ulong thermal)) return null;
+                return IntelCpuTemperature.DecodePackageTemperature(target, thermal);
+            }
+            catch { Reset(); return null; }
+        }
+    }
 
     private static bool EnsureMsr(out string status)
     {
@@ -59,12 +74,11 @@ public static class PawnCpuPowerControl
         if (!VoltageSupported) return null;
         lock (Gate)
         {
-            if (Environment.TickCount64 < _nextVoltageAttempt) return null;
             try
             {
                 if (!EnsureMsr(out _) || !_msr!.ReadMsr(0x198, out ulong raw))
                 {
-                    _nextVoltageAttempt = Environment.TickCount64 + 30000;
+                    Reset();
                     return null;
                 }
                 return IntelCpuVoltage.DecodePerfStatus(raw);
@@ -72,7 +86,6 @@ public static class PawnCpuPowerControl
             catch
             {
                 Reset();
-                _nextVoltageAttempt = Environment.TickCount64 + 30000;
                 return null;
             }
         }

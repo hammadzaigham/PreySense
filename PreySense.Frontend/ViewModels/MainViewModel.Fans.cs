@@ -17,34 +17,27 @@ public partial class MainViewModel
     private bool _sentMaxFanMode, _fanOverrideActive, _fanFallbackActive;
     private long _fanRetryAfter, _fanModeSettlesAt;
 
-    internal bool RequiresFanTelemetry
+    private bool RequiresFanTemperatures
     {
         get
         {
             lock (_fanControlGate)
-                return _runningFanProfile == null || _runningFanProfile.ControlMode == FanControlMode.Custom;
+            {
+                if (_runningFanProfile == null && _hw.TryGetPowerMode(out byte mode))
+                {
+                    _runningFanProfile = FanCurveStorage.Load(mode);
+                    _runningFanProfileMode = mode;
+                }
+                return _runningFanProfile?.ControlMode == FanControlMode.Custom;
+            }
         }
     }
 
-    private void UpdateFanTelemetryInterval()
+    private void UpdateFanDemand()
     {
-        // Unit-test and early-startup paths can process a fan profile before
-        // the telemetry timer has been created. Fan policy must remain safe in
-        // that case; the normal application path always has a timer here.
-        if (_telemetryTimer == null)
-            return;
-
-        bool shouldRun = _telemetryWindowVisible || RequiresFanTelemetry;
-        _telemetryTimer.Interval = VisibleTelemetryIntervalMs;
-        if (shouldRun)
-        {
-            if (!_telemetryTimer.Enabled)
-                _telemetryTimer.Start();
-        }
-        else
-        {
-            _telemetryTimer.Stop();
-        }
+        PreySense.Core.Services.TelemetryCoordinator.SetDemand(
+            PreySense.Core.Services.TelemetryDemand.FanController,
+            RequiresFanTemperatures);
     }
 
     public int? AppliedCpuFanPercent
@@ -63,6 +56,7 @@ public partial class MainViewModel
         {
             if (_runningFanProfileMode == mode) ResetFanFollower();
         }
+        UpdateFanDemand();
         StatusMessage = $"{ProfileManager.ModeToProfileName(mode)} fan settings saved.";
     }
     private void ResetFanFollower()
@@ -90,7 +84,6 @@ public partial class MainViewModel
                 _runningFanProfileMode = mode;
                 _hw.InvalidateFanTargets();
                 _fanModeSettlesAt = Environment.TickCount64 + 3000;
-                UpdateFanTelemetryInterval();
             }
             if (_runningFanProfile.ControlMode == FanControlMode.Auto)
             {
@@ -101,7 +94,7 @@ public partial class MainViewModel
                     _fanFallbackActive = true;
                     _sentCpuFan = _sentGpuFan = null;
                 }
-                UpdateFanTelemetryInterval();
+                UpdateFanDemand();
                 return;
             }
             if (_runningFanProfile.ControlMode == FanControlMode.Max)
@@ -117,6 +110,7 @@ public partial class MainViewModel
                     }
                     else FanWriteFailed();
                 }
+                UpdateFanDemand();
                 return;
             }
             bool emergency = _fanCoolingSafety.Evaluate(telemetry.CpuTemp, telemetry.GpuTemp);
@@ -164,9 +158,23 @@ public partial class MainViewModel
         lock (_fanControlGate)
         {
             ResetFanFollower();
-            ProcessFanCurves(_hw.GetCurrentTelemetry());
+            if (!_hw.TryGetPowerMode(out byte mode)) { ReleaseCustomFans(); return; }
+            _runningFanProfile = FanCurveStorage.Load(mode);
+            _runningFanProfileMode = mode;
+            _hw.InvalidateFanTargets();
+            _fanModeSettlesAt = Environment.TickCount64 + 3000;
+            if (!RequiresFanTemperatures)
+            {
+                UpdateFanDemand();
+                ProcessFanCurves(default);
+                return;
+            }
+            UpdateFanDemand();
+            var fanTelemetry = PreySense.Core.Services.TelemetryCoordinator.RequestFreshFanTemperatures();
+            ProcessFanCurves(fanTelemetry);
         }
     }
+
     private void ReleaseCustomFans()
     {
         lock (_fanControlGate)

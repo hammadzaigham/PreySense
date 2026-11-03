@@ -8,6 +8,7 @@ namespace PreySense.Frontend.ViewModels;
 
 public partial class MainViewModel
 {
+    // Unsaved edits only. Persisted values are read fresh until the user edits them.
     private readonly Dictionary<int, GpuPowerOffsets> _gpuOffsets = new();
     private static readonly string[] GpuOffsetModes = { "Eco", "Quiet", "Balanced", "Perf", "Turbo" };
     private const string GpuOffsetsKey = @"SOFTWARE\PreySense\GpuOffsets";
@@ -20,7 +21,7 @@ public partial class MainViewModel
 
     public GpuPowerOffsets GpuOffsetsForMode(int index, int targetWatts)
     {
-        if (_gpuOffsets.TryGetValue(index, out var cached)) return cached;
+        if (_gpuOffsets.TryGetValue(index, out var draft)) return draft;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(GpuOffsetsKey);
@@ -29,7 +30,7 @@ public partial class MainViewModel
                 && key.GetValue(name + "Boost") is int boost)
             {
                 var saved = new GpuPowerOffsets(delta, boost);
-                if (saved.IsValid) return _gpuOffsets[index] = saved;
+                if (saved.IsValid) return saved;
             }
         }
         catch (Exception ex) { AppLogger.Log($"GPU offset load failed: {ex.Message}"); }
@@ -40,7 +41,7 @@ public partial class MainViewModel
         {
             var captured = new GpuPowerOffsets(factoryDelta, factoryBoost);
             if (captured.IsValid && captured.NominalReferenceWatts(GpuBasePowerWatts) == targetWatts)
-                return _gpuOffsets[index] = captured;
+                return captured;
         }
         return GpuPowerOffsets.FromLegacyTarget(targetWatts, GpuBasePowerWatts);
     }
@@ -60,6 +61,7 @@ public partial class MainViewModel
             key.SetValue(name + "Delta", value.DeltaWatts);
             key.SetValue(name + "Boost", value.DynamicBoostWatts);
         }
+        _gpuOffsets.Clear();
     }
 
     private bool ApplyGpuModePower(byte mode, int targetWatts)

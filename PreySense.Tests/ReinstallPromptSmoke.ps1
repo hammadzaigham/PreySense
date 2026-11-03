@@ -9,7 +9,6 @@ $ResultPath = Join-Path ([IO.Path]::GetTempPath()) ('PreySense-Prompt-Test-' + [
 $written = @(1, 2)
 $aml = New-Object byte[] 36
 [BitConverter]::GetBytes([uint32]0x0201).CopyTo($aml, 24)
-$backupRoot = 'test backup'
 $failureMessage = $null
 $script:restartRequested = $false
 $script:answers = [System.Collections.Generic.Queue[string]]::new()

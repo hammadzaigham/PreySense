@@ -32,7 +32,7 @@ namespace PreySense.Frontend.ViewModels
             var operation = await _dispatcher.InvokeAsync(async () =>
             {
                 if (_disposed || _startupCalibrationPrompted || !IsOpenCoreLoaded || FactoryCalibrationIsLocked()) return;
-                if (Application.Current?.MainWindow is not Window owner || !owner.IsLoaded) return;
+                if (Application.Current?.MainWindow is not Window owner) return;
                 _startupCalibrationPrompted = true;
                 bool previous = App.SuppressAutoHide;
                 App.SuppressAutoHide = true;
@@ -1232,7 +1232,7 @@ namespace PreySense.Frontend.ViewModels
                 profile.CpuPl1 = pl1;
                 profile.CpuPl2 = pl2;
                 profile.TauSeconds = tauSeconds;
-                profile.CpuBoost = CpuBoostForMode(mode) ? 1 : 0;
+                profile.CpuBoost = CpuBoostModeForMode(mode);
                 PreySense.Mode.ProfileManager.SaveProfile(profile);
             }
             catch { }

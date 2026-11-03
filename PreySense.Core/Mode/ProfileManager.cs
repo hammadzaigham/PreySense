@@ -65,6 +65,8 @@ namespace PreySense.Mode
                 profile.TauSeconds = Math.Clamp((int)key.GetValue("TauSeconds", profile.TauSeconds), 0, CpuPowerLimitConfiguration.InfiniteTauSliderValue);
                 profile.CpuBoost = Math.Clamp((int)key.GetValue("CpuBoost", profile.CpuBoost), 0, 6);
 
+                profile.ExtendedCpuBoost = key.GetValue("ExtendedCpuBoost") is int extendedBoost ? Math.Clamp(extendedBoost, 0, 6) : null;
+
                 profile.ApplyCpuLimits = (int)key.GetValue("ApplyCpuLimits", 0) == 1;
                 profile.ApplyGpuLimits = (int)key.GetValue("ApplyGpuLimits", 0) == 1;
                 profile.ApplyFanCurve = (int)key.GetValue("ApplyFanCurve", 0) == 1;
@@ -96,6 +98,8 @@ namespace PreySense.Mode
                 key.SetValue("TauSeconds", Math.Clamp(profile.TauSeconds, 0, CpuPowerLimitConfiguration.InfiniteTauSliderValue));
                 TryDeleteValue(key, "WindowsPowerMode");
                 key.SetValue("CpuBoost", profile.CpuBoost);
+                if (profile.ExtendedCpuBoost is int extendedBoost)
+                    key.SetValue("ExtendedCpuBoost", Math.Clamp(extendedBoost, 0, 6));
 
                 key.SetValue("ApplyCpuLimits", profile.ApplyCpuLimits ? 1 : 0);
                 key.SetValue("ApplyGpuLimits", profile.ApplyGpuLimits ? 1 : 0);
@@ -156,6 +160,7 @@ namespace PreySense.Mode
                         "WindowsPowerMode",
                         "DefaultWindowsPowerMode",
                         "CpuBoost",
+                        "ExtendedCpuBoost",
                         "GpuCoreOffset",
                         "GpuMemoryOffset",
                         "DefaultGpuCoreOffset",

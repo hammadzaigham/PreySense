@@ -40,7 +40,7 @@ public class PawnIoInstallationTests
         Assert.IsNotNull(root);
         string session = File.ReadAllText(Path.Combine(root.FullName, "PreySense.Frontend", "ViewModels", "MainViewModel.Session.cs"));
         int start = session.IndexOf("private async Task InitializeSessionAsync()", StringComparison.Ordinal);
-        int window = session.IndexOf("await _startupWindowReady.Task", start, StringComparison.Ordinal);
+        int window = session.IndexOf("await _applicationReady.Task", start, StringComparison.Ordinal);
         int installer = session.IndexOf("PawnIoInstallService.EnsureInstalledAsync", start, StringComparison.Ordinal);
         int restore = session.IndexOf("RestoreSessionSettingsAsync(\"startup\")", start, StringComparison.Ordinal);
         Assert.IsTrue(window < installer && installer < restore);

@@ -7,7 +7,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
-      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.8">
+      <controls:WindowTitleBar Grid.Row="0" Subtitle="v2.4.9">
         <controls:WindowTitleBar.Actions>
           <Button AutomationProperties.AutomationId="BtnSettings" Style="{StaticResource TitleBarButtonStyle}" Click="SettingsButton_Click">
             <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-settings-32.png" Width="14" Height="14" />
@@ -28,10 +28,9 @@
               </StackPanel>
               <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}" Foreground="{DynamicResource TextOnAccentBrush}" HorizontalAlignment="Right" TextAlignment="Right" Margin="12,0,0,0">
                 <Run Text="CPU: " />
-                <Run Text="{Binding CpuTemp, Mode=OneWay}" />
-                <Run Text="°C • " />
-                <Run Text="{Binding CpuRpm, Mode=OneWay}" />
-                <Run Text=" RPM" />
+                <Run Text="{Binding CpuTemperatureText, Mode=OneWay}" />
+                <Run Text=" • " />
+                <Run Text="{Binding CpuFanText, Mode=OneWay}" />
               </TextBlock>
             </Grid>
             <UniformGrid Columns="5" Rows="1" Margin="0,2,0,2">
@@ -136,10 +135,9 @@
               </StackPanel>
               <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}" Foreground="{DynamicResource TextOnAccentBrush}" HorizontalAlignment="Right" TextAlignment="Right" Margin="12,0,0,0">
                 <Run Text="GPU: " />
-                <Run Text="{Binding GpuTemp, Mode=OneWay}" />
-                <Run Text="°C • " />
-                <Run Text="{Binding GpuRpm, Mode=OneWay}" />
-                <Run Text=" RPM" />
+                <Run Text="{Binding GpuTemperatureText, Mode=OneWay}" />
+                <Run Text=" • " />
+                <Run Text="{Binding GpuFanText, Mode=OneWay}" />
               </TextBlock>
             </Grid>
             <UniformGrid Columns="{Binding GpuModeTileColumns}" Rows="1" Margin="0,2,0,2">
@@ -250,9 +248,11 @@
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-laptop-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                <TextBlock Text="Refresh Rate" Style="{StaticResource OriginalSectionTitleStyle}" />
+                <TextBlock Text="Display" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
-              <TextBlock Grid.Column="1" HorizontalAlignment="Right" TextAlignment="Right" Margin="12,0,0,0" Foreground="{DynamicResource TextOnAccentBrush}" Style="{StaticResource OriginalStatusTextStyle}" Text="{Binding DisplayPanelInfo}" />
+              <TextBlock Grid.Column="1" HorizontalAlignment="Right" Margin="12,0,0,0" Foreground="{DynamicResource TextOnAccentBrush}" Style="{StaticResource OriginalStatusTextStyle}">
+                <Run Text="{Binding DisplayPanelInfo}" /><Run Text=" • " /><Run Text="{Binding ActiveGpuDisplayMode}" />
+              </TextBlock>
             </Grid>
             <Grid Margin="0,2,0,2">
               <Grid.ColumnDefinitions>

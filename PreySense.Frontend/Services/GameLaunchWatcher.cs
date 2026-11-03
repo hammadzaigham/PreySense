@@ -73,7 +73,9 @@ namespace PreySense.Frontend.Services
             _ = EvaluateForegroundAsync(window);
         }
 
-        private async Task EvaluateForegroundAsync(IntPtr window)
+        public Task RecheckForegroundAfterResumeAsync() => EvaluateForegroundAsync(GetForegroundWindow(), reapplyTrackedGame: true);
+
+        private async Task EvaluateForegroundAsync(IntPtr window, bool reapplyTrackedGame = false)
         {
             if (Volatile.Read(ref _disposed) != 0) return;
             await _transitionGate.WaitAsync().ConfigureAwait(false);
@@ -88,7 +90,16 @@ namespace PreySense.Frontend.Services
                 if (pid == 0 || pid == 4) return;
 
                 // Alt-Tabbing within the tracked game is a no-op.
-                if (_activeProcessId == pid && _activeProcess != null) return;
+                if (_activeProcessId == pid && _activeProcess != null)
+                {
+                    if (reapplyTrackedGame)
+                    {
+                        var resumedProfile = FindMatchingProfile(GetProcessExecutablePath(pid));
+                        if (resumedProfile != null)
+                            await RunCallbackAsync(() => _onLaunch(resumedProfile), "resume foreground game").ConfigureAwait(false);
+                    }
+                    return;
+                }
 
                 string? executablePath = GetProcessExecutablePath(pid);
                 GameProfile? profile = FindMatchingProfile(executablePath);

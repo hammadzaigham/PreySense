@@ -22,6 +22,9 @@ namespace PreySense.Frontend.Views
             DependencyPropertyDescriptor
                 .FromProperty(SettingSwitchRow.IsCheckedProperty, typeof(SettingSwitchRow))
                 .AddValueChanged(SwitchCpuBoost, CpuBoostSwitch_Changed);
+            DependencyPropertyDescriptor
+                .FromProperty(SettingDropdownRow.SelectedIndexProperty, typeof(SettingDropdownRow))
+                .AddValueChanged(DropdownCpuBoost, ExtendedCpuBoost_Changed);
         }
 
         private void ModeSettingsWindow_Loaded(object sender, RoutedEventArgs e)
@@ -117,7 +120,7 @@ namespace PreySense.Frontend.Views
             if (DropdownCpuBoost != null)
             {
                 DropdownCpuBoost.Visibility = vm.ExtendedCpuBoostEditorVisibility;
-                DropdownCpuBoost.SelectedIndex = Math.Clamp(vm.CpuBoostMode, 0, vm.CpuBoostModes.Count - 1);
+                DropdownCpuBoost.SelectedIndex = Math.Clamp(vm.CpuBoostModeForModeIndex(_selectedModeIndex), 0, vm.CpuBoostModes.Count - 1);
             }
 
             int gpuWatts = _selectedModeIndex switch
@@ -169,8 +172,6 @@ namespace PreySense.Frontend.Views
             }
             vm.GpuThermalTripPointCelsius = val;
         }
-
-        private System.Windows.Threading.DispatcherTimer? _debounceTauTimer;
 
         private (int pl1, int pl2) ReadClampedLimits(bool preferPl2)
         {
@@ -274,21 +275,7 @@ namespace PreySense.Frontend.Views
 
             if (!_isUpdatingUi && DataContext is MainViewModel vm && vm.IsAcpiOverrideEnabled)
             {
-                if (_debounceTauTimer == null)
-                {
-                    _debounceTauTimer = new System.Windows.Threading.DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromMilliseconds(80)
-                    };
-                    _debounceTauTimer.Tick += (s, ev) =>
-                    {
-                        _debounceTauTimer.Stop();
-                        if (SliderTau == null) return;
-                        vm.SetTauForModeIndex(_selectedModeIndex, ReadTauSeconds());
-                    };
-                }
-                _debounceTauTimer.Stop();
-                _debounceTauTimer.Start();
+                vm.SetTauForModeIndex(_selectedModeIndex, val);
             }
         }
 
@@ -337,7 +324,7 @@ namespace PreySense.Frontend.Views
             WriteClampedLimitsToEditor(pl1, pl2);
             StoreModeLimits(pl1, pl2);
             vm.SetTauForModeIndex(_selectedModeIndex, tau);
-            vm.SetCpuBoostForModeIndex(_selectedModeIndex, SwitchCpuBoost?.IsChecked == true);
+            StoreCpuBoost(vm);
             vm.Pl1Watts = pl1;
             vm.Pl2Watts = pl2;
 
@@ -388,7 +375,7 @@ namespace PreySense.Frontend.Views
             WriteClampedLimitsToEditor(pl1, pl2);
             StoreModeLimits(pl1, pl2);
             vm.SetTauForModeIndex(_selectedModeIndex, tau);
-            vm.SetCpuBoostForModeIndex(_selectedModeIndex, SwitchCpuBoost?.IsChecked == true);
+            StoreCpuBoost(vm);
 
             int gpuW = ReadGpuWatts();
             if (RowGpuPower != null) RowGpuPower.Value = gpuW;
@@ -415,6 +402,21 @@ namespace PreySense.Frontend.Views
                 ? vm.CpuBoostModeName
                 : (SwitchCpuBoost?.IsChecked == true ? "on" : "off");
             vm.StatusMessage = $"Saved {modeName} limits (PL1 {pl1}W, PL2 {pl2}W, Tau {FormatTau(tau)}, CPU Boost {boost}) to registry.";
+        }
+
+        private void StoreCpuBoost(MainViewModel vm)
+        {
+            if (vm.IsExtendedCpuBoostEnabled)
+                vm.SetExtendedCpuBoostForModeIndex(_selectedModeIndex, DropdownCpuBoost.SelectedIndex);
+            else
+                vm.SetCpuBoostForModeIndex(_selectedModeIndex, SwitchCpuBoost?.IsChecked == true);
+        }
+
+        private void ExtendedCpuBoost_Changed(object? sender, EventArgs e)
+        {
+            if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsExtendedCpuBoostEnabled || DropdownCpuBoost.SelectedIndex < 0)
+                return;
+            StoreCpuBoost(vm);
         }
 
         private void CpuBoostSwitch_Changed(object? sender, EventArgs e)

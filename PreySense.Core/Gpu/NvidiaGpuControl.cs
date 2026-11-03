@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading.Tasks;
 using NvAPIWrapper.GPU;
 using NvAPIWrapper.Native;
 using NvAPIWrapper.Native.GPU;
@@ -24,45 +23,33 @@ namespace PreySense.Gpu
             _internalGpu = GetInternalDiscreteGpu();
         }
 
+        public void RefreshDevice() => _internalGpu = GetInternalDiscreteGpu();
         public bool IsValid => _internalGpu != null;
         public bool IsNvidia => IsValid;
         public string FullName => _internalGpu != null ? _internalGpu.FullName : "NVIDIA GPU";
-
-        public int? _lastTemp;
-        public int _lastTempTime = 0;
 
         private static bool verboseLog = false;
 
         private enum GpuState { Active, Asleep, Off }
 
-        private GpuState _lastState = GpuState.Off;
-        private PerformanceStateId _lastPerfState = PerformanceStateId.Undefined;
-        private long _lastStateTime = -StateCacheMs;
-        private const int StateCacheMs = 500;
-        private const int InactiveStateCacheMs = 5_000;
-        private const int InUseCacheMs = 1000;
-        private bool _lastInUse;
-        private long _lastInUseTime = -InUseCacheMs;
 
-        private GpuState GetGpuState()
+        private GpuState GetGpuState() => GetGpuState(out _);
+
+        private GpuState GetGpuState(out PerformanceStateId perfState)
         {
+            perfState = PerformanceStateId.Undefined;
             if (!IsValid) return GpuState.Off;
-            int cacheMs = _lastState == GpuState.Active ? StateCacheMs : InactiveStateCacheMs;
-            if (Environment.TickCount64 - _lastStateTime < cacheMs) return _lastState;
             try
             {
-                var perfState = GPUApi.GetCurrentPerformanceState(_internalGpu!.Handle);
+                perfState = GPUApi.GetCurrentPerformanceState(_internalGpu!.Handle);
                 if (verboseLog) AppLogger.Log($"GPU: {perfState}");
-                _lastPerfState = perfState;
-                _lastState = GpuState.Active;
+                return GpuState.Active;
             }
             catch (Exception ex)
             {
                 if (verboseLog) AppLogger.Log($"GPU: {ex.Message}");
-                _lastState = ex.Message == "NVAPI_GPU_NOT_POWERED" ? GpuState.Asleep : GpuState.Off;
+                return ex.Message == "NVAPI_GPU_NOT_POWERED" ? GpuState.Asleep : GpuState.Off;
             }
-            _lastStateTime = Environment.TickCount64;
-            return _lastState;
         }
 
         /// <summary>
@@ -71,16 +58,11 @@ namespace PreySense.Gpu
         /// </summary>
         public bool IsDiscreteGpuInUse()
         {
-            if (Environment.TickCount64 - _lastInUseTime < InUseCacheMs)
-                return _lastInUse;
-
-            bool inUse = GetGpuState() == GpuState.Active
-                && (!IsIdlePerformanceState(_lastPerfState) || HasUserGpuClient());
+            bool inUse = GetGpuState(out var perfState) == GpuState.Active
+                && (!IsIdlePerformanceState(perfState) || HasUserGpuClient());
             if (!inUse)
                 NvmlHelper.Shutdown();
 
-            _lastInUse = inUse;
-            _lastInUseTime = Environment.TickCount64;
             return inUse;
         }
 
@@ -144,43 +126,7 @@ namespace PreySense.Gpu
             }
         }
 
-        private Task<int?>? _readTask;
-
-        public int? GetCurrentTemperature()
-        {
-            if (!IsValid) return null;
-
-            var state = GetGpuState();
-            if (state == GpuState.Off) return null;
-
-            if ((_readTask?.IsCompleted ?? true) && (state == GpuState.Active || ShouldRefresh()))
-            {
-                _readTask = Task.Run(() =>
-                {
-                    var temp = ReadCurrentTemperature();
-                    if (temp is not null)
-                    {
-                        _lastTemp = temp;
-                        _lastTempTime = Environment.TickCount;
-                    }
-                    return temp;
-                });
-            }
-
-            return _lastTemp;
-        }
-
-        private bool ShouldRefresh()
-        {
-            const int minInterval = 5_000;
-
-            if (_lastTemp is null) return true;
-
-            // Simple default temperature delta logic since CPU temp is not accessible globally
-            var refresh = Environment.TickCount > _lastTempTime + minInterval;
-            if (verboseLog) AppLogger.Log($"GPU Temp Refresh: {refresh}");
-            return refresh;
-        }
+        public int? GetCurrentTemperature() => ReadCurrentTemperature();
 
         public void Dispose()
         {

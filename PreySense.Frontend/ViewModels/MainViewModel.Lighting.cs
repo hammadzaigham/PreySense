@@ -71,8 +71,19 @@ namespace PreySense.Frontend.ViewModels
         private bool _pendingKeyboardLighting;
         private bool _pendingCoverLighting;
         private Color[]? _pendingZonePreset;
-        private string _selectedZonePreset = "None";
-        public string SelectedZonePreset => _selectedZonePreset;
+        private string _selectedZonePreset = "Custom";
+        public string SelectedZonePreset
+        {
+            get => _selectedZonePreset;
+            set
+            {
+                if (!string.Equals(_selectedZonePreset, value, StringComparison.Ordinal))
+                {
+                    _selectedZonePreset = value;
+                    OnPropertyChanged(nameof(SelectedZonePreset));
+                }
+            }
+        }
         private string _lightingEffectTag = "HW:0";
         public string LightingEffectTag => _lightingEffectTag;
         private readonly UiDebouncer _lightingDebouncer = new(TimeSpan.FromMilliseconds(80));
@@ -221,7 +232,8 @@ namespace PreySense.Frontend.ViewModels
         public void SetZoneColor(string hexColor)
         {
             _pendingZonePreset = null;
-            _selectedZonePreset = "None";
+            SelectedZonePreset = "Custom";
+            ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, "Custom");
             SelectedHexColor = hexColor;
             if (IsCoverSyncWithKeyboard)
             {
@@ -233,7 +245,8 @@ namespace PreySense.Frontend.ViewModels
         public void DiscardPendingZonePreset()
         {
             _pendingZonePreset = null;
-            _selectedZonePreset = "None";
+            SelectedZonePreset = "Custom";
+            ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, "Custom");
         }
 
         [RelayCommand]
@@ -280,6 +293,15 @@ namespace PreySense.Frontend.ViewModels
             StatusMessage = $"Keyboard Brightness: {RgbBrightness}%";
         }
 
+        private void SetStatusMessageSafe(string message)
+        {
+            if (_disposed) return;
+            if (_dispatcher.CheckAccess())
+                StatusMessage = message;
+            else
+                _dispatcher.BeginInvoke(() => { if (!_disposed) StatusMessage = message; });
+        }
+
         [RelayCommand]
         public void ApplyHardwareEffect(string effectParam)
         {
@@ -294,7 +316,7 @@ namespace PreySense.Frontend.ViewModels
                 ActiveEffectName = mode >= 0 && mode < hwNames.Length ? hwNames[mode] : $"Hardware ({mode})";
                 var c = ColorTranslator.FromHtml(SelectedHexColor);
                 _hw.SetRgbHardwareEffect(mode, c.R, c.G, c.B, (byte)RgbBrightness, ToHidKeyboardSpeed(RgbSpeed), 1);
-                StatusMessage = $"Hardware Lighting Effect: {ActiveEffectName}";
+                SetStatusMessageSafe($"Hardware Lighting Effect: {ActiveEffectName}");
             }
         }
 
@@ -341,11 +363,10 @@ namespace PreySense.Frontend.ViewModels
                 }
             }
 
-            StatusMessage = $"Dynamic Animation: {ActiveEffectName}";
+            SetStatusMessageSafe($"Dynamic Animation: {ActiveEffectName}");
         }
 
-        [RelayCommand]
-        public void ApplyZonePreset(string presetName)
+        public static bool TryGetZonePresetColors(string? presetName, out Color[] colors, out string displayName)
         {
             Color z1, z2, z3, z4;
             switch (presetName?.ToLowerInvariant())
@@ -355,131 +376,145 @@ namespace PreySense.Frontend.ViewModels
                     z2 = ColorTranslator.FromHtml("#00E5FF");
                     z3 = ColorTranslator.FromHtml("#00E5FF");
                     z4 = ColorTranslator.FromHtml("#FFFFFF");
-                    ActiveEffectName = "Predator Cyan Preset";
+                    displayName = "Predator Cyan Preset";
                     break;
                 case "cyberpunk":
                     z1 = ColorTranslator.FromHtml("#FFDF00");
                     z2 = ColorTranslator.FromHtml("#FF007F");
                     z3 = ColorTranslator.FromHtml("#00E5FF");
                     z4 = ColorTranslator.FromHtml("#9D4EDD");
-                    ActiveEffectName = "Cyberpunk Preset";
+                    displayName = "Cyberpunk Preset";
                     break;
                 case "fireice":
                     z1 = ColorTranslator.FromHtml("#00E5FF");
                     z2 = ColorTranslator.FromHtml("#0077B6");
                     z3 = ColorTranslator.FromHtml("#FFB703");
                     z4 = ColorTranslator.FromHtml("#E71D36");
-                    ActiveEffectName = "Fire & Ice Preset";
+                    displayName = "Fire & Ice Preset";
                     break;
                 case "matrix":
                     z1 = ColorTranslator.FromHtml("#00FF66");
                     z2 = ColorTranslator.FromHtml("#2EC4B6");
                     z3 = ColorTranslator.FromHtml("#00FF66");
                     z4 = ColorTranslator.FromHtml("#00FF66");
-                    ActiveEffectName = "Matrix Code Preset";
+                    displayName = "Matrix Code Preset";
                     break;
                 case "stealth":
                     z1 = Color.White; z2 = Color.White; z3 = Color.White; z4 = Color.White;
-                    ActiveEffectName = "Stealth White Preset";
+                    displayName = "Stealth White Preset";
                     break;
                 case "sunset":
                     z1 = ColorTranslator.FromHtml("#FF6B00");
                     z2 = ColorTranslator.FromHtml("#FF3D5A");
                     z3 = ColorTranslator.FromHtml("#C9184A");
                     z4 = ColorTranslator.FromHtml("#7209B7");
-                    ActiveEffectName = "Sunset Preset";
+                    displayName = "Sunset Preset";
                     break;
                 case "ocean":
                     z1 = ColorTranslator.FromHtml("#003566");
                     z2 = ColorTranslator.FromHtml("#0077B6");
                     z3 = ColorTranslator.FromHtml("#00B4D8");
                     z4 = ColorTranslator.FromHtml("#CAF0F8");
-                    ActiveEffectName = "Ocean Preset";
+                    displayName = "Ocean Preset";
                     break;
                 case "ember":
                     z1 = ColorTranslator.FromHtml("#6A040F");
                     z2 = ColorTranslator.FromHtml("#DC2F02");
                     z3 = ColorTranslator.FromHtml("#F48C06");
                     z4 = ColorTranslator.FromHtml("#FFBA08");
-                    ActiveEffectName = "Ember Preset";
+                    displayName = "Ember Preset";
                     break;
                 case "vaporwave":
                     z1 = ColorTranslator.FromHtml("#FF71CE");
                     z2 = ColorTranslator.FromHtml("#B967FF");
                     z3 = ColorTranslator.FromHtml("#01CDFE");
                     z4 = ColorTranslator.FromHtml("#05FFA1");
-                    ActiveEffectName = "Vaporwave Preset";
+                    displayName = "Vaporwave Preset";
                     break;
                 case "royal":
                     z1 = ColorTranslator.FromHtml("#3C096C");
                     z2 = ColorTranslator.FromHtml("#5A189A");
                     z3 = ColorTranslator.FromHtml("#FFD60A");
                     z4 = ColorTranslator.FromHtml("#FFFFFF");
-                    ActiveEffectName = "Royal Preset";
+                    displayName = "Royal Preset";
                     break;
                 case "arctic":
                     z1 = ColorTranslator.FromHtml("#ADE8F4");
                     z2 = ColorTranslator.FromHtml("#FFFFFF");
                     z3 = ColorTranslator.FromHtml("#48CAE4");
                     z4 = ColorTranslator.FromHtml("#0077B6");
-                    ActiveEffectName = "Arctic Preset";
+                    displayName = "Arctic Preset";
                     break;
                 case "sakura":
                     z1 = ColorTranslator.FromHtml("#FF8FAB");
                     z2 = ColorTranslator.FromHtml("#FFB3C6");
                     z3 = ColorTranslator.FromHtml("#FFFFFF");
                     z4 = ColorTranslator.FromHtml("#FB6F92");
-                    ActiveEffectName = "Sakura Preset";
+                    displayName = "Sakura Preset";
                     break;
                 case "rainbow":
                     z1 = ColorTranslator.FromHtml("#FF0000");
                     z2 = ColorTranslator.FromHtml("#FFD000");
                     z3 = ColorTranslator.FromHtml("#00E676");
                     z4 = ColorTranslator.FromHtml("#2979FF");
-                    ActiveEffectName = "Rainbow Preset";
+                    displayName = "Rainbow Preset";
                     break;
                 case "toxic":
                     z1 = ColorTranslator.FromHtml("#C8FF00");
                     z2 = ColorTranslator.FromHtml("#7CFC00");
                     z3 = ColorTranslator.FromHtml("#39FF14");
                     z4 = ColorTranslator.FromHtml("#0B6E4F");
-                    ActiveEffectName = "Toxic Preset";
+                    displayName = "Toxic Preset";
                     break;
                 case "lava":
                     z1 = ColorTranslator.FromHtml("#8B0000");
                     z2 = ColorTranslator.FromHtml("#FF0000");
                     z3 = ColorTranslator.FromHtml("#FF4500");
                     z4 = ColorTranslator.FromHtml("#FF6B00");
-                    ActiveEffectName = "Lava Preset";
+                    displayName = "Lava Preset";
                     break;
                 case "midnight":
                     z1 = ColorTranslator.FromHtml("#10002B");
                     z2 = ColorTranslator.FromHtml("#3A0CA3");
                     z3 = ColorTranslator.FromHtml("#4361EE");
                     z4 = ColorTranslator.FromHtml("#4CC9F0");
-                    ActiveEffectName = "Midnight Preset";
+                    displayName = "Midnight Preset";
                     break;
                 case "dracula":
                     z1 = ColorTranslator.FromHtml("#BD93F9");
                     z2 = ColorTranslator.FromHtml("#FF79C6");
                     z3 = ColorTranslator.FromHtml("#8BE9FD");
                     z4 = ColorTranslator.FromHtml("#50FA7B");
-                    ActiveEffectName = "Dracula Preset";
+                    displayName = "Dracula Preset";
                     break;
                 default:
-                    return;
+                    colors = Array.Empty<Color>();
+                    displayName = string.Empty;
+                    return false;
             }
 
-            _pendingZonePreset = new[] { z1, z2, z3, z4 };
-            _selectedZonePreset = presetName;
-            _zoneHexColors[0] = ToRgbHex(z1);
-            _zoneHexColors[1] = ToRgbHex(z2);
-            _zoneHexColors[2] = ToRgbHex(z3);
-            _zoneHexColors[3] = ToRgbHex(z4);
+            colors = new[] { z1, z2, z3, z4 };
+            return true;
+        }
+
+        [RelayCommand]
+        public void ApplyZonePreset(string presetName)
+        {
+            if (!TryGetZonePresetColors(presetName, out var colors, out var displayName))
+                return;
+
+            _pendingZonePreset = colors;
+            SelectedZonePreset = presetName;
+            IsRgbSyncZonesEnabled = false;
+            _zoneHexColors[0] = ToRgbHex(colors[0]);
+            _zoneHexColors[1] = ToRgbHex(colors[1]);
+            _zoneHexColors[2] = ToRgbHex(colors[2]);
+            _zoneHexColors[3] = ToRgbHex(colors[3]);
             NotifyZoneColorProperties();
             _isSyncingZoneColor = true;
             SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
             _isSyncingZoneColor = false;
+            ActiveEffectName = displayName;
             ScheduleKeyboardLightingCommit();
         }
 
@@ -489,6 +524,7 @@ namespace PreySense.Frontend.ViewModels
                 return;
             _lightingEffectTag = tag;
             OnPropertyChanged(nameof(LightingEffectTag));
+            ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, _selectedZonePreset);
             ScheduleKeyboardLightingCommit();
         }
 
@@ -526,6 +562,84 @@ namespace PreySense.Frontend.ViewModels
         public void CommitKeyboardLighting() => ApplyKeyboardLightingNow();
 
         public void CommitCoverLighting() => ApplyCoverLighting(saveSettings: true);
+
+        private int _startupLightingRan;
+
+        public void ApplyStartupLighting()
+        {
+            if (_disposed)
+                return;
+
+            if (Interlocked.CompareExchange(ref _startupLightingRan, 1, 0) != 0)
+                return;
+
+            _ = Task.Run(async () =>
+            {
+                AppLogger.Log("ApplyStartupLighting: Starting startup lighting application sequence.");
+
+                // Poll for the RGB hardware client to become available (up to 15 seconds)
+                const int maxAttempts = 30; // 30 * 500ms = 15 seconds max
+                const int pollIntervalMs = 500;
+                bool clientConnected = false;
+
+                for (int attempt = 1; attempt <= maxAttempts && !_disposed; attempt++)
+                {
+                    try
+                    {
+                        if (_hw.IsRgbAvailable)
+                        {
+                            clientConnected = true;
+                            AppLogger.Log($"ApplyStartupLighting: RGB client connected on attempt {attempt} (elapsed ~{(attempt - 1) * pollIntervalMs}ms).");
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log($"ApplyStartupLighting: Check connection error on attempt {attempt}: {ex.Message}");
+                    }
+
+                    await Task.Delay(pollIntervalMs).ConfigureAwait(false);
+                }
+
+                if (_disposed)
+                    return;
+
+                if (!clientConnected)
+                {
+                    AppLogger.Log("ApplyStartupLighting: RGB client not detected within timeout window; attempting blind apply.");
+                }
+
+                // Pass 1: Immediate application upon connection
+                try
+                {
+                    ApplyKeyboardLightingNow();
+                    if (!IsCoverSyncWithKeyboard)
+                        ApplyCoverLighting(saveSettings: false);
+                    AppLogger.Log("ApplyStartupLighting: Pass 1 applied.");
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"ApplyStartupLighting Pass 1 error: {ex.Message}");
+                }
+
+                // Pass 2: Delayed reinforcement after 2.5 seconds to override any OEM firmware POST reset
+                try
+                {
+                    await Task.Delay(2500).ConfigureAwait(false);
+                    if (!_disposed)
+                    {
+                        ApplyKeyboardLightingNow();
+                        if (!IsCoverSyncWithKeyboard)
+                            ApplyCoverLighting(saveSettings: false);
+                        AppLogger.Log("ApplyStartupLighting: Pass 2 (reinforcement) applied.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"ApplyStartupLighting Pass 2 error: {ex.Message}");
+                }
+            });
+        }
 
         private void ApplyKeyboardLightingNow()
         {
@@ -784,14 +898,14 @@ namespace PreySense.Frontend.ViewModels
             _hw.SetRgbBrightness((byte)Math.Clamp(RgbBrightness, 0, 100));
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
             SaveRgbSettings();
-            StatusMessage = "Lighting settings applied.";
+            SetStatusMessageSafe("Lighting settings applied.");
         }
 
         public void SaveLightingSettings()
         {
             SaveRgbSettings();
             SaveCoverLightingSettings();
-            StatusMessage = "Lighting settings saved.";
+            SetStatusMessageSafe("Lighting settings saved.");
         }
 
         public void ApplyCoverLighting(bool saveSettings = true)
@@ -805,8 +919,9 @@ namespace PreySense.Frontend.ViewModels
 
                 string hex = CoverHexColor;
                 var color = ColorTranslator.FromHtml(hex);
-                byte b = (byte)Math.Clamp(RgbBrightness, 0, 100);
-                CoverBrightness = b;
+                byte b = (byte)Math.Clamp(sync ? RgbBrightness : CoverBrightness, 0, 100);
+                if (sync)
+                    CoverBrightness = b;
                 byte s = ToHidLogoSpeed(sync ? RgbSpeed : CoverSpeed);
                 int mode = !IsCoverLightingEnabled ? 0 : (sync ? CoverModeFromKeyboardEffect() : CoverLightingMode);
                 _hw.SetCoverLogoLighting(mode, color, b, s, IsCoverLightingEnabled);
@@ -817,9 +932,9 @@ namespace PreySense.Frontend.ViewModels
                     3 => "Neon Wave",
                     _ => "Static"
                 };
-                StatusMessage = IsCoverLightingEnabled
+                SetStatusMessageSafe(IsCoverLightingEnabled
                     ? $"Cover Backlight: {modeDesc} ({hex}, {CoverBrightness}%)"
-                    : "Cover Backlight: Disabled (Off)";
+                    : "Cover Backlight: Disabled (Off)");
 
                 if (saveSettings)
                 {
@@ -908,8 +1023,29 @@ namespace PreySense.Frontend.ViewModels
                     SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
                     string effectTag = key.GetValue("EffectTag") as string ?? "HW:0";
                     _lightingEffectTag = IsValidLightingEffectTag(effectTag) ? effectTag : "HW:0";
-                    string preset = key.GetValue("PresetTheme") as string ?? "None";
-                    _selectedZonePreset = IsValidZonePreset(preset) ? preset : "None";
+                    string preset = key.GetValue("PresetTheme") as string ?? "Custom";
+                    if (string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
+                        preset = "Custom";
+
+                    if (TryGetZonePresetColors(preset, out var presetColors, out var presetDisplayName))
+                    {
+                        SelectedZonePreset = preset;
+                        _pendingZonePreset = presetColors;
+                        IsRgbSyncZonesEnabled = false;
+                        _zoneHexColors[0] = ToRgbHex(presetColors[0]);
+                        _zoneHexColors[1] = ToRgbHex(presetColors[1]);
+                        _zoneHexColors[2] = ToRgbHex(presetColors[2]);
+                        _zoneHexColors[3] = ToRgbHex(presetColors[3]);
+                        NotifyZoneColorProperties();
+                        SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
+                        ActiveEffectName = presetDisplayName;
+                    }
+                    else
+                    {
+                        SelectedZonePreset = "Custom";
+                        _pendingZonePreset = null;
+                        ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, _selectedZonePreset);
+                    }
                     OnPropertyChanged(nameof(LightingEffectTag));
                 }
             }
@@ -1070,9 +1206,49 @@ namespace PreySense.Frontend.ViewModels
         }
 
         private static bool IsValidZonePreset(string preset) => preset is
-            "None" or "Predator" or "Cyberpunk" or "FireIce" or "Matrix" or "Stealth" or
+            "Custom" or "None" or "Predator" or "Cyberpunk" or "FireIce" or "Matrix" or "Stealth" or
             "Sunset" or "Ocean" or "Ember" or "Vaporwave" or "Royal" or "Arctic" or
             "Sakura" or "Rainbow" or "Toxic" or "Lava" or "Midnight" or "Dracula";
+
+        private static string GetEffectDisplayName(string effectTag, string preset)
+        {
+            if (effectTag.StartsWith("DYN:", StringComparison.Ordinal) &&
+                Enum.TryParse<CustomEffectMode>(effectTag[4..], out var effect))
+            {
+                return effect switch
+                {
+                    CustomEffectMode.RainbowCycle => "Rainbow Cycle",
+                    CustomEffectMode.PoliceStrobe => "Police Strobe",
+                    CustomEffectMode.FireEmber => "Fire Ember",
+                    CustomEffectMode.MatrixCascade => "Matrix Cascade",
+                    CustomEffectMode.CylonScanner => "Cylon Scanner",
+                    CustomEffectMode.AuroraDrift => "Aurora Drift",
+                    CustomEffectMode.OceanTide => "Ocean Tide",
+                    CustomEffectMode.Heartbeat => "Heartbeat",
+                    CustomEffectMode.LightningStorm => "Lightning Storm",
+                    CustomEffectMode.Starlight => "Starlight",
+                    CustomEffectMode.IceCrystal => "Ice Crystal",
+                    _ => effect.ToString()
+                };
+            }
+
+            if (effectTag.StartsWith("HW:", StringComparison.Ordinal) &&
+                int.TryParse(effectTag[3..], out int mode))
+            {
+                string[] hwNames = { "Static", "Breathing", "Neon", "Wave", "Ripple", "Zoom", "Snake", "Disco" };
+                if (mode == 0 && !string.IsNullOrWhiteSpace(preset) &&
+                    !preset.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                    !preset.Equals("Custom", StringComparison.OrdinalIgnoreCase))
+                {
+                    return TryGetZonePresetColors(preset, out _, out var name)
+                        ? name
+                        : System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(preset.ToLowerInvariant()) + " Preset";
+                }
+                return mode >= 0 && mode < hwNames.Length ? hwNames[mode] : $"Hardware ({mode})";
+            }
+
+            return "Static";
+        }
 
         [RelayCommand]
         public async Task ToggleKbdTimeoutAsync()

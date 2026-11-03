@@ -3,7 +3,7 @@
 .SYNOPSIS
     Updates files on the existing PREYSENSE EFI partition in place.
 .DESCRIPTION
-    Validates the packaged ACPI table, backs up overwritten files, copies and
+    Validates the packaged ACPI table, overwrites the installed files and
     verifies the payload, then arms WMI repair for the next boot. Partition
     layout, formatting, boot entries, and unrelated EFI files are preserved.
 #>
@@ -15,7 +15,6 @@ $failureMessage = $null
 $mountedHere = $false
 $partition = $null
 $mountPath = $null
-$backupRoot = $null
 $written = [System.Collections.Generic.List[object]]::new()
 
 try {
@@ -59,8 +58,6 @@ try {
     $targetEfi = [IO.Path]::GetFullPath((Join-Path $mountPath 'EFI'))
     $sourcePrefix = $sourceEfi.TrimEnd('\') + '\'
     $targetPrefix = $targetEfi.TrimEnd('\') + '\'
-    $backupRoot = Join-Path $env:LOCALAPPDATA ('PreySense\EfiBackups\' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 
     # Reject redirected directories before copying any payload files.
     foreach ($item in @(Get-Item -LiteralPath $sourceEfi) + @(Get-ChildItem -LiteralPath $sourceEfi -Recurse -Force)) {
@@ -78,14 +75,10 @@ try {
         $relative = $source.Substring($sourcePrefix.Length)
         $destination = [IO.Path]::GetFullPath((Join-Path $targetEfi $relative))
         if (-not $destination.StartsWith($targetPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Destination path escaped EFI.' }
-        $backup = Join-Path $backupRoot $relative
-        $existed = Test-Path -LiteralPath $destination
-        if ($existed) {
-            if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { throw "A directory blocks $relative" }
-            New-Item -ItemType Directory -Path (Split-Path -Parent $backup) -Force | Out-Null
-            Copy-Item -LiteralPath $destination -Destination $backup -Force
+        if ((Test-Path -LiteralPath $destination) -and -not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+            throw "A directory blocks $relative"
         }
-        [pscustomobject]@{ Source = $source; Destination = $destination; Backup = $backup; Existed = $existed }
+        [pscustomobject]@{ Source = $source; Destination = $destination }
     }
 
     # Create destination directories explicitly; never copy a container onto a leaf.
@@ -105,20 +98,8 @@ try {
 }
 catch {
     $failure = $_
-    for ($index = $written.Count - 1; $index -ge 0; $index--) {
-        $entry = $written[$index]
-        try {
-            if ($entry.Existed) {
-                Copy-Item -LiteralPath $entry.Backup -Destination $entry.Destination -Force
-            }
-            elseif ($entry.Destination.StartsWith($targetPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                Remove-Item -LiteralPath $entry.Destination -Force -ErrorAction SilentlyContinue
-            }
-        }
-        catch { Write-Warning "Could not roll back $($entry.Destination). Backup: $backupRoot" }
-    }
     Write-Host "Reinstall failed: $failure" -ForegroundColor Red
-    if ($backupRoot) { Write-Host "Backup: $backupRoot" }
+    if ($written.Count -gt 0) { Write-Warning 'Some files may already have been replaced. Run Update ACPI files again to complete the update.' }
     $failureMessage = "$failure"
 }
 finally {
@@ -142,7 +123,6 @@ if ($succeeded) {
     Write-Host ''
     Write-Host 'FILES UPDATED SUCCESSFULLY' -ForegroundColor Green
     Write-Host ("Updated and SHA256-verified {0} files. ACPI interface: 0x{1:X4}." -f $written.Count, [BitConverter]::ToUInt32($aml, 24))
-    Write-Host "Previous files are backed up at: $backupRoot"
     Write-Host 'Restart through the PreySense/OpenCore boot entry to load the updated ACPI files.' -ForegroundColor Yellow
     do {
         $restart = (Read-Host 'Restart Windows now? (Y/N)').Trim()

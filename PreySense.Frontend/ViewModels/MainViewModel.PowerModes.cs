@@ -170,6 +170,8 @@ namespace PreySense.Frontend.ViewModels
                 bool changed = await Task.Run(() => _hw.SetPowerMode(mode));
                 if (!changed) { StatusMessage = "The requested Acer mode could not be activated."; return; }
                 ActivePowerMode = mode;
+                if (!ApplyCpuBoostForMode(mode))
+                    StatusMessage = "Mode selected, but CPU boost could not be applied. See debug.log.";
                 UpdateModeName(mode);
                 NotifyModeSelectionsChanged();
                 PersistSessionSettings();
@@ -239,8 +241,9 @@ namespace PreySense.Frontend.ViewModels
                     if (!PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)modeTrip))
                         throw new InvalidOperationException("GPU thermal trip point could not be applied.");
                 });
-                ApplyCpuBoostForMode(mode);
+                bool boostApplied = ApplyCpuBoostForMode(mode);
                 StatusMessage = cpuApplied ? $"{PowerModeName} Mode Activated (MSR + MMIO verified)" : $"{PowerModeName} Mode Activated; CPU limits partial: {cpuResult}";
+                if (!boostApplied) StatusMessage += " | CPU boost failed; see debug.log.";
                 ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
             }
             catch (Exception ex)
@@ -389,7 +392,7 @@ namespace PreySense.Frontend.ViewModels
             if (!int.TryParse(boostModeStr, out int boostVal))
                 return;
 
-            CpuBoostMode = Math.Clamp(boostVal, 0, 6);
+            SetExtendedCpuBoostForModeIndex(ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 }, boostVal);
         }
 
         internal static string GetCpuBoostModeName(int boostMode)
@@ -410,8 +413,10 @@ namespace PreySense.Frontend.ViewModels
         {
             int boost = Math.Clamp(value, 0, 6);
             CpuBoostModeName = GetCpuBoostModeName(boost);
-            _ = Task.Run(() => PowerLimitController.SetCpuBoost(boost));
-            StatusMessage = $"CPU Boost set to: {CpuBoostModeName}";
+            bool applied = PowerLimitController.SetCpuBoost(boost);
+            _lastCpuBoostApplySucceeded = applied;
+            StatusMessage = applied ? $"CPU Boost set to: {CpuBoostModeName}"
+                : "Windows rejected the CPU boost change. See debug.log.";
             try
             {
                 using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\AdvancedSettings");

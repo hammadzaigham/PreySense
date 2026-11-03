@@ -124,6 +124,9 @@ namespace PreySense.Frontend
 
             var mainWindow = new MainWindow();
             MainWindow = mainWindow;
+            // Hidden launches must initialize without waiting for WPF Loaded.
+            ((ViewModels.MainViewModel)mainWindow.DataContext).NotifyApplicationReady();
+            Services.OverlayBridge.StartIfNeeded();
             _ = Task.Run(Services.StartupTaskService.RepairLogonTask);
 
             _ = Services.UpdateCheckService.CheckForUpdatesAsync();

@@ -10,6 +10,7 @@ namespace PreySense.Overlay
         private static bool _gameSessionActive;
 
         public static bool IsActive => _overlay?.IsActive ?? false;
+        public static bool IsShowing => _overlay?.IsShowing ?? false;
 
         public static HardwareOverlay GetOverlay()
         {
@@ -17,12 +18,6 @@ namespace PreySense.Overlay
             {
                 return _overlay ??= new HardwareOverlay();
             }
-        }
-
-        public static void Warmup()
-        {
-            var overlay = GetOverlay();
-            overlay.Prepare();
         }
 
         public static void SetWmiProvider(Func<WmiController?> provider)

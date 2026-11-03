@@ -8,6 +8,8 @@ namespace PreySense.Frontend.Views
     public partial class KeyboardWindow : Window
     {
         private bool _isUpdatingHexText = false;
+        private bool _isUpdatingColorWheel = false;
+        private bool _isUpdatingCoverColorWheel = false;
         private bool _isLoaded = false;
         private string _pendingLightingEffectTag = "HW:0";
         private MainViewModel? _boundVm;
@@ -32,6 +34,8 @@ namespace PreySense.Frontend.Views
                 }
 
                 // Initialize Keyboard Color Wheel & Hex Input
+                _isUpdatingColorWheel = true;
+                _isUpdatingHexText = true;
                 try
                 {
                     var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
@@ -39,6 +43,11 @@ namespace PreySense.Frontend.Views
                     if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
                 }
                 catch { }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingColorWheel = false;
+                }
 
                 // Cover Mode ComboBox Selection
                 switch (vm.CoverLightingMode)
@@ -51,6 +60,8 @@ namespace PreySense.Frontend.Views
                 UpdateCoverModePanels(vm.CoverLightingMode);
 
                 // Initialize Cover Color Wheel & Hex Input
+                _isUpdatingCoverColorWheel = true;
+                _isUpdatingHexText = true;
                 try
                 {
                     var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
@@ -58,6 +69,11 @@ namespace PreySense.Frontend.Views
                     if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
                 }
                 catch { }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingCoverColorWheel = false;
+                }
 
                 RestoreLightingModeUi(vm);
                 _isLoaded = true;
@@ -96,26 +112,31 @@ namespace PreySense.Frontend.Views
 
             if (!dynamic && ComboPresetStatic != null)
             {
+                int targetIndex = 0;
                 for (int i = 0; i < ComboPresetStatic.Items.Count; i++)
                 {
                     if (ComboPresetStatic.Items[i] is ComboBoxItem presetItem &&
                         presetItem.Tag is string presetTag &&
-                        string.Equals(presetTag, vm.SelectedZonePreset, StringComparison.Ordinal))
+                        string.Equals(presetTag, vm.SelectedZonePreset, StringComparison.OrdinalIgnoreCase))
                     {
-                        ComboPresetStatic.SelectedIndex = i;
+                        targetIndex = i;
                         break;
                     }
                 }
+                if (ComboPresetStatic.SelectedIndex != targetIndex)
+                    ComboPresetStatic.SelectedIndex = targetIndex;
             }
         }
 
         private void CoverColorWheel_ColorChanged(object? sender, System.Windows.Media.Color color)
         {
-            if (!_isLoaded || DataContext is not MainViewModel vm)
+            if (!_isLoaded || _isUpdatingCoverColorWheel || DataContext is not MainViewModel vm)
                 return;
 
             string hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
             vm.CoverHexColor = hex;
+            if (ComboCoverPresets != null && ComboCoverPresets.SelectedIndex != 0)
+                ComboCoverPresets.SelectedIndex = 0; // Custom
             if (!_isUpdatingHexText && TextCoverHexColorInput != null)
             {
                 _isUpdatingHexText = true;
@@ -126,7 +147,7 @@ namespace PreySense.Frontend.Views
 
         private void TextCoverHexColorInput_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (_isUpdatingHexText || DataContext is not MainViewModel vm) return;
+            if (!_isLoaded || _isUpdatingHexText || DataContext is not MainViewModel vm) return;
             string text = TextCoverHexColorInput.Text?.Trim() ?? "";
             if (!text.StartsWith("#")) text = "#" + text;
             if (text.Length == 7)
@@ -134,12 +155,23 @@ namespace PreySense.Frontend.Views
                 try
                 {
                     var col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(text);
+                    if (string.Equals(text, vm.CoverHexColor, StringComparison.OrdinalIgnoreCase))
+                        return;
+
                     vm.CoverHexColor = text;
+                    if (ComboCoverPresets != null && ComboCoverPresets.SelectedIndex != 0)
+                        ComboCoverPresets.SelectedIndex = 0; // Custom
                     _isUpdatingHexText = true;
+                    _isUpdatingCoverColorWheel = true;
                     CoverColorWheel.SelectedColor = col;
+                    _isUpdatingCoverColorWheel = false;
                     _isUpdatingHexText = false;
                 }
-                catch { }
+                catch
+                {
+                    _isUpdatingCoverColorWheel = false;
+                    _isUpdatingHexText = false;
+                }
             }
         }
 
@@ -158,16 +190,26 @@ namespace PreySense.Frontend.Views
 
         private void ComboCoverPresets_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (ComboCoverPresets?.SelectedItem is ComboBoxItem item && item.Tag is string preset && preset != "None" && DataContext is MainViewModel vm)
+            if (!_isLoaded) return;
+            if (ComboCoverPresets?.SelectedItem is ComboBoxItem item && item.Tag is string preset &&
+                !string.Equals(preset, "Custom", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase) &&
+                DataContext is MainViewModel vm)
             {
-                vm.ApplyCoverPresetCommand.Execute(preset);
+                _isUpdatingCoverColorWheel = true;
+                _isUpdatingHexText = true;
                 try
                 {
+                    vm.ApplyCoverPresetCommand.Execute(preset);
                     var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
                     CoverColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
                     if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
                 }
-                catch { }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingCoverColorWheel = false;
+                }
             }
         }
 
@@ -194,6 +236,21 @@ namespace PreySense.Frontend.Views
                 DataContext is MainViewModel vm)
             {
                 UpdateCoverModePanels(vm.CoverLightingMode);
+            }
+            else if (e.PropertyName == nameof(MainViewModel.SelectedZonePreset) &&
+                     DataContext is MainViewModel mainVm && ComboPresetStatic != null)
+            {
+                for (int i = 0; i < ComboPresetStatic.Items.Count; i++)
+                {
+                    if (ComboPresetStatic.Items[i] is ComboBoxItem presetItem &&
+                        presetItem.Tag is string presetTag &&
+                        string.Equals(presetTag, mainVm.SelectedZonePreset, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (ComboPresetStatic.SelectedIndex != i)
+                            ComboPresetStatic.SelectedIndex = i;
+                        break;
+                    }
+                }
             }
         }
 
@@ -246,18 +303,20 @@ namespace PreySense.Frontend.Views
 
         private void SyncKeyboardColorInputs(MainViewModel vm)
         {
+            _isUpdatingColorWheel = true;
+            _isUpdatingHexText = true;
             try
             {
                 var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
-                _isUpdatingHexText = true;
                 ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
                 if (TextHexColorInput != null)
                     TextHexColorInput.Text = vm.SelectedHexColor;
-                _isUpdatingHexText = false;
             }
-            catch
+            catch { }
+            finally
             {
                 _isUpdatingHexText = false;
+                _isUpdatingColorWheel = false;
             }
         }
 
@@ -299,10 +358,13 @@ namespace PreySense.Frontend.Views
 
         private void ColorWheel_ColorChanged(object? sender, System.Windows.Media.Color color)
         {
-            if (!_isLoaded || DataContext is not MainViewModel vm)
+            if (!_isLoaded || _isUpdatingColorWheel || DataContext is not MainViewModel vm)
                 return;
 
             string hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            if (string.Equals(hex, vm.SelectedHexColor, StringComparison.OrdinalIgnoreCase))
+                return;
+
             vm.DiscardPendingZonePreset();
             vm.SelectedHexColor = hex;
             if (!_isUpdatingHexText && TextHexColorInput != null)
@@ -315,8 +377,7 @@ namespace PreySense.Frontend.Views
 
         private void TextHexColorInput_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (_isUpdatingHexText || DataContext is not MainViewModel vm) return;
-            vm.DiscardPendingZonePreset();
+            if (!_isLoaded || _isUpdatingHexText || DataContext is not MainViewModel vm) return;
             string text = TextHexColorInput.Text?.Trim() ?? "";
             if (!text.StartsWith("#")) text = "#" + text;
             if (text.Length == 7)
@@ -324,30 +385,52 @@ namespace PreySense.Frontend.Views
                 try
                 {
                     var col = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(text);
+                    if (string.Equals(text, vm.SelectedHexColor, StringComparison.OrdinalIgnoreCase))
+                        return;
+
+                    vm.DiscardPendingZonePreset();
                     vm.SelectedHexColor = text;
                     _isUpdatingHexText = true;
+                    _isUpdatingColorWheel = true;
                     ColorWheel.SelectedColor = col;
+                    _isUpdatingColorWheel = false;
                     _isUpdatingHexText = false;
                 }
-                catch { }
+                catch
+                {
+                    _isUpdatingColorWheel = false;
+                    _isUpdatingHexText = false;
+                }
             }
         }
 
         private void ComboPresetStatic_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_isLoaded) return;
-            if (ComboPresetStatic?.SelectedItem is ComboBoxItem item && item.Tag is string preset && preset != "None" && DataContext is MainViewModel vm)
+            if (ComboPresetStatic?.SelectedItem is ComboBoxItem item && item.Tag is string preset && DataContext is MainViewModel vm)
             {
-                vm.ApplyZonePresetCommand.Execute(preset);
+                if (string.Equals(preset, "Custom", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(vm.SelectedZonePreset, "Custom", StringComparison.OrdinalIgnoreCase))
+                        vm.DiscardPendingZonePreset();
+                    return;
+                }
+
+                _isUpdatingColorWheel = true;
+                _isUpdatingHexText = true;
                 try
                 {
-                    _isUpdatingHexText = true;
+                    vm.ApplyZonePresetCommand.Execute(preset);
                     var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
                     ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
                     if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
-                    _isUpdatingHexText = false;
                 }
-                catch { _isUpdatingHexText = false; }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingColorWheel = false;
+                }
             }
         }
     }

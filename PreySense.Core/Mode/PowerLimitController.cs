@@ -12,6 +12,7 @@ namespace PreySense.Mode
     public class PowerLimitController
     {
         private static readonly object CpuLimitGate = new();
+        private static readonly object PowerCfgGate = new();
         public static string LastCpuPowerLimitStatus { get; private set; } = "CPU limits have not been applied.";
         /// <summary>
         /// Applies matching limits to ACPI/MMIO and PawnIO/MSR 0x610.
@@ -68,39 +69,60 @@ namespace PreySense.Mode
         /// </summary>
         public static void SetEnergySaverOnBattery(bool enabled)
         {
+            lock (PowerCfgGate)
+            {
             int threshold = EnergySaverBatteryThreshold(enabled);
-            RunPowerCfg($"-setdcvalueindex scheme_current sub_energysaver esbattthreshold {threshold}");
-            RunPowerCfg("-setactive scheme_current");
+            if (!RunPowerCfg($"-setdcvalueindex scheme_current sub_energysaver esbattthreshold {threshold}") ||
+                !RunPowerCfg("-setactive scheme_current")) return;
             AppLogger.Log($"Windows Energy Saver on battery: {(enabled ? "on" : "off")} (threshold {threshold}).");
+            }
         }
 
-        private static int? _lastAppliedCpuBoost;
-        public static void SetCpuBoost(int value)
+        public static bool SetCpuBoost(int value)
         {
-            if (_lastAppliedCpuBoost.HasValue && _lastAppliedCpuBoost.Value == value)
-                return;
-            RunPowerCfg($"-setacvalueindex scheme_current sub_processor perfboostmode {value}");
-            RunPowerCfg($"-setdcvalueindex scheme_current sub_processor perfboostmode {value}");
-            RunPowerCfg("-setactive scheme_current");
-            _lastAppliedCpuBoost = value;
+            lock (PowerCfgGate)
+            {
+            value = Math.Clamp(value, 0, 6);
+            return RunPowerCfg($"-setacvalueindex scheme_current sub_processor perfboostmode {value}") &&
+                RunPowerCfg($"-setdcvalueindex scheme_current sub_processor perfboostmode {value}") &&
+                RunPowerCfg("-setactive scheme_current");
+            }
         }
 
-        private static void RunPowerCfg(string args)
+        private static bool RunPowerCfg(string args)
         {
+            bool success = RunCommand("powercfg", args, 5000, out string error);
+            if (!success) AppLogger.Error($"powercfg {args} failed: {error}");
+            return success;
+        }
+
+        private static bool RunCommand(string executable, string args, int timeoutMs, out string error)
+        {
+            error = string.Empty;
             try
             {
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "powercfg",
+                    FileName = executable,
                     Arguments = args,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                Process.Start(psi)?.WaitForExit();
+                using var process = Process.Start(psi);
+                if (process == null) { error = "The process could not be started."; return false; }
+                if (!process.WaitForExit(timeoutMs))
+                {
+                    error = $"Command timed out after {timeoutMs} ms.";
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    return false;
+                }
+                if (process.ExitCode != 0) { error = $"Command exited with code {process.ExitCode}."; return false; }
+                return true;
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"RunPowerCfg failed: {ex.Message}");
+                error = ex.Message;
+                return false;
             }
         }
     }

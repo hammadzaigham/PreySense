@@ -57,6 +57,21 @@ namespace PreySense.Frontend.ViewModels
             ApplyRefreshRateOptions(supportedRates, hwRate);
         }
 
+        private void UpdateLiveRefreshRate(int hz)
+        {
+            _isUpdatingRefreshRateSelection = true;
+            try
+            {
+                CurrentRefreshRate = hz;
+                string option = $"{hz} Hz";
+                if (!AvailableRefreshRates.Contains(option)) AvailableRefreshRates.Add(option);
+                SelectedRefreshRateOption = option;
+                DisplayPanelInfo = $"{hz}Hz" + (IsLcdOverdriveEnabled ? " • Overdrive" : "");
+                NotifyRefreshRateChanged();
+            }
+            finally { _isUpdatingRefreshRateSelection = false; }
+        }
+
         private void ApplyRefreshRateOptions(System.Collections.Generic.List<int>? supportedRates, int hwRate)
         {
             try
@@ -139,21 +154,30 @@ namespace PreySense.Frontend.ViewModels
                 string s when int.TryParse(s.Replace("Hz", "").Trim(), out int parsed) => parsed,
                 _ => 0
             };
-            if (hz <= 0 || hz == CurrentRefreshRate) return;
-
-            CurrentRefreshRate = hz;
-            _isUpdatingRefreshRateSelection = true;
-            SelectedRefreshRateOption = $"{hz} Hz";
-            _isUpdatingRefreshRateSelection = false;
-
-            DisplayPanelInfo = $"{hz}Hz" + (IsLcdOverdriveEnabled ? " • Overdrive" : "");
-            NotifyRefreshRateChanged();
-            StatusMessage = $"Display: {hz}Hz";
-
-            await Task.Run(() =>
+            if (hz <= 0) return;
+            try
             {
-                _hw.SetDisplayRefreshRate(hz);
-            });
+                using var hardwareLease = await PreySense.Core.Services.HardwareOperationGate.EnterDisplaySwitchAsync();
+                if (hz == CurrentRefreshRate) { UpdateLiveRefreshRate(CurrentRefreshRate); return; }
+                var result = await Task.Run(() =>
+                {
+                    bool applied = _hw.SetDisplayRefreshRate(hz);
+                    int actual = _hw.GetDisplayRefreshRate();
+                    return (applied, actual);
+                });
+                if (_disposed) return;
+                UpdateLiveRefreshRate(result.actual > 0 ? result.actual : CurrentRefreshRate);
+                StatusMessage = !result.applied
+                    ? $"Display rejected {hz}Hz; current rate is {CurrentRefreshRate}Hz."
+                    : result.actual != hz
+                        ? $"Requested {hz}Hz was not confirmed; current rate is {CurrentRefreshRate}Hz."
+                        : $"Display: {hz}Hz";
+            }
+            catch (Exception ex)
+            {
+                if (!_disposed) UpdateLiveRefreshRate(CurrentRefreshRate);
+                StatusMessage = $"Refresh rate change failed: {ex.Message}";
+            }
         }
 
         [RelayCommand]

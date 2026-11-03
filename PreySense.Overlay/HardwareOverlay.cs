@@ -73,12 +73,18 @@ namespace PreySense.Overlay
 
         private int? _gpuUsage;
         private int? _cpuUsage;
+        private int? _maxCoreUsage;
+        private int? _pCoreUsage;
+        private int? _eCoreUsage;
         private int? _vramUsedMb;
         private int? _ramUsedMb;
         private const int HistoryLength = 60;
         private int _historyHead = 0;
         private int _lastIdlePaintStamp = int.MinValue;
         private readonly float[] _cpuUsageHistory = new float[HistoryLength];
+        private readonly float[] _maxCoreUsageHistory = new float[HistoryLength];
+        private readonly float[] _pCoreUsageHistory = new float[HistoryLength];
+        private readonly float[] _eCoreUsageHistory = new float[HistoryLength];
         private readonly float[] _gpuUsageHistory = new float[HistoryLength];
         private readonly float[] _cpuTempHistory = new float[HistoryLength];
         private readonly float[] _gpuTempHistory = new float[HistoryLength];
@@ -108,12 +114,13 @@ namespace PreySense.Overlay
         private long _fpsPositiveSinceTick;
         private bool _fpsWasVisible;
         private int _lastFgPid;
-        private bool _active;
+        private volatile bool _active;
         public bool IsActive => _active;
+        public bool IsShowing => _active && !_hidden && !_screenshotHidden;
         private bool _gameOnly;
         private bool _gameSessionActive;
-        private bool _hidden;
-        private bool _screenshotHidden;
+        private volatile bool _hidden;
+        private volatile bool _screenshotHidden;
         private int _shownPid;
         private int _classifiedPid;
         private string? _classifiedProcessName;
@@ -153,14 +160,7 @@ namespace PreySense.Overlay
         {
             Alpha = 255;
             _timer.Elapsed += (_, _) => Tick();
-        }
-
-        public void Prepare()
-        {
-            LoadDisplayConfiguration();
-            _scalePercent = Math.Clamp(AppConfig.Get("overlay_scale_percent", 100), MinScalePercent, MaxScalePercent);
-            Size = CalculateOverlaySize(_scalePercent);
-            EnsureHandleCreated();
+            PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnTelemetrySnapshot;
         }
 
         private const int WM_NCDESTROY = 0x0082;
@@ -357,18 +357,46 @@ namespace PreySense.Overlay
                 _wasOwnWindow = ownWindow;
             }
 
-            HardwareControl.ReadSensorsOverlay();
+            PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
+
+            if (!IsShowing) return;
+
+            InvalidateIfDirty();
+        }
+
+        private void OnTelemetrySnapshot(PreySense.Core.Services.TelemetrySnapshot snapshot)
+        {
+            if (IsDisposed || !_active || !IsShowing) return;
+
+            HardwareControl.ApplySnapshot(snapshot);
+
+            if (snapshot.IsFanOnly)
+            {
+                double fGpuTemp = D(HardwareControl.gpuTemp);
+                double fCpuTemp = D(HardwareControl.cpuTemp);
+                bool fGpuActive = HardwareControl.gpuInUse;
+                _cpuTempHistory[_historyHead] = Graphs("Temperature", false) ? (float)fCpuTemp : 0f;
+                _gpuTempHistory[_historyHead] = Graphs("Temperature", true) && fGpuActive ? (float)fGpuTemp : 0f;
+                InvalidateIfDirty();
+                return;
+            }
+
+            _cpuUsage = snapshot.CpuUsage;
+            _maxCoreUsage = snapshot.CpuMaxCoreUsage;
+            _pCoreUsage = snapshot.CpuPCoreUsage;
+            _eCoreUsage = snapshot.CpuECoreUsage;
+            _ramUsedMb = snapshot.RamUsedMb;
+            _gpuUsage = snapshot.GpuUsage;
+            _vramUsedMb = snapshot.VramUsedMb;
 
             double gpuTemp = D(HardwareControl.gpuTemp);
             double cpuTemp = D(HardwareControl.cpuTemp);
             bool gpuActive = HardwareControl.gpuInUse;
 
-            _cpuUsage = HardwareControl.cpuUsage;
-            _gpuUsage = gpuActive ? (HardwareControl.gpuUsage ?? 0) : 0;
-            _ramUsedMb = HardwareControl.ramUsedMb;
-            _vramUsedMb = HardwareControl.vramUsedMb;
-
             _cpuUsageHistory[_historyHead] = Graphs("Usage", false) ? (_cpuUsage ?? 0) : 0f;
+            _maxCoreUsageHistory[_historyHead] = (Graphs("Max Core", false) || Graphs("Max Core Usage", false)) ? (_maxCoreUsage ?? 0) : 0f;
+            _pCoreUsageHistory[_historyHead] = Graphs("P-Core Usage", false) ? (_pCoreUsage ?? 0) : 0f;
+            _eCoreUsageHistory[_historyHead] = Graphs("E-Core Usage", false) ? (_eCoreUsage ?? 0) : 0f;
             _gpuUsageHistory[_historyHead] = Graphs("Usage", true) && gpuActive ? (_gpuUsage ?? 0) : 0f;
 
             _cpuTempHistory[_historyHead] = Graphs("Temperature", false) ? (float)cpuTemp : 0f;
@@ -394,6 +422,13 @@ namespace PreySense.Overlay
             _vramSpeedHistory[_historyHead] = Graphs("Memory Speed", true) && gpuActive ? (HardwareControl.vramSpeedMhz ?? 0) : 0f;
 
             _historyHead = (_historyHead + 1) % HistoryLength;
+
+            InvalidateIfDirty();
+        }
+
+        private void InvalidateIfDirty()
+        {
+            if (!_active || !IsShowing) return;
 
             bool anyGraph = false;
             for (int i = 0; i < 8; i++)
@@ -434,6 +469,16 @@ namespace PreySense.Overlay
             Invalidate();
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
+                PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
+            }
+            base.Dispose(disposing);
+        }
+
         private void UpdateGameVisibility(int fgPid, bool configuredGame)
         {
             if (configuredGame)
@@ -443,6 +488,7 @@ namespace PreySense.Overlay
             _hidden = !show;
             if (Handle != nint.Zero)
                 NativeMethods.ShowWindow(Handle, (short)(_hidden ? NativeMethods.SW_HIDE : NativeMethods.SW_SHOWNOACTIVATE));
+            PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
         }
 
         private bool UpdateScreenshotVisibility(bool screenshotActive)
@@ -456,6 +502,7 @@ namespace PreySense.Overlay
                 {
                     _screenshotHidden = true;
                     NativeMethods.ShowWindow(Handle, NativeMethods.SW_HIDE);
+                    PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
                 }
                 return true;
             }
@@ -465,6 +512,7 @@ namespace PreySense.Overlay
                 _screenshotHidden = false;
                 if (!_hidden)
                     NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
+                PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
             }
 
             return false;
@@ -672,8 +720,8 @@ namespace PreySense.Overlay
 
         private static void DrawMemGb(Graphics g, Font font, Font unitFont, int x, int colW, int y, int? usedMb, SolidBrush brush)
         {
-            double gb = usedMb.HasValue ? usedMb.Value / 1024.0 : 0.0;
-            string s = gb.ToString("F1") + "GB";
+            double? gb = usedMb.HasValue ? usedMb.Value / 1024.0 : null;
+            string s = TelemetryText.Format(gb, "GB", 1);
             DrawTextWithUnit(g, font, unitFont, s, brush, new PointF(x + colW, y), alignRight: true);
         }
 
@@ -740,34 +788,44 @@ namespace PreySense.Overlay
             switch (metric)
             {
                 case "Usage":
-                    DrawTextWithUnit(g, font, unitFont, ((gpu ? _gpuUsage : _cpuUsage) ?? 0) + "%", brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(gpu ? _gpuUsage : _cpuUsage, "%"), brush, new PointF(colX + colW, y), alignRight: true);
+                    break;
+                case "Max Core":
+                case "Max Core Usage":
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(_maxCoreUsage, "%"), brush, new PointF(colX + colW, y), alignRight: true);
+                    break;
+                case "P-Core Usage":
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(_pCoreUsage, "%"), brush, new PointF(colX + colW, y), alignRight: true);
+                    break;
+                case "E-Core Usage":
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(_eCoreUsage, "%"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Temperature":
-                    DrawTextWithUnit(g, font, unitFont, FmtTemp(gpu ? D(HardwareControl.gpuTemp) : D(HardwareControl.cpuTemp)), brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, FmtTemp(gpu ? HardwareControl.gpuTemp : HardwareControl.cpuTemp), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "P-Core":
-                    DrawTextWithUnit(g, font, unitFont, $"{(HardwareControl.cpuMhz ?? 0)}MHz", brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(HardwareControl.cpuMhz, "MHz"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "E-Core":
-                    DrawTextWithUnit(g, font, unitFont, $"{(HardwareControl.eCoreMhz ?? 0)}MHz", brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(HardwareControl.eCoreMhz, "MHz"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Clock":
-                    DrawTextWithUnit(g, font, unitFont, $"{(HardwareControl.gpuMhz ?? 0)}MHz", brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(HardwareControl.gpuMhz, "MHz"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Voltage":
                     float? voltage = gpu ? HardwareControl.gpuVoltage : HardwareControl.cpuVoltage;
-                    string volts = $"{Math.Max(0f, voltage ?? 0f):F3}v";
+                    string volts = TelemetryText.Format(voltage, "v", 3);
                     DrawTextWithUnit(g, font, unitFont, volts, brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Power":
-                    DrawTextWithUnit(g, font, unitFont, FmtPow(gpu ? D(HardwareControl.gpuPower) : D(HardwareControl.cpuPower)), brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, FmtPow(gpu ? HardwareControl.gpuPower : HardwareControl.cpuPower), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Memory":
                     DrawMemGb(g, font, unitFont, (int)colX, (int)colW, y, gpu ? _vramUsedMb : _ramUsedMb, brush);
                     break;
                 case "Memory Speed":
                     int? speed = gpu ? HardwareControl.vramSpeedMhz : HardwareControl.ramSpeedMhz;
-                    DrawTextWithUnit(g, font, unitFont, $"{(speed ?? 0)}MHz", brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(speed, "MHz"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Fan Speed":
                     int? fan = gpu ? HardwareControl.gpuFanRPM : HardwareControl.cpuFanRPM;
@@ -779,6 +837,11 @@ namespace PreySense.Overlay
         private static void DrawFanSpeed(Graphics g, Font font, Font rpmFont, string fanNum, SolidBrush brush, float colX, float colW, int y, float sc)
         {
             var sf = StringFormat.GenericTypographic;
+            if (fanNum == "N/A")
+            {
+                DrawTextWithUnit(g, font, rpmFont, fanNum, brush, new PointF(colX + colW, y), alignRight: true);
+                return;
+            }
             float rpmW = g.MeasureString("RPM", rpmFont, 1000, sf).Width;
             float rpmX = colX + colW - rpmW;
             g.DrawString("RPM", rpmFont, brush, new PointF(rpmX, y), sf);
@@ -796,7 +859,7 @@ namespace PreySense.Overlay
 
         private static int MetricWidth(string metric) => metric switch
         {
-            "Usage" => 22,
+            "Usage" or "Max Core" or "Max Core Usage" or "P-Core Usage" or "E-Core Usage" => 22,
             "Temperature" => 32,
             "P-Core" or "E-Core" or "Clock" or "Voltage" or "Memory Speed" => 44,
             "Power" => 38,
@@ -811,7 +874,10 @@ namespace PreySense.Overlay
             {
                 if (!_columnGraphs[i])
                     continue;
-                if ((gpu ? _columnGpu[i] : _columnCpu[i]) == metric)
+                string col = gpu ? _columnGpu[i] : _columnCpu[i];
+                if (col == metric)
+                    return true;
+                if ((metric == "Max Core" || metric == "Max Core Usage") && (col == "Max Core" || col == "Max Core Usage"))
                     return true;
             }
             return false;
@@ -820,6 +886,9 @@ namespace PreySense.Overlay
         private float[] HistoryFor(string metric, bool gpu) => metric switch
         {
             "Usage" => gpu ? _gpuUsageHistory : _cpuUsageHistory,
+            "Max Core" or "Max Core Usage" => _maxCoreUsageHistory,
+            "P-Core Usage" => _pCoreUsageHistory,
+            "E-Core Usage" => _eCoreUsageHistory,
             "Temperature" => gpu ? _gpuTempHistory : _cpuTempHistory,
             "P-Core" => _cpuClockHistory,
             "E-Core" => _eCoreHistory,

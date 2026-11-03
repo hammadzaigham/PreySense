@@ -24,13 +24,7 @@ internal static class OverlayBridge
     }
 
     public static bool ShouldRun => AppConfig.ShouldRunOverlay();
-
-        public static void Warmup()
-        {
-            System.Threading.ThreadPool.QueueUserWorkItem(_ => HardwareControl.Warmup());
-            EnsureInitialized();
-            HardwareOverlayManager.Warmup();
-        }
+    public static bool IsShowing => HardwareOverlayManager.IsShowing;
 
     public static void Start()
     {
@@ -40,6 +34,7 @@ internal static class OverlayBridge
 
     public static void StartIfNeeded()
     {
+        AppConfig.MigrateGameOnlySetting();
         EnsureInitialized();
         HardwareOverlayManager.SyncRunningState();
     }

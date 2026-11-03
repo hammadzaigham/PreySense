@@ -37,12 +37,12 @@ public partial class HardwareOverlay
 
     private static int S(float sc, int v) => (int)(v * sc);
     private static double D(object? v) { try { return v is null ? 0.0 : Convert.ToDouble(v); } catch { return 0.0; } }
-    private static string FmtTemp(double t, bool zeroWhenUnavailable = false) => ((int)Math.Max(0, Math.Round(t)) + "°C").PadLeft(5);
-    private static string FmtPow(double p) => Math.Max(0, Math.Round(p, 1)).ToString("F1") + "W";
+    private static string FmtTemp(double? t) => TelemetryText.Format(t, "°C", allowZero: false);
+    private static string FmtPow(double? p) => TelemetryText.Format(p, "W", 1);
 
     private static string FormatFan(int? fan)
     {
-        if (fan is null || fan < 0) return "0";
+        if (fan is null || fan < 0) return "N/A";
         return fan.Value.ToString();
     }
 }

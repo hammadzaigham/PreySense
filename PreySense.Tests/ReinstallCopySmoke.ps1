@@ -21,7 +21,6 @@ New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
     $sourceEfi = Join-Path $testRoot 'source\EFI'
     $targetEfi = Join-Path $testRoot 'target\EFI'
-    $backupRoot = Join-Path $testRoot 'backup'
     New-Item -ItemType Directory -Path (Join-Path $sourceEfi 'BOOT'), (Join-Path $sourceEfi 'OC\ACPI'), (Join-Path $targetEfi 'OC\ACPI') -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $sourceEfi 'BOOT\BOOTX64.EFI'), 'new boot')
     [IO.File]::WriteAllText((Join-Path $sourceEfi 'OC\ACPI\SSDT-PREYDEV.aml'), 'new ACPI')
@@ -32,22 +31,13 @@ try {
     $written = [System.Collections.Generic.List[object]]::new()
     . $copySection
     if ([IO.File]::ReadAllText((Join-Path $targetEfi 'OC\ACPI\SSDT-PREYDEV.aml')) -ne 'new ACPI') { throw 'ACPI was not updated.' }
-    if ([IO.File]::ReadAllText((Join-Path $backupRoot 'OC\ACPI\SSDT-PREYDEV.aml')) -ne 'old ACPI') { throw 'Original ACPI backup missing.' }
     if ([IO.File]::ReadAllText((Join-Path $targetEfi 'unrelated.efi')) -ne 'preserve this') { throw 'Unrelated EFI file changed.' }
     if (-not (Test-Path -LiteralPath (Join-Path $targetEfi 'BOOT\BOOTX64.EFI') -PathType Leaf)) { throw 'New subdirectory copy failed.' }
-    $rollbackStart = $scriptText.IndexOf('    for ($index = $written.Count - 1;')
-    $rollbackEnd = $scriptText.IndexOf('    Write-Host "Reinstall failed:', $rollbackStart)
-    if ($rollbackStart -lt 0 -or $rollbackEnd -lt 0) { throw 'Rollback section was not found.' }
-    . ([scriptblock]::Create($scriptText.Substring($rollbackStart, $rollbackEnd - $rollbackStart)))
-    if ([IO.File]::ReadAllText((Join-Path $targetEfi 'OC\ACPI\SSDT-PREYDEV.aml')) -ne 'old ACPI') { throw 'Rollback did not restore original ACPI.' }
-    if (Test-Path -LiteralPath (Join-Path $targetEfi 'BOOT\BOOTX64.EFI')) { throw 'Rollback did not remove a newly copied file.' }
-    if ([IO.File]::ReadAllText((Join-Path $targetEfi 'unrelated.efi')) -ne 'preserve this') { throw 'Rollback changed an unrelated file.' }
     $written = [System.Collections.Generic.List[object]]::new()
     . $copySection
-    $backupRoot = Join-Path $testRoot 'second-backup'
-    . $copySection
-    if ([IO.File]::ReadAllText((Join-Path $backupRoot 'OC\ACPI\SSDT-PREYDEV.aml')) -ne 'new ACPI') { throw 'Repeated reinstall failed.' }
-    Write-Host 'PASS: PowerShell 5.1 syntax; no partition mutations; in-place overwrite; backup; rollback; new directories; unrelated file preservation; repeated reinstall.'
+    if ([IO.File]::ReadAllText((Join-Path $targetEfi 'OC\ACPI\SSDT-PREYDEV.aml')) -ne 'new ACPI') { throw 'Repeated reinstall failed.' }
+    if ($scriptText.Contains('EfiBackups') -or $scriptText.Contains('$backupRoot') -or $scriptText.Contains('entry.Backup')) { throw 'Updater must not create previous-file backups.' }
+    Write-Host 'PASS: PowerShell 5.1 syntax; no partition mutations; in-place overwrite; no previous-file backups; new directories; unrelated file preservation; repeated reinstall.'
 }
 finally {
     $resolvedTest = [IO.Path]::GetFullPath($testRoot)

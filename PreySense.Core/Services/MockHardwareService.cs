@@ -70,6 +70,8 @@ namespace PreySense.Core.Services
 
         private Gpu.DdsDisplayMode _mockDdsMode = Gpu.DdsDisplayMode.Automatic;
         public bool IsDdsAvailable => true;
+        public bool EnableDiscreteGpu() => true;
+        public bool? IsDiscreteGpuDisabled { get; set; } = false;
         public bool IsDdsSupported() => true;
         public Gpu.DdsStatus? GetDdsStatus() => new Gpu.DdsStatus(
             IsSupported: true,
@@ -90,6 +92,7 @@ namespace PreySense.Core.Services
             return (true, "Discrete GPU successfully power-cycled and reinitialized without system reboot.");
         }
 
+        public bool IsRgbAvailable { get; set; } = true;
         public int SetRgbStaticCount { get; private set; }
         public int SetRgbAllZonesCount { get; private set; }
         public int SetRgbHardwareEffectCount { get; private set; }

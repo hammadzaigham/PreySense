@@ -19,8 +19,8 @@ namespace PreySense.Overlay
         public static string CpuShortName { get; private set; } = "";
         public static string GpuShortName { get; private set; } = "";
 
-        public static float? cpuTemp = -1;
-        public static float? gpuTemp = -1;
+        public static float? cpuTemp;
+        public static float? gpuTemp;
         /// <summary>True when the discrete GPU is confirmed in use. Temperature is not used as proof of that.</summary>
         public static bool gpuInUse;
 
@@ -31,6 +31,9 @@ namespace PreySense.Overlay
         public static int? gpuFanRPM;
 
         public static int? cpuUsage;
+        public static int? cpuMaxCoreUsage;
+        public static int? cpuPCoreUsage;
+        public static int? cpuECoreUsage;
         public static int? gpuUsage;
         public static int? vramUsage;
         public static int? ramUsage;
@@ -50,10 +53,6 @@ namespace PreySense.Overlay
         private static readonly PdhCpuPowerMonitor _pdhPowerMonitor = new();
 
         private static int? _lastCpuUsage;
-        private static int _lastCpuMhz;
-        private static int _lastECoreMhz;
-        private static long _lastSlowSensorTick;
-        private const int SlowSensorIntervalMs = 1000;
 
         static HardwareControl()
         {
@@ -69,6 +68,7 @@ namespace PreySense.Overlay
             CpuName = ReadCpuName();
             CpuShortName = ShortCpuName(CpuName);
             RefreshGpuName();
+            ramSpeedMhz = GetRamSpeed();
         }
 
         public static void RefreshGpuName() => GpuShortName = ShortGpuName(GpuControl?.FullName);
@@ -121,22 +121,22 @@ namespace PreySense.Overlay
         public static void Warmup()
         {
             WinRing0Cleanup.RemoveInstalledDriver();
+            CpuUsageMonitor.Warmup();
         }
 
-        public static int GetCpuMhz()
+        public static int? GetCpuMhz()
         {
+            eCoreMhz = null;
             try
             {
                 if (_pdhMonitor.TrySampleFrequencies(out int pdhMaxMhz, out _, out _, out int eCoreMaxMhz))
                 {
                     if (eCoreMaxMhz > 0)
                     {
-                        _lastECoreMhz = eCoreMaxMhz;
                         eCoreMhz = eCoreMaxMhz;
                     }
                     if (pdhMaxMhz > 0)
                     {
-                        _lastCpuMhz = pdhMaxMhz;
                         return pdhMaxMhz;
                     }
                 }
@@ -146,11 +146,7 @@ namespace PreySense.Overlay
                 AppLogger.Log("GetCpuMhz failed: " + ex.Message);
             }
 
-            // PDH can briefly fail during resume, topology changes, or a counter
-            // refresh. Keep the last valid reading so the overlay does not flash
-            // misleading 0 MHz values while the next sample is collected.
-            eCoreMhz = 0;
-            return 0;
+            return null;
         }
 
         public static float? GetCPUPower()
@@ -174,38 +170,20 @@ namespace PreySense.Overlay
             return null;
         }
 
-        private static long _cpuLastIdle, _cpuLastKernel, _cpuLastUser, _cpuLastTick;
-        private static bool _cpuUsageBaseline;
-
         private static int? GetCPUUsage()
         {
-            if (!NativeMethods.GetSystemTimes(out long idle, out long kernel, out long user)) return 0;
-
-            long now = Environment.TickCount64;
-
-            if (!_cpuUsageBaseline || now - _cpuLastTick > 2000)
+            int? usage = CpuUsageMonitor.GetCpuUsage();
+            if (usage.HasValue)
             {
-                _cpuLastIdle = idle; _cpuLastKernel = kernel; _cpuLastUser = user; _cpuLastTick = now;
-                _cpuUsageBaseline = true;
-                return 0;
+                _lastCpuUsage = usage.Value;
             }
-
-            long deltaIdle = idle - _cpuLastIdle;
-            long deltaTotal = (kernel - _cpuLastKernel) + (user - _cpuLastUser);
-
-            _cpuLastIdle = idle; _cpuLastKernel = kernel; _cpuLastUser = user; _cpuLastTick = now;
-
-            if (deltaTotal <= 0) return 0;
-            _lastCpuUsage = Math.Clamp((int)Math.Round((1.0 - (double)deltaIdle / deltaTotal) * 100), 0, 100);
-            return _lastCpuUsage;
+            return usage;
         }
 
         private static (int percent, int usedMb)? GetRAMInfo()
         {
-            var status = new NativeMethods.MEMORYSTATUSEX { dwLength = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MEMORYSTATUSEX>() };
-            if (!NativeMethods.GlobalMemoryStatusEx(ref status)) return null;
-            int usedMb = (int)((status.ullTotalPhys - status.ullAvailPhys) / (1024 * 1024));
-            return ((int)status.dwMemoryLoad, usedMb);
+            var mem = SystemMemoryMonitor.GetMemoryInfo();
+            return mem.HasValue ? (mem.Value.UsedPercent, mem.Value.UsedMb) : null;
         }
 
         private static float? GetGPUPower()
@@ -222,76 +200,151 @@ namespace PreySense.Overlay
             return null;
         }
 
-        public static void ReadSensorsOverlay()
+        public static void ResetMetrics()
+        {
+            cpuUsage = null;
+            cpuMaxCoreUsage = null;
+            cpuPCoreUsage = null;
+            cpuECoreUsage = null;
+            ramUsage = null;
+            ramUsedMb = null;
+            gpuUsage = null;
+            vramUsage = null;
+            vramUsedMb = null;
+            cpuPower = default;
+            gpuPower = null;
+            cpuMhz = null;
+            eCoreMhz = null;
+            gpuMhz = null;
+            gpuVoltage = null;
+            cpuVoltage = null;
+        }
+
+        public static void ApplySnapshot(TelemetrySnapshot snapshot)
+        {
+            cpuTemp = snapshot.CpuTemp >= 0 ? snapshot.CpuTemp : null;
+            gpuTemp = (snapshot.GpuTemp >= 0 && snapshot.GpuInUse) ? snapshot.GpuTemp : null;
+            if (snapshot.CpuRpm.HasValue) cpuFanRPM = snapshot.CpuRpm >= 0 ? snapshot.CpuRpm : null;
+            if (snapshot.GpuRpm.HasValue) gpuFanRPM = snapshot.GpuRpm >= 0 ? snapshot.GpuRpm : null;
+
+            if (snapshot.IsFanOnly)
+            {
+                // If full telemetry has expired, clear stale CPU, RAM, and GPU readings
+                if (snapshot.TimestampTicks <= 0)
+                {
+                    ResetMetrics();
+                }
+                return;
+            }
+
+            cpuUsage = snapshot.CpuUsage;
+            cpuMaxCoreUsage = snapshot.CpuMaxCoreUsage;
+            cpuPCoreUsage = snapshot.CpuPCoreUsage;
+            cpuECoreUsage = snapshot.CpuECoreUsage;
+            ramUsage = snapshot.RamUsage;
+            ramUsedMb = snapshot.RamUsedMb;
+            gpuInUse = snapshot.GpuInUse;
+            cpuPower = snapshot.CpuPkgPowerWatts;
+            gpuPower = snapshot.GpuPowerWatts;
+            cpuVoltage = snapshot.CpuVoltage;
+            gpuVoltage = snapshot.GpuVoltage;
+            gpuMhz = snapshot.GpuClockMhz;
+            gpuUsage = snapshot.GpuUsage;
+            vramUsedMb = snapshot.VramUsedMb;
+            if (snapshot.VramUsedMb.HasValue && snapshot.VramTotalMb.HasValue && snapshot.VramTotalMb.Value > 0)
+            {
+                vramUsage = (int)Math.Clamp((long)snapshot.VramUsedMb.Value * 100 / snapshot.VramTotalMb.Value, 0, 100);
+            }
+            else
+            {
+                vramUsage = null;
+            }
+            vramSpeedMhz = snapshot.VramSpeedMhz;
+            ramSpeedMhz = GetRamSpeed();
+            if (snapshot.CpuClockMhz.HasValue)
+            {
+                cpuMhz = snapshot.CpuClockMhz;
+                eCoreMhz = snapshot.ECoreClockMhz;
+            }
+            else
+            {
+                cpuMhz = GetCpuMhz();
+            }
+        }
+
+        public static void ReadSystemMetrics()
+        {
+            var cpuSnapshot = CpuUsageMonitor.GetSnapshot();
+            if (cpuSnapshot.HasValue)
+            {
+                cpuUsage = cpuSnapshot.Value.TotalUsage;
+                cpuMaxCoreUsage = cpuSnapshot.Value.MaxCoreUsage;
+                cpuPCoreUsage = cpuSnapshot.Value.PCoreUsage;
+                cpuECoreUsage = cpuSnapshot.Value.ECoreUsage;
+                _lastCpuUsage = cpuUsage;
+            }
+            else
+            {
+                cpuUsage = GetCPUUsage();
+                cpuMaxCoreUsage = CpuUsageMonitor.GetMaxCoreUsage();
+                cpuPCoreUsage = CpuUsageMonitor.GetPCoreUsage();
+                cpuECoreUsage = CpuUsageMonitor.GetECoreUsage();
+            }
+
+            var ram = GetRAMInfo();
+            ramUsage = ram?.percent;
+            ramUsedMb = ram?.usedMb;
+        }
+
+        public static void ReadHardwareSensors()
         {
             var wmi = WmiProvider?.Invoke() ?? (_fallbackWmi ??= new WmiController());
             var nvidia = GpuControl as NvidiaGpuControl;
             // NVML init wakes a dGPU in D3/RTD3 and holds it there. Skip it unless the GPU is already in use.
-            // Overlay temperature is the EC sensor from the thermal batch. NVML stays for clocks, power, and usage.
+            // Read live NVIDIA temperature; the EC can retain an old GPU reading.
             bool inUse = nvidia is null || nvidia.IsDiscreteGpuInUse();
             gpuInUse = inUse;
 
-            long now = Environment.TickCount64;
-            bool slowSensors = _lastSlowSensorTick == 0 || now - _lastSlowSensorTick >= SlowSensorIntervalMs;
-            if (slowSensors)
+            cpuMhz = GetCpuMhz();
+            cpuTemp = PreySense.Mode.PawnCpuPowerControl.ReadPackageTemperature();
+            bool needsVoltage = false;
+            for (int column = 1; column <= 8; column++)
+                needsVoltage |= AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}")).Cpu == "Voltage";
+            cpuVoltage = needsVoltage ? PreySense.Mode.PawnCpuPowerControl.ReadCoreVid() : null;
+            bool needsThermal = false;
+            for (int column = 1; column <= 8; column++)
             {
-                _lastSlowSensorTick = now;
-                cpuMhz = GetCpuMhz();
-                bool needsVoltage = false;
-                for (int column = 1; column <= 8; column++)
-                    needsVoltage |= AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}")).Cpu == "Voltage";
-                cpuVoltage = needsVoltage ? PreySense.Mode.PawnCpuPowerControl.ReadCoreVid() ?? 0 : 0;
-                bool needsThermal = false;
-                for (int column = 1; column <= 8; column++)
-                {
-                    var metrics = AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}"));
-                    needsThermal |= metrics.Cpu is "Temperature" or "Fan Speed" ||
-                                     metrics.Gpu is "Temperature" or "Fan Speed";
-                }
-
-                if (wmi != null && needsThermal)
-                {
-                    var thermal = wmi.ReadThermalSensors();
-                    cpuFanRPM = thermal.CpuRpm;
-                    gpuFanRPM = thermal.GpuRpm;
-                    cpuTemp = thermal.CpuTemp;
-                    if (inUse)
-                        gpuTemp = thermal.GpuTemp;
-                }
-                else
-                {
-                    cpuFanRPM = 0;
-                    gpuFanRPM = 0;
-                    cpuTemp = 0;
-                    if (inUse)
-                        gpuTemp = -1;
-                }
-
+                var metrics = AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{column}"));
+                needsThermal |= metrics.Cpu == "Fan Speed" || metrics.Gpu == "Fan Speed";
             }
 
-            // A cached EC value can outlive GPU power-down. Show 0 until the GPU is confirmed in use again.
-            if (!inUse)
-                gpuTemp = 0;
-
-            cpuUsage = GetCPUUsage() ?? 0;
-
-            var ram = GetRAMInfo();
-            ramUsage = ram?.percent ?? 0;
-            ramUsedMb = ram?.usedMb ?? 0;
-
-            if (!inUse)
+            if (wmi != null && needsThermal)
             {
-                gpuUsage = 0;
-                vramUsedMb = 0;
-                vramUsage = 0;
-                gpuPower = 0;
-                gpuMhz = 0;
-                vramSpeedMhz = 0;
-                gpuVoltage = 0;
+                var thermal = wmi.ReadThermalSensors(includeTemperatures: false);
+                cpuFanRPM = thermal.CpuRpm >= 0 ? thermal.CpuRpm : null;
+                gpuFanRPM = thermal.GpuRpm >= 0 ? thermal.GpuRpm : null;
             }
             else
             {
-                try { gpuUsage = GpuControl?.GetGpuUse() ?? 0; } catch { gpuUsage = 0; }
+                cpuFanRPM = null;
+                gpuFanRPM = null;
+            }
+
+            gpuTemp = inUse ? GpuControl?.GetCurrentTemperature() : null;
+
+            if (!inUse)
+            {
+                gpuUsage = null;
+                vramUsedMb = null;
+                vramUsage = null;
+                gpuPower = null;
+                gpuMhz = null;
+                vramSpeedMhz = null;
+                gpuVoltage = null;
+            }
+            else
+            {
+                try { gpuUsage = GpuControl?.GetGpuUse(); } catch { gpuUsage = null; }
 
                 try
                 {
@@ -300,24 +353,31 @@ namespace PreySense.Overlay
                         vramUsedMb = (int)v.usedMb;
                         vramUsage = (int)Math.Clamp(v.usedMb * 100 / v.totalMb, 0, 100);
                     }
-                    else { vramUsedMb = 0; vramUsage = 0; }
+                    else { vramUsedMb = null; vramUsage = null; }
                 }
-                catch { vramUsedMb = 0; vramUsage = 0; }
+                catch { vramUsedMb = null; vramUsage = null; }
 
-                gpuPower = GetGPUPower() ?? 0;
-                try { gpuMhz = GpuControl?.GetGpuClock() ?? 0; } catch { gpuMhz = 0; }
-                try { vramSpeedMhz = GpuControl?.GetGpuMemoryClock() ?? 0; } catch { vramSpeedMhz = 0; }
-                try { gpuVoltage = GpuControl?.GetGpuVoltage() ?? 0; } catch { gpuVoltage = 0; }
+                gpuPower = GetGPUPower();
+                try { gpuMhz = GpuControl?.GetGpuClock(); } catch { gpuMhz = null; }
+                try { vramSpeedMhz = GpuControl?.GetGpuMemoryClock(); } catch { vramSpeedMhz = null; }
+                try { gpuVoltage = GpuControl?.GetGpuVoltage(); } catch { gpuVoltage = null; }
             }
 
-            cpuPower = GetCPUPower() ?? 0;
-            ramSpeedMhz = GetRamSpeed() ?? 0;
+            cpuPower = GetCPUPower();
+        }
+
+        public static void ReadSensorsOverlay()
+        {
+            ReadSystemMetrics();
+            ReadHardwareSensors();
         }
 
         private static int? _cachedRamSpeed;
+        private static bool _ramSpeedQueried;
+
         public static int? GetRamSpeed()
         {
-            if (_cachedRamSpeed.HasValue) return _cachedRamSpeed;
+            if (_ramSpeedQueried) return _cachedRamSpeed;
             try
             {
                 using var searcher = new ManagementObjectSearcher("SELECT Speed, ConfiguredClockSpeed FROM Win32_PhysicalMemory");
@@ -325,18 +385,22 @@ namespace PreySense.Overlay
                 {
                     var speed = obj["ConfiguredClockSpeed"] ?? obj["Speed"];
                     if (speed != null)
-                      {
-                          int val = Convert.ToInt32(speed);
-                          if (val > 0)
-                          {
-                              _cachedRamSpeed = val;
-                              return val;
-                          }
-                      }
-                  }
-              }
-              catch { }
-              return null;
-          }
+                    {
+                        int val = Convert.ToInt32(speed);
+                        if (val > 0)
+                        {
+                            _cachedRamSpeed = val;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                _ramSpeedQueried = true;
+            }
+            return _cachedRamSpeed;
+        }
     }
 }

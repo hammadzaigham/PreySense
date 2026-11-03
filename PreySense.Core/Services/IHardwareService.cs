@@ -33,6 +33,7 @@ namespace PreySense.Core.Services
     {
         // Telemetry
         HardwareTelemetry GetCurrentTelemetry();
+        HardwareTelemetry GetFanTemperatures() => GetCurrentTelemetry();
         PowerSourceKind GetPowerSource();
         void NotePluggedSource(PowerSourceKind kind);
         event EventHandler? PowerSourceChanged;
@@ -59,6 +60,9 @@ namespace PreySense.Core.Services
 
         // NVIDIA Advanced Optimus (Dynamic Display Switch / DDS - Reboot-Free)
         bool IsDdsAvailable { get; }
+        bool EnableDiscreteGpu() => false;
+        void RefreshGpuAdapter() { }
+        bool? IsDiscreteGpuDisabled => null;
         bool IsDdsSupported();
         Gpu.DdsStatus? GetDdsStatus();
         bool HasDdsBlockers();
@@ -68,6 +72,7 @@ namespace PreySense.Core.Services
         (bool Success, string Message) RestartDiscreteGpu();
 
         // RGB Keyboard Lighting
+        bool IsRgbAvailable => true;
         void SetRgbStatic(byte zone, Color color);
         void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4);
         void SetRgbHardwareEffect(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction);

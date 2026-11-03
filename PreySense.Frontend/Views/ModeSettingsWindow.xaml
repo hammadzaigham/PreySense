@@ -95,7 +95,6 @@
                                 <controls:SettingDropdownRow x:Name="DropdownCpuBoost"
                                                              Title="CPU Boost"
                                                              ItemsSource="{Binding CpuBoostModes}"
-                                                             SelectedIndex="{Binding CpuBoostMode, Mode=TwoWay}"
                                                              DropdownWidth="240"
                                                              Visibility="Collapsed"/>
 

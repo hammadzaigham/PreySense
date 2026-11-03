@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -19,9 +20,6 @@ namespace PreySense.Helpers
         private ManagementEventWatcher? _powerSourceWatcher;
         private readonly object _lock = new();
         private int _pluggedSource = -1;
-        private ThermalSnapshot _cachedThermalSnapshot;
-        private long _cachedThermalTick;
-        private const int ThermalCacheWindowMs = 750;
 
         public event EventHandler? PowerSourceChanged;
 
@@ -108,7 +106,6 @@ namespace PreySense.Helpers
                 _cachedObj = null;
                 _cachedApgeObj = null;
                 _cachedBatteryObj = null;
-                _cachedThermalTick = 0;
             }
         }
 
@@ -416,34 +413,28 @@ namespace PreySense.Helpers
         /// <summary>
         /// One WMI parameter object and one lock for the four live thermal sensors.
         /// </summary>
-        public ThermalSnapshot ReadThermalSensors()
+        public ThermalSnapshot ReadThermalSensors(bool includeTemperatures = true)
         {
             lock (_lock)
             {
-                long now = Environment.TickCount64;
-                if (_cachedThermalTick != 0 && now - _cachedThermalTick < ThermalCacheWindowMs)
-                    return _cachedThermalSnapshot;
-
                 try
                 {
                     var obj = GetWmiObject();
                     if (obj == null)
-                        return default;
+                        return new ThermalSnapshot(-1, -1, -1, -1);
 
                     using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
-                    int cpuTemp = ReadSensor(obj, inParams, AcerWmi.Sensors.CpuTemperature);
-                    int gpuTemp = ReadSensor(obj, inParams, AcerWmi.Sensors.GpuTemperature);
+                    int cpuTemp = includeTemperatures ? ReadSensor(obj, inParams, AcerWmi.Sensors.CpuTemperature) : -1;
+                    // GPU temperature comes from NVIDIA; avoid the stale EC GPU sensor.
+                    int gpuTemp = 0;
                     int cpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.CpuFanRpm));
                     int gpuRpm = RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.GpuFanRpm));
-                    _cachedThermalSnapshot = new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
-                    _cachedThermalTick = now;
-                    return _cachedThermalSnapshot;
+                    return new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
                 }
                 catch
                 {
-                    _cachedThermalTick = 0;
                     InvalidateCache();
-                    return default;
+                    return new ThermalSnapshot(-1, -1, -1, -1);
                 }
             }
         }
@@ -455,7 +446,7 @@ namespace PreySense.Helpers
                 try
                 {
                     var obj = GetWmiObject();
-                    if (obj == null) return 0;
+                    if (obj == null) return -1;
 
                     using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
                     return ReadSensor(obj, inParams, sensorId);
@@ -463,25 +454,34 @@ namespace PreySense.Helpers
                 catch
                 {
                     InvalidateCache();
-                    return 0;
+                    return -1;
                 }
             }
         }
 
         private int ReadSensor(ManagementObject obj, ManagementBaseObject inParams, ulong sensorId)
         {
+            long started = Stopwatch.GetTimestamp();
             try
             {
                 inParams["gmInput"] = (ulong)(0x0001 | (sensorId << 8));
                 using var outParams = obj.InvokeMethod(AcerWmi.GamingMethods.GetSystemInfo, inParams, null);
                 var raw = (ulong)outParams["gmOutput"];
                 if ((raw & 0xFF) == 0) return (int)((raw >> 8) & 0xFFFF);
+                AppLogger.Error($"EC sensor 0x{sensorId:X} failed: firmware returned 0x{raw:X}.");
             }
-            catch
+            catch (Exception ex)
             {
+                AppLogger.Error($"EC sensor 0x{sensorId:X} failed: {ex.Message}");
                 InvalidateCache();
             }
-            return 0;
+            finally
+            {
+                double elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (elapsed >= 500)
+                    AppLogger.Error($"Slow EC sensor 0x{sensorId:X}: {elapsed:F0} ms. Other firmware operations may have waited.");
+            }
+            return -1;
         }
 
 
@@ -532,7 +532,7 @@ namespace PreySense.Helpers
             return false;
         }
 
-        private static int RoundToNearest100(int value) => (int)(Math.Round(value / 100.0) * 100);
+        private static int RoundToNearest100(int value) => value < 0 ? -1 : (int)(Math.Round(value / 100.0) * 100);
 
         public int CpuTemp => GetSensorReading(AcerWmi.Sensors.CpuTemperature);
         public int GpuTemp => GetSensorReading(AcerWmi.Sensors.GpuTemperature);
