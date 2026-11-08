@@ -167,9 +167,10 @@ foreach ($id in $unique) {
         $path = Join-Path $tablesDir ("{0}.bin" -f $safe)
         [IO.File]::WriteAllBytes($path, $data)
         $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-        $asciiErm4 = (Find-Ascii $data "ERM4").Count
-        $asciiPredator = (Find-Ascii $data "Predator").Count
-        $op = (Find-Erm4OpRegion $data).Count
+        # @() keeps Count valid under Set-StrictMode when Find-* returns empty/unrolled.
+        $asciiErm4 = @(Find-Ascii $data "ERM4").Count
+        $asciiPredator = @(Find-Ascii $data "Predator").Count
+        $op = @(Find-Erm4OpRegion $data).Count
         Write-Report $report ("  {0}: {1} bytes sha256={2} ERM4={3} Predator={4} OpRegion(ERM4)={5}" -f `
             $sig, $data.Length, $sha, $asciiErm4, $asciiPredator, $op)
     }
@@ -179,9 +180,32 @@ foreach ($id in $unique) {
 }
 Write-Report $report ""
 
+# EnumSystemFirmwareTables often omits XSDT/RSDT/DSDT — fetch and save them explicitly
+# so -IncludePhysicalSsdtDump always has windows-tables\XSDT.bin to follow.
+function Save-NamedTable([string]$Name) {
+    $data = [AcpiNative]::GetTable([AcpiNative]::Sig($Name))
+    if ($null -eq $data) {
+        Write-Report $report ("  {0}: unavailable (explicit fetch)" -f $Name)
+        return $null
+    }
+    $path = Join-Path $tablesDir ("{0}.bin" -f $Name)
+    [IO.File]::WriteAllBytes($path, $data)
+    $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    $asciiErm4 = @(Find-Ascii $data "ERM4").Count
+    $asciiPredator = @(Find-Ascii $data "Predator").Count
+    $op = @(Find-Erm4OpRegion $data).Count
+    Write-Report $report ("  {0}: {1} bytes sha256={2} ERM4={3} Predator={4} OpRegion(ERM4)={5} (explicit)" -f `
+        $Name, $data.Length, $sha, $asciiErm4, $asciiPredator, $op)
+    return $data
+}
+
+Write-Report $report "Explicit root/DSDT fetches (may be missing from Enum):"
+$xsdt = Save-NamedTable "XSDT"
+$rsdt = Save-NamedTable "RSDT"
+$null = Save-NamedTable "DSDT"
+Write-Report $report ""
+
 # Parse XSDT pointers so missing SSDTs are visible even before a physical dump.
-$xsdt = [AcpiNative]::GetTable([AcpiNative]::Sig("XSDT"))
-$rsdt = [AcpiNative]::GetTable([AcpiNative]::Sig("RSDT"))
 $pointerList = Join-Path $OutputDirectory "xsdt-pointers.txt"
 $lines = New-Object System.Collections.Generic.List[string]
 if ($null -ne $xsdt -and $xsdt.Length -ge 36) {
@@ -207,11 +231,12 @@ else {
 }
 $lines | Set-Content -LiteralPath $pointerList -Encoding UTF8
 
-$ssdtCount = @($grouped | Where-Object { [AcpiNative]::SigToString([uint32]$_.Name) -eq "SSDT" } | Select-Object -ExpandProperty Count)
-if (-not $ssdtCount) { $ssdtCount = 0 }
+$ssdtGroup = @($grouped | Where-Object { [AcpiNative]::SigToString([uint32]$_.Name) -eq "SSDT" })
+$ssdtCount = if ($ssdtGroup.Count -gt 0) { [int]$ssdtGroup[0].Count } else { 0 }
 Write-Report $report ""
 Write-Report $report "NOTES"
 Write-Report $report "- PreySense looks for AML OperationRegion(ERM4) in DSDT, then probes 0xFE800400 / 0xFE708400 for ASCII 'Predator'."
+Write-Report $report "- EnumSystemFirmwareTables often omits XSDT/RSDT/DSDT; this script fetches those explicitly into windows-tables\."
 Write-Report $report "- Windows exposes only one SSDT via GetSystemFirmwareTable('SSDT'), even when Enum lists many."
 Write-Report $report ("- This machine enumerates SSDT x{0}. Use -IncludePhysicalSsdtDump as Administrator with PreySenseDriver to dump all of them." -f $ssdtCount)
 Write-Report $report "- Zip this folder and attach it to the GitHub issue (DSDT.bin + report.txt are the minimum)."
