@@ -81,9 +81,8 @@ namespace PreySense.Mode
                     profile.TauSeconds = Math.Clamp(modeCfg.TauSeconds.Value, 0, CpuPowerLimitConfiguration.InfiniteTauSliderValue);
                 if (modeCfg.EffectiveCpuBoostMode is int boost)
                 {
-                    int onOff = boost > 0 ? 1 : 0;
-                    profile.CpuBoost = onOff;
-                    profile.ExtendedCpuBoost = onOff;
+                    profile.CpuBoost = boost;
+                    profile.ExtendedCpuBoost = boost;
                 }
 
                 profile.ApplyCpuLimits = modeCfg.ApplyCpuLimits;
@@ -109,7 +108,7 @@ namespace PreySense.Mode
                     modeCfg.CpuPl1Watts = Math.Clamp(profile.CpuPl1, 5, CpuPowerLimitConfiguration.MaxPowerLimitWatts);
                     modeCfg.CpuPl2Watts = Math.Clamp(profile.CpuPl2, 5, CpuPowerLimitConfiguration.MaxPowerLimitWatts);
                     modeCfg.TauSeconds = Math.Clamp(profile.TauSeconds, 0, CpuPowerLimitConfiguration.InfiniteTauSliderValue);
-                    int boost = (profile.ExtendedCpuBoost ?? profile.CpuBoost) > 0 ? 1 : 0;
+                    int boost = Math.Clamp(profile.ExtendedCpuBoost ?? profile.CpuBoost, 0, 6);
                     modeCfg.CpuBoostMode = boost;
                     modeCfg.CpuBoost = boost > 0;
 

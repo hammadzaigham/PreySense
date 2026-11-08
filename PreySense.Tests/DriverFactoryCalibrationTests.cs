@@ -3,6 +3,7 @@ using PreySense.Core.Hardware;
 namespace PreySense.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class DriverFactoryCalibrationTests
 {
     private sealed class Hardware : ICpuDriverBackend, IPhysicalMemoryByteAccess
@@ -11,13 +12,14 @@ public class DriverFactoryCalibrationTests
         public ulong? FailAddress;
         public bool ProchotLocked;
         public bool IsInitialized => true;
-        public Hardware()
+        public Hardware(ulong erm4Base = AcerErm4Table.Phn16s71Base)
         {
+            AcerErm4Table.SetBase(erm4Base);
             byte[] signature = "Predator"u8.ToArray();
-            for (int i = 0; i < signature.Length; i++) Memory[0xFE800400UL + (ulong)i] = signature[i];
+            for (int i = 0; i < signature.Length; i++) Memory[erm4Base + (ulong)i] = signature[i];
             foreach (byte mode in new byte[] { 6, 0, 1, 4, 5 })
             {
-                ulong start = AcerProfileApplyTransaction.ProfileAddress(mode) - 4;
+                ulong start = erm4Base + AcerErm4Table.ModeDbOffset(mode) - 4;
                 byte[] record = { 35, (byte)(45 + mode), 56, (byte)(80 + mode), 15, 20, 10 };
                 for (int i = 0; i < record.Length; i++) Memory[start + (ulong)i] = record[i];
             }
@@ -72,15 +74,28 @@ public class DriverFactoryCalibrationTests
     [TestMethod]
     public void MissingSignature_RejectsCapture()
     {
+        AcerErm4Table.Reset();
         var hw = new Hardware();
-        hw.Memory[0xFE800400] = 0;
+        hw.Memory[AcerErm4Table.Phn16s71Base] = 0;
+        AcerErm4Table.Reset();
         Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(hw, hw).Capture(85));
+    }
+
+    [TestMethod]
+    public void Capture_ResolvesAlternateErm4Base()
+    {
+        AcerErm4Table.Reset();
+        var hw = new Hardware(AcerErm4Table.Phn1671Base);
+        AcerErm4Table.Reset(); // force discovery from candidates
+        var result = new DriverFactoryCalibration(hw, hw).Capture(85);
+        Assert.AreEqual(AcerErm4Table.Phn1671Base, AcerErm4Table.ResolvedBase);
+        Assert.AreEqual(50, result["Turbo"].CpuPl1Watts);
     }
 
     [TestMethod]
     public void UnreadableProfile_RejectsCapture()
     {
-        var hw = new Hardware { FailAddress = AcerProfileApplyTransaction.ProfileAddress(5) };
+        var hw = new Hardware { FailAddress = AcerErm4Table.ProfileAddress(5) };
         Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(hw, hw).Capture(85));
     }
 

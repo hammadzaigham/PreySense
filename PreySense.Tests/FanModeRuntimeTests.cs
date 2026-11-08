@@ -89,13 +89,25 @@ public class FanModeRuntimeTests
         Select(vm, FanControlMode.Custom);
         for (int i = 0; i < 10; i++)
             Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
+        // Custom/Max: five transient retries, then permanent pause until explicit reset.
+        CollectionAssert.AreEqual(new[] { "curve:40/50", "curve:40/50", "curve:40/50", "curve:40/50", "curve:40/50" }, hardware.Calls);
         Assert.IsNull(vm.AppliedCpuFanPercent);
         hardware.FailWrites = false;
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        Assert.HasCount(2, hardware.Calls);
+        Assert.HasCount(6, hardware.Calls);
         Assert.AreEqual(40, vm.AppliedCpuFanPercent);
+    }
+
+    [TestMethod]
+    public void AutoFanWriteFailsImmediatelyWithoutTransientRetries()
+    {
+        var hardware = new RecordingFans { FailWrites = true };
+        var vm = Create(hardware);
+        Select(vm, FanControlMode.Auto);
+        for (int i = 0; i < 5; i++)
+            Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
+        CollectionAssert.AreEqual(new[] { "mode:0" }, hardware.Calls);
     }
 
     [TestMethod]

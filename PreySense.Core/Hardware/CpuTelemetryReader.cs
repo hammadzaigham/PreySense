@@ -8,7 +8,7 @@ namespace PreySense.Core.Hardware;
 
 /// <summary>
 /// Authoritative reader for CPU hardware telemetry using low-level MSR driver backends
-/// (ThrottleStop's helper) with affinity-aware core sampling and robust counter delta/rollover handling.
+/// with affinity-aware core sampling and robust counter delta/rollover handling.
 /// </summary>
 public sealed class CpuTelemetryReader : IDisposable
 {

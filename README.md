@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v3.0.0** uses a bundled kernel driver for per-mode CPU/GPU tuning — no OpenCore. See [What’s new in v3.0.0](docs/releases/v3.0.0.md).
+**v3.0.1** uses a bundled kernel driver for per-mode CPU/GPU tuning — no OpenCore. See [What’s new in v3.0.1](docs/releases/v3.0.1.md) and [v3.0.0](docs/releases/v3.0.0.md).
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 
@@ -45,7 +45,7 @@ Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)*
 2. **OpenCore is not used anymore.** If an older PreySense install left OpenCore / EFI PreySense patches on the ESP, remove that setup before running v3.
 3. Download the new `PreySense.exe` and run it as administrator.
 
-Full notes: [docs/releases/v3.0.0.md](docs/releases/v3.0.0.md).
+Full notes: [docs/releases/v3.0.1.md](docs/releases/v3.0.1.md).
 
 ## Features
 
@@ -87,7 +87,7 @@ There is no laptop-model or BIOS-version name check. Driver initialization, supp
 
 GPU thermal-trip editing and its injected ACPI calls have been removed. GPU temperature telemetry remains available. Actual GPU power remains subject to NVIDIA driver and firmware policy.
 
-See [driver tuning](docs/driver_tuning.md) for application order, persistence, and failure behavior. Product overview: [v3.0.0 notes](docs/releases/v3.0.0.md).
+See [driver tuning](docs/driver_tuning.md) for application order, persistence, and failure behavior. Product overview: [v3.0.1 notes](docs/releases/v3.0.1.md).
 
 ## Building
 

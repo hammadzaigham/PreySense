@@ -40,8 +40,8 @@ namespace PreySense.Frontend.ViewModels
 
         private bool _suppressPowerProfile;
 
-        // CPU Boost Mode (0=Disabled, 1=Enabled)
-        [ObservableProperty] private int _cpuBoostMode = 1; // Enabled default
+        // CPU Boost Mode — Windows PERFBOOSTMODE 0–6 (default Enabled)
+        [ObservableProperty] private int _cpuBoostMode = 1;
         [ObservableProperty] private string _cpuBoostModeName = "Enabled";
 
         [RelayCommand(AllowConcurrentExecutions = true)]
@@ -284,16 +284,16 @@ namespace PreySense.Frontend.ViewModels
             if (!int.TryParse(boostModeStr, out int boostVal))
                 return;
             int index = ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 };
-            SetCpuBoostForModeIndex(index, boostVal > 0);
+            SetCpuBoostForModeIndex(index, boostVal);
             ApplyCpuBoostForMode(ActivePowerMode);
         }
 
         internal static string GetCpuBoostModeName(int boostMode) =>
-            boostMode > 0 ? "Enabled" : "Disabled";
+            CpuBoostModeNames[Math.Clamp(boostMode, 0, CpuBoostModeNames.Length - 1)];
 
         partial void OnCpuBoostModeChanged(int value)
         {
-            int boost = value > 0 ? 1 : 0;
+            int boost = Math.Clamp(value, 0, 6);
             CpuBoostModeName = GetCpuBoostModeName(boost);
             bool applied = PowerLimitController.SetCpuBoost(boost);
             _lastCpuBoostApplySucceeded = applied;

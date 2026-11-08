@@ -4,7 +4,7 @@ namespace PreySense.Core.Hardware;
 public static class CpuDriverRuntime
 {
     private static readonly object Gate = new();
-    private static ThrottleStopCpuDriverBackend? _backend;
+    private static PreySenseDriverBackend? _backend;
     private static CpuTelemetryReader? _telemetry;
     private static CpuPowerLimitController? _powerLimits;
     private static bool _attempted;
@@ -12,7 +12,7 @@ public static class CpuDriverRuntime
 
     public static CpuTelemetryReader? Telemetry { get { Initialize(); return _telemetry; } }
     public static CpuPowerLimitController? PowerLimits { get { Initialize(); return _powerLimits; } }
-    public static ThrottleStopCpuDriverBackend? Backend { get { Initialize(); return _backend; } }
+    public static PreySenseDriverBackend? Backend { get { Initialize(); return _backend; } }
 
     private static void Initialize()
     {
@@ -20,7 +20,7 @@ public static class CpuDriverRuntime
         {
             if (_attempted) return;
             _attempted = true;
-            var backend = new ThrottleStopCpuDriverBackend();
+            var backend = new PreySenseDriverBackend();
             try
             {
                 if (!backend.Initialize(out var error, attemptStartService: true))

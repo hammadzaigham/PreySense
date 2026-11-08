@@ -77,17 +77,17 @@ public class TelemetryAndBoostRegressionTests
 
             var vm = Create(new RecordingHardware());
             Set(vm, "_activePowerMode", (byte)1);
-            vm.SetCpuBoostForModeIndex(4, true);
-            Assert.AreEqual(1, vm.CpuBoostModeForModeIndex(4));
+            vm.SetCpuBoostForModeIndex(4, 2);
+            Assert.AreEqual(2, vm.CpuBoostModeForModeIndex(4));
 
             var profile = ProfileManager.LoadProfile(5);
-            profile.CpuBoost = 1;
-            profile.ExtendedCpuBoost = 1;
+            profile.CpuBoost = 2;
+            profile.ExtendedCpuBoost = 2;
             Assert.IsTrue(ProfileManager.SaveProfile(profile));
-            Assert.AreEqual(1, store.GetCurrent().Tuning.Turbo.CpuBoostMode);
+            Assert.AreEqual(2, store.GetCurrent().Tuning.Turbo.CpuBoostMode);
             Assert.IsTrue(store.GetCurrent().Tuning.Turbo.CpuBoost);
 
-            vm.SetCpuBoostForModeIndex(4, false);
+            vm.SetCpuBoostForModeIndex(4, 0);
             Assert.AreEqual(0, vm.CpuBoostModeForModeIndex(4));
         }
         finally

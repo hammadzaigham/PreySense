@@ -12,10 +12,8 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
     {
         if (!backend.IsInitialized)
             throw new InvalidOperationException("The CPU driver is unavailable; calibration was not started.");
-        byte[] signature = "Predator"u8.ToArray();
-        for (int i = 0; i < signature.Length; i++)
-            if (!memory.ReadPhysicalByte(0xFE800400UL + (ulong)i, out byte value) || value != signature[i])
-                throw new InvalidOperationException("The Acer hardware profile table could not be identified; defaults were not saved.");
+        if (!AcerErm4Table.EnsureResolved(memory, out _))
+            throw new InvalidOperationException("The Acer hardware profile table could not be identified; defaults were not saved.");
         var prochot = new CpuProchotController(backend).Read();
         ProchotOffsetCelsius = prochot?.OffsetCelsius;
         ProchotOffsetLocked = prochot?.Locked;
@@ -23,7 +21,7 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
         var captured = new Dictionary<string, ModeTuningConfig>();
         foreach (var (name, mode) in new (string, byte)[] { ("Eco", 6), ("Quiet", 0), ("Balanced", 1), ("Performance", 4), ("Turbo", 5) })
         {
-            ulong address = AcerProfileApplyTransaction.ProfileAddress(mode);
+            ulong address = AcerErm4Table.ProfileAddress(mode);
             // ERM4 @ Mx base: P1, PM, PT, P2, DB, CT, CP (platform ATPP watts at record[6] / address+2).
             byte[] record = new byte[7];
             for (int i = 0; i < record.Length; i++)

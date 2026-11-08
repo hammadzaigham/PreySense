@@ -4,7 +4,7 @@ namespace PreySense.Core.Hardware;
 
 /// <summary>
 /// Hardware abstraction interface for low-level CPU MSR and MMIO access.
-/// Decouples CPU power and telemetry operations from specific driver implementations (ThrottleStop).
+/// Decouples CPU power and telemetry operations from specific driver implementations.
 /// </summary>
 public interface ICpuDriverBackend : IDisposable
 {

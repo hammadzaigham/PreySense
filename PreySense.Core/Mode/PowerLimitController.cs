@@ -58,9 +58,9 @@ namespace PreySense.Mode
         }
 
         /// <summary>
-        /// Toggles CPU Turbo Boost using hidden Windows Power Configuration attributes (PerfBoostMode).
-        /// This is the exact method G-Helper uses to disable CPU Boost and drastically save battery.
-        /// 0 = Disabled, 1 = Enabled, 2 = Aggressive, 3 = Efficient Enabled, 4 = Efficient Aggressive
+        /// Sets Windows PERFBOOSTMODE on the active scheme (AC + DC).
+        /// 0 Disabled, 1 Enabled, 2 Aggressive, 3 Efficient Enabled, 4 Efficient Aggressive,
+        /// 5 Aggressive At Guaranteed, 6 Efficient Aggressive At Guaranteed.
         /// </summary>
         public static int EnergySaverBatteryThreshold(bool enabled) => enabled ? 100 : 0;
 

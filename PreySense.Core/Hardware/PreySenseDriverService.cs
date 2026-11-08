@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 
 namespace PreySense.Core.Hardware;
 
-public interface IPreySenseCpuDriverService : IDisposable
+public interface IPreySenseDriverService : IDisposable
 {
     string ServiceName { get; }
     string DevicePath { get; }
@@ -14,15 +14,13 @@ public interface IPreySenseCpuDriverService : IDisposable
     bool StopServiceIfOwned(out string? errorMessage);
 }
 
-public class PreySenseCpuDriverService : IPreySenseCpuDriverService
+public class PreySenseDriverService : IPreySenseDriverService
 {
-    public const string DefaultServiceName = "PreySenseCpuDriver";
-    public const string DefaultDisplayName = "PreySense CPU Driver";
-    public const string FallbackExternalServiceName = "TSDriverProbe";
-
+    public const string DefaultServiceName = "PreySenseDriver";
+    public const string DefaultDisplayName = "PreySense Driver";
     private readonly string _serviceName;
     private readonly string _devicePath;
-    private readonly IThrottleStopDriverDeviceOperations _deviceOps;
+    private readonly IPreySenseDriverDeviceOperations _deviceOps;
     private readonly IPreySenseDriverExtractor _extractor;
     private readonly object _lock = new();
 
@@ -37,9 +35,9 @@ public class PreySenseCpuDriverService : IPreySenseCpuDriverService
 
     public bool IsRunning => _deviceOps.IsServiceRunning(_serviceName, out _);
 
-    public PreySenseCpuDriverService(
+    public PreySenseDriverService(
         string serviceName = DefaultServiceName,
-        IThrottleStopDriverDeviceOperations? deviceOps = null,
+        IPreySenseDriverDeviceOperations? deviceOps = null,
         IPreySenseDriverExtractor? extractor = null)
     {
         _serviceName = string.IsNullOrWhiteSpace(serviceName) ? DefaultServiceName : serviceName;
@@ -53,7 +51,7 @@ public class PreySenseCpuDriverService : IPreySenseCpuDriverService
             _devicePath = @"\\.\" + _serviceName;
         }
 
-        _deviceOps = deviceOps ?? new Win32ThrottleStopDriverDeviceOperations();
+        _deviceOps = deviceOps ?? new Win32PreySenseDriverDeviceOperations();
         _extractor = extractor ?? new PreySenseDriverExtractor();
     }
 
@@ -90,7 +88,7 @@ public class PreySenseCpuDriverService : IPreySenseCpuDriverService
         lock (_lock)
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(PreySenseCpuDriverService));
+                throw new ObjectDisposedException(nameof(PreySenseDriverService));
 
             if (_deviceOps.IsServiceRunning(_serviceName, out _))
             {
@@ -101,12 +99,6 @@ public class PreySenseCpuDriverService : IPreySenseCpuDriverService
                 return true;
             }
 
-            if (!_serviceName.Equals(FallbackExternalServiceName, StringComparison.OrdinalIgnoreCase) &&
-                _deviceOps.IsServiceRunning(FallbackExternalServiceName, out _))
-            {
-                _serviceOwnership = DriverServiceOwnership.ExternalAttached;
-                return true;
-            }
 
             EnsureInstanceRegistration();
 

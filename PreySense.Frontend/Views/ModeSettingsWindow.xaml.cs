@@ -35,17 +35,15 @@ namespace PreySense.Frontend.Views
             MaxHeight = SystemParameters.WorkArea.Height - 40;
             TuningScroll.MaxHeight = Math.Max(1, MaxHeight - 292);
             Loaded += ModeSettingsWindow_Loaded;
-            DependencyPropertyDescriptor
-                .FromProperty(SettingSwitchRow.IsCheckedProperty, typeof(SettingSwitchRow))
-                .AddValueChanged(SwitchCpuBoost, CpuBoostSwitch_Changed);
+            foreach (string name in MainViewModel.CpuBoostModeNames)
+                DropdownCpuBoost.Items.Add(name);
+            DropdownCpuBoost.SelectionChanged += CpuBoostDropdown_Changed;
             Closed += (_, _) =>
             {
                 _verificationTimer.Stop();
                 if (DataContext is MainViewModel vm)
                     vm.PropertyChanged -= OnTuningVmPropertyChanged;
-                DependencyPropertyDescriptor
-                    .FromProperty(SettingSwitchRow.IsCheckedProperty, typeof(SettingSwitchRow))
-                    .RemoveValueChanged(SwitchCpuBoost, CpuBoostSwitch_Changed);
+                DropdownCpuBoost.SelectionChanged -= CpuBoostDropdown_Changed;
             };
         }
 
@@ -144,8 +142,8 @@ namespace PreySense.Frontend.Views
                 if (LabelTau != null) LabelTau.Text = FormatTau(tau);
             }
 
-            if (SwitchCpuBoost != null)
-                SwitchCpuBoost.IsChecked = Draft.CpuBoost;
+            if (DropdownCpuBoost != null)
+                DropdownCpuBoost.SelectedIndex = Math.Clamp(Draft.EffectiveCpuBoostMode ?? vm.CpuBoostForModeIndex(_selectedModeIndex), 0, 6);
 
             SliderGpuDelta.Value = Draft.GpuDeltaWatts ?? 0;
             SliderGpuDynamicBoost.Value = Draft.GpuDynamicBoostWatts ?? 0;
@@ -428,7 +426,8 @@ namespace PreySense.Frontend.Views
             StoreModeLimits(pl1, pl2);
             vm.SetTauForModeIndex(_selectedModeIndex, tau);
             StoreCpuBoost(vm);
-            Draft.CpuBoost = vm.CpuBoostForModeIndex(_selectedModeIndex);
+            Draft.CpuBoostMode = vm.CpuBoostForModeIndex(_selectedModeIndex);
+            Draft.CpuBoost = Draft.CpuBoostMode > 0;
             int? gpuWatts = ReadGpuWatts();
             RowGpuPower.Value = gpuWatts ?? double.NaN;
             StoreGpuWatts(gpuWatts);
@@ -442,19 +441,20 @@ namespace PreySense.Frontend.Views
 
         private void StoreCpuBoost(MainViewModel vm)
         {
-            bool enabled = SwitchCpuBoost?.IsChecked == true;
-            vm.SetCpuBoostForModeIndex(_selectedModeIndex, enabled);
-            Draft.CpuBoost = enabled;
-            Draft.CpuBoostMode = enabled ? 1 : 0;
+            int boost = Math.Clamp(DropdownCpuBoost?.SelectedIndex ?? 1, 0, 6);
+            vm.SetCpuBoostForModeIndex(_selectedModeIndex, boost);
+            Draft.CpuBoostMode = boost;
+            Draft.CpuBoost = boost > 0;
         }
 
-        private void CpuBoostSwitch_Changed(object? sender, EventArgs e)
+        private void CpuBoostDropdown_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (_isUpdatingUi || DataContext is not MainViewModel vm || SwitchCpuBoost?.IsChecked is not bool enabled)
+            if (_isUpdatingUi || DataContext is not MainViewModel vm)
                 return;
-            vm.SetCpuBoostForModeIndex(_selectedModeIndex, enabled);
-            Draft.CpuBoost = enabled;
-            Draft.CpuBoostMode = enabled ? 1 : 0;
+            int boost = Math.Clamp(DropdownCpuBoost.SelectedIndex, 0, 6);
+            vm.SetCpuBoostForModeIndex(_selectedModeIndex, boost);
+            Draft.CpuBoostMode = boost;
+            Draft.CpuBoost = boost > 0;
         }
 
         private static byte ModeIndexToByte(int modeIndex) => modeIndex switch

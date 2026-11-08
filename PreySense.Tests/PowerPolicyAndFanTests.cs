@@ -62,10 +62,12 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void ModeSettingsWindow_DoesNotAddOverlayOrBoostControls()
+        public void ModeSettingsWindow_UsesCpuBoostDropdownWithoutLegacyExtras()
         {
             string root = GetSolutionRoot();
             string xaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml"));
+            Assert.Contains("DropdownCpuBoost", xaml);
+            Assert.DoesNotContain("SwitchCpuBoost", xaml);
             Assert.DoesNotContain("ComboCpuBoost", xaml);
             Assert.DoesNotContain("CPU Turbo Boost", xaml);
             Assert.DoesNotContain("Windows Power", xaml);

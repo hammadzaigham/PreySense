@@ -8,7 +8,18 @@ public partial class MainViewModel
 {
     // Per-mode CPU boost and Tau helpers live separately from driver tuning
     // and calibration workflows so mode editing is easier to navigate.
-    public bool CpuBoostForMode(byte mode) => mode switch
+    public static readonly string[] CpuBoostModeNames =
+    [
+        "Disabled",
+        "Enabled",
+        "Aggressive",
+        "Efficient Enabled",
+        "Efficient Aggressive",
+        "Aggressive At Guaranteed",
+        "Efficient Aggressive At Guaranteed"
+    ];
+
+    public int CpuBoostForMode(byte mode) => mode switch
     {
         0x05 => CustomTurboCpuBoost,
         0x04 => CustomPerfCpuBoost,
@@ -17,7 +28,7 @@ public partial class MainViewModel
         _ => CustomQuietCpuBoost
     };
 
-    public bool CpuBoostForModeIndex(int modeIndex) => modeIndex switch
+    public int CpuBoostForModeIndex(int modeIndex) => modeIndex switch
     {
         0 => CustomEcoCpuBoost,
         1 => CustomQuietCpuBoost,
@@ -26,21 +37,22 @@ public partial class MainViewModel
         _ => CustomTurboCpuBoost
     };
 
-    public void SetCpuBoostForModeIndex(int modeIndex, bool enabled)
+    public void SetCpuBoostForModeIndex(int modeIndex, int boostMode)
     {
+        int boost = Math.Clamp(boostMode, 0, 6);
         switch (modeIndex)
         {
-            case 0: CustomEcoCpuBoost = enabled; break;
-            case 1: CustomQuietCpuBoost = enabled; break;
-            case 2: CustomBalancedCpuBoost = enabled; break;
-            case 3: CustomPerfCpuBoost = enabled; break;
-            default: CustomTurboCpuBoost = enabled; break;
+            case 0: CustomEcoCpuBoost = boost; break;
+            case 1: CustomQuietCpuBoost = boost; break;
+            case 2: CustomBalancedCpuBoost = boost; break;
+            case 3: CustomPerfCpuBoost = boost; break;
+            default: CustomTurboCpuBoost = boost; break;
         }
     }
 
-    public int CpuBoostModeForMode(byte mode) => CpuBoostForMode(mode) ? 1 : 0;
+    public int CpuBoostModeForMode(byte mode) => Math.Clamp(CpuBoostForMode(mode), 0, 6);
 
-    public int CpuBoostModeForModeIndex(int index) => CpuBoostForModeIndex(index) ? 1 : 0;
+    public int CpuBoostModeForModeIndex(int index) => Math.Clamp(CpuBoostForModeIndex(index), 0, 6);
 
     private bool _lastCpuBoostApplySucceeded = true;
 

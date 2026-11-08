@@ -17,7 +17,7 @@ public enum DriverServiceOwnership
     Unknown,
 
     /// <summary>
-    /// The service was already running or registered by another process (e.g. ThrottleStop or external service).
+    /// The service was already running or registered by another process (e.g. an external process).
     /// PreySense attaches to it and MUST NOT stop or delete it upon Dispose.
     /// </summary>
     ExternalAttached,
@@ -33,7 +33,7 @@ public enum DriverServiceOwnership
 /// Abstraction for low-level Win32 and Service Control Manager operations.
 /// Enables mock testing of driver lifecycle, service installation, start/stop, IOCTLs, and error reporting without hardware or admin rights.
 /// </summary>
-public interface IThrottleStopDriverDeviceOperations : IDisposable
+public interface IPreySenseDriverDeviceOperations : IDisposable
 {
     bool IsOpen { get; }
     void OpenDevice(string devicePath);
@@ -49,9 +49,9 @@ public interface IThrottleStopDriverDeviceOperations : IDisposable
 }
 
 /// <summary>
-/// Production Win32 and SCM implementation of <see cref="IThrottleStopDriverDeviceOperations"/>.
+/// Production Win32 and SCM implementation of <see cref="IPreySenseDriverDeviceOperations"/>.
 /// </summary>
-public sealed class Win32ThrottleStopDriverDeviceOperations : IThrottleStopDriverDeviceOperations
+public sealed class Win32PreySenseDriverDeviceOperations : IPreySenseDriverDeviceOperations
 {
     private const uint GENERIC_READ = 0x80000000;
     private const uint GENERIC_WRITE = 0x40000000;
@@ -526,12 +526,12 @@ public sealed class Win32ThrottleStopDriverDeviceOperations : IThrottleStopDrive
 }
 
 /// <summary>
-/// Backend implementation of <see cref="ICpuDriverBackend"/> using ThrottleStop's kernel driver IOCTLs.
+/// Backend implementation of <see cref="ICpuDriverBackend"/> using the bundled PreySenseDriver IOCTLs.
 /// Validates external driver identity and integrity without altering OS security.
 /// </summary>
-public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalMemoryByteAccess
+public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryByteAccess
 {
-    // Verified ThrottleStop IOCTL codes
+    // Verified PreySenseDriver IOCTL codes
     public const uint IOCTL_MSR_READ   = 0x80006448;
     public const uint IOCTL_MSR_WRITE  = 0x8000644C;
     public const uint IOCTL_PHYS_READ  = 0x80006498;
@@ -548,8 +548,8 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
 
     private readonly string _serviceName;
     private readonly string _devicePath;
-    private readonly IThrottleStopDriverDeviceOperations _deviceOps;
-    private readonly IPreySenseCpuDriverService? _serviceManager;
+    private readonly IPreySenseDriverDeviceOperations _deviceOps;
+    private readonly IPreySenseDriverService? _serviceManager;
     private readonly bool _ownsDeviceOps;
     private readonly bool _ownsServiceManager;
     private readonly object _lock = new();
@@ -564,10 +564,10 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
     public string DevicePath => _devicePath;
     public DriverServiceOwnership ServiceOwnership => _serviceOwnership;
 
-    public ThrottleStopCpuDriverBackend(
-        string serviceOrDeviceName = "PreySenseCpuDriver",
-        IThrottleStopDriverDeviceOperations? deviceOps = null,
-        IPreySenseCpuDriverService? serviceManager = null)
+    public PreySenseDriverBackend(
+        string serviceOrDeviceName = "PreySenseDriver",
+        IPreySenseDriverDeviceOperations? deviceOps = null,
+        IPreySenseDriverService? serviceManager = null)
     {
         if (string.IsNullOrWhiteSpace(serviceOrDeviceName))
             throw new ArgumentException("Service or device name cannot be empty.", nameof(serviceOrDeviceName));
@@ -590,7 +590,7 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
         }
         else
         {
-            _deviceOps = new Win32ThrottleStopDriverDeviceOperations();
+            _deviceOps = new Win32PreySenseDriverDeviceOperations();
             _ownsDeviceOps = true;
         }
 
@@ -601,13 +601,13 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
         }
         else
         {
-            _serviceManager = new PreySenseCpuDriverService(_serviceName, _deviceOps);
+            _serviceManager = new PreySenseDriverService(_serviceName, _deviceOps);
             _ownsServiceManager = true;
         }
     }
 
-    public ThrottleStopCpuDriverBackend(IPreySenseCpuDriverService serviceManager)
-        : this(serviceManager?.ServiceName ?? "PreySenseCpuDriver", null, serviceManager)
+    public PreySenseDriverBackend(IPreySenseDriverService serviceManager)
+        : this(serviceManager?.ServiceName ?? "PreySenseDriver", null, serviceManager)
     {
     }
 
@@ -623,7 +623,7 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
         lock (_lock)
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(ThrottleStopCpuDriverBackend));
+                throw new ObjectDisposedException(nameof(PreySenseDriverBackend));
 
             if (IsInitialized)
                 return true;
@@ -650,30 +650,6 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
                 }
             }
 
-            // Also check if an external ThrottleStop service (e.g. TSDriverProbe) is already running and accessible
-            const string fallbackExternalServiceName = "TSDriverProbe";
-            if (!wasAlreadyRunning && !_serviceName.Equals(fallbackExternalServiceName, StringComparison.OrdinalIgnoreCase))
-            {
-                string fallbackService = fallbackExternalServiceName;
-                string fallbackDevice = $@"\\.\{fallbackService}";
-                if (_deviceOps.IsServiceRunning(fallbackService, out _))
-                {
-                    try
-                    {
-                        _deviceOps.OpenDevice(fallbackDevice);
-                        if (_deviceOps.IsOpen)
-                        {
-                            _serviceOwnership = DriverServiceOwnership.ExternalAttached;
-                            _initialized = true;
-                            return true;
-                        }
-                    }
-                    catch
-                    {
-                        // Fall back to starting our own service below
-                    }
-                }
-            }
 
             // If not running, check if start was requested
             if (!attemptStartService)
@@ -746,14 +722,14 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
         lock (_lock)
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(ThrottleStopCpuDriverBackend));
+                throw new ObjectDisposedException(nameof(PreySenseDriverBackend));
 
             if (IsInitialized)
                 return;
 
             if (!Initialize(out string? err, attemptStartService: false))
             {
-                throw new InvalidOperationException(err ?? $"Failed to initialize ThrottleStop driver backend for device '{_devicePath}'.");
+                throw new InvalidOperationException(err ?? $"Failed to initialize PreySenseDriver backend for device '{_devicePath}'.");
             }
         }
     }
@@ -842,8 +818,8 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
             address = 0;
             if (_disposed || !IsInitialized) return false;
             bool ReadConfig(byte offset, out uint value) => TryReadHostBridgeConfig(offset, out value);
-            // Verified Raptor Lake-HX host bridge; no hardcoded physical MCHBAR base.
-            if (!ReadConfig(0, out uint id) || id != 0x7D1C8086 ||
+            // Raptor Lake host bridges share MCHBAR at config 0x48/0x4C; no hardcoded physical base.
+            if (!ReadConfig(0, out uint id) || !IsSupportedHostBridge(id) ||
                 !ReadConfig(0x48, out uint low) || !ReadConfig(0x4C, out uint high) || (low & 1) == 0)
                 return false;
             address = ((ulong)high << 32 | low) & ~0x7FFFUL;
@@ -938,6 +914,15 @@ public sealed class ThrottleStopCpuDriverBackend : ICpuDriverBackend, IPhysicalM
         }
     }
 
+    /// <summary>Intel vendor + known Raptor Lake host-bridge device IDs that expose MCHBAR at 0x48/0x4C.</summary>
+    public static bool IsSupportedHostBridge(uint configId)
+    {
+        if ((configId & 0xFFFF) != 0x8086) return false;
+        ushort device = (ushort)(configId >> 16);
+        return device is 0x7D1C or 0x4637 or 0x463B or 0x4647
+            or 0xA702 or 0xA729 or 0xA728 or 0xA72A or 0xA719
+            or 0xA700 or 0xA701 or 0xA703 or 0xA704 or 0xA705;
+    }
     /// <summary>
     /// Checks whether an MSR register address falls within a restricted kernel range.
     /// </summary>

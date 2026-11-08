@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -8,11 +8,11 @@ using PreySense.Core.Hardware;
 namespace PreySense.Tests;
 
 [TestClass]
-public class PreySenseCpuDriverLifecycleTests
+public class PreySenseDriverLifecycleTests
 {
     private sealed class MockExtractor : IPreySenseDriverExtractor
     {
-        public string DriverFilePath { get; set; } = @"C:\TestPath\PreySenseCpuDriver.sys";
+        public string DriverFilePath { get; set; } = @"C:\TestPath\PreySenseDriver.sys";
         public bool ExtractionResult { get; set; } = true;
         public string? ExtractionErrorMessage { get; set; }
         public int ExtractionCallCount { get; private set; }
@@ -26,7 +26,7 @@ public class PreySenseCpuDriverLifecycleTests
         }
     }
 
-    private sealed class MockDeviceOps : IThrottleStopDriverDeviceOperations
+    private sealed class MockDeviceOps : IPreySenseDriverDeviceOperations
     {
         public bool IsOpen { get; set; }
         public string? OpenedPath { get; private set; }
@@ -149,7 +149,7 @@ public class PreySenseCpuDriverLifecycleTests
         string tempDir = Path.Combine(Path.GetTempPath(), "PreySenseTestDriver_" + Guid.NewGuid().ToString("N"));
         try
         {
-            var extractor = new PreySenseDriverExtractor(tempDir, "embedded_x64.sys");
+            var extractor = new PreySenseDriverExtractor(tempDir, "PreySenseDriver.sys");
             bool extracted = extractor.EnsureDriverExtracted(out string? path, out string? err);
 
             Assert.IsTrue(extracted, $"Failed extraction: {err}");
@@ -175,7 +175,7 @@ public class PreySenseCpuDriverLifecycleTests
     {
         var extractor = new PreySenseDriverExtractor(
             targetDirectory: Path.GetTempPath(),
-            resourceAssembly: typeof(PreySenseCpuDriverLifecycleTests).Assembly,
+            resourceAssembly: typeof(PreySenseDriverLifecycleTests).Assembly,
             resourceName: "NonExistentResource");
 
         bool extracted = extractor.EnsureDriverExtracted(out string? path, out string? err);
@@ -194,7 +194,7 @@ public class PreySenseCpuDriverLifecycleTests
         };
         var mockExt = new MockExtractor();
 
-        using var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt);
+        using var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
 
         bool started = svc.EnsureServiceRunning(out string? err);
         Assert.IsTrue(started, err);
@@ -214,7 +214,7 @@ public class PreySenseCpuDriverLifecycleTests
         };
         var mockExt = new MockExtractor();
 
-        using (var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt))
+        using (var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt))
         {
             bool started = svc.EnsureServiceRunning(out string? err);
             Assert.IsTrue(started, err);
@@ -235,11 +235,11 @@ public class PreySenseCpuDriverLifecycleTests
             ServiceExistsResult = false,
             ServiceIsRunning = false,
             CreateServiceShouldSucceed = false,
-            CreateServiceErrorDetail = "CreateService('PreySenseCpuDriver') failed with Win32 Error 5 (ERROR_ACCESS_DENIED). Run PreySense as Administrator."
+            CreateServiceErrorDetail = "CreateService('PreySenseDriver') failed with Win32 Error 5 (ERROR_ACCESS_DENIED). Run PreySense as Administrator."
         };
         var mockExt = new MockExtractor();
 
-        using var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt);
+        using var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
 
         bool started = svc.EnsureServiceRunning(out string? err);
         Assert.IsFalse(started);
@@ -255,11 +255,11 @@ public class PreySenseCpuDriverLifecycleTests
             ServiceExistsResult = true,
             ServiceIsRunning = false,
             StartServiceShouldSucceed = false,
-            StartServiceErrorDetail = "StartService('PreySenseCpuDriver') failed with Win32 Error 577 (ERROR_INVALID_IMAGE_HASH). Windows signature verification failed for this driver."
+            StartServiceErrorDetail = "StartService('PreySenseDriver') failed with Win32 Error 577 (ERROR_INVALID_IMAGE_HASH). Windows signature verification failed for this driver."
         };
         var mockExt = new MockExtractor();
 
-        using var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt);
+        using var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
 
         bool started = svc.EnsureServiceRunning(out string? err);
         Assert.IsFalse(started);
@@ -275,19 +275,19 @@ public class PreySenseCpuDriverLifecycleTests
             ServiceIsRunning = false,
             ServiceBinaryPath = @"C:\OldPath\OldDriver.sys"
         };
-        var mockExt = new MockExtractor { DriverFilePath = @"C:\NewPath\PreySenseCpuDriver.sys" };
+        var mockExt = new MockExtractor { DriverFilePath = @"C:\NewPath\PreySenseDriver.sys" };
 
-        using var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt);
+        using var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
 
         bool started = svc.EnsureServiceRunning(out string? err);
         Assert.IsTrue(started, err);
         Assert.AreEqual(1, mockOps.DeleteServiceCallCount, "Should delete obsolete service registration");
         Assert.AreEqual(1, mockOps.CreateServiceCallCount, "Should recreate with updated binary path");
-        Assert.AreEqual(@"C:\NewPath\PreySenseCpuDriver.sys", mockOps.ServiceBinaryPath);
+        Assert.AreEqual(@"C:\NewPath\PreySenseDriver.sys", mockOps.ServiceBinaryPath);
     }
 
     [TestMethod]
-    public void Backend_WithPreySenseCpuDriverService_CoordinatesLifecycleAndTeardown()
+    public void Backend_WithPreySenseDriverService_CoordinatesLifecycleAndTeardown()
     {
         var mockOps = new MockDeviceOps
         {
@@ -295,9 +295,9 @@ public class PreySenseCpuDriverLifecycleTests
             ServiceIsRunning = false
         };
         var mockExt = new MockExtractor();
-        var svc = new PreySenseCpuDriverService("PreySenseCpuDriver", mockOps, mockExt);
+        var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
 
-        using (var backend = new ThrottleStopCpuDriverBackend("PreySenseCpuDriver", mockOps, svc))
+        using (var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps, svc))
         {
             bool ok = backend.Initialize(out string? err, attemptStartService: true);
             Assert.IsTrue(ok, err);

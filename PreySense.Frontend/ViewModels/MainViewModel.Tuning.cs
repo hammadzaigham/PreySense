@@ -26,7 +26,7 @@ namespace PreySense.Frontend.ViewModels
             }
             SetTauForModeIndex(modeIndex, profile.TauSeconds.Value);
             if (profile.EffectiveCpuBoostMode is int boost)
-                SetCpuBoostForModeIndex(modeIndex, boost > 0);
+                SetCpuBoostForModeIndex(modeIndex, boost);
             if (GpuBasePowerWatts.HasValue)
                 StoreGpuOffsets(modeIndex, new(profile.GpuDeltaWatts.Value, profile.GpuDynamicBoostWatts.Value, profile.PlatformPowerOffsetWatts.Value));
 
@@ -46,11 +46,11 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _customBalancedTau = CpuPowerLimitConfiguration.FactoryTauSeconds;
         [ObservableProperty] private int _customPerfTau = CpuPowerLimitConfiguration.FactoryTauSeconds;
         [ObservableProperty] private int _customTurboTau = CpuPowerLimitConfiguration.FactoryTauSeconds;
-        [ObservableProperty] private bool _customQuietCpuBoost = true;
-        [ObservableProperty] private bool _customEcoCpuBoost = true;
-        [ObservableProperty] private bool _customBalancedCpuBoost = true;
-        [ObservableProperty] private bool _customPerfCpuBoost = true;
-        [ObservableProperty] private bool _customTurboCpuBoost = true;
+        [ObservableProperty] private int _customQuietCpuBoost = 1;
+        [ObservableProperty] private int _customEcoCpuBoost = 1;
+        [ObservableProperty] private int _customBalancedCpuBoost = 1;
+        [ObservableProperty] private int _customPerfCpuBoost = 1;
+        [ObservableProperty] private int _customTurboCpuBoost = 1;
 
         // Driver tuning enable policy
         [ObservableProperty] private bool _isHardwareTuningEnabled = false;

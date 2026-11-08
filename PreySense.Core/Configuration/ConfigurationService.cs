@@ -261,7 +261,10 @@ namespace PreySense.Core.Configuration
             if (mode.CpuBoostMode is null && mode.CpuBoost is bool legacyBoost)
                 mode.CpuBoostMode = legacyBoost ? 1 : 0;
             if (mode.CpuBoostMode is int boost)
-                mode.CpuBoost = boost > 0;
+            {
+                mode.CpuBoostMode = Math.Clamp(boost, 0, 6);
+                mode.CpuBoost = mode.CpuBoostMode > 0;
+            }
 
             if (mode.GpuDeltaWatts is int rawDelta)
                 mode.GpuDeltaWatts = Hardware.DriverFactoryCalibration.SnapGpuDelta(rawDelta);

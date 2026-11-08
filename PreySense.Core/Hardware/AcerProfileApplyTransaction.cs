@@ -8,12 +8,7 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
 {
     public readonly record struct Result(bool Success, string Status);
 
-    public static ulong ProfileAddress(byte mode) => mode switch
-    {
-        0x00 => 0xFE8004A4, 0x01 => 0xFE8004AC, 0x04 => 0xFE8004B4,
-        0x05 => 0xFE8004BC, 0x06 => 0xFE8004C4,
-        _ => throw new ArgumentOutOfRangeException(nameof(mode))
-    };
+    public static ulong ProfileAddress(byte mode) => AcerErm4Table.ProfileAddress(mode);
 
     /// <summary>
     /// Stage via Performance (or Balanced when Performance is selected). Quiet↔Balanced is avoided:
@@ -40,11 +35,13 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
 
     public Result Apply(byte selected, int delta, int boost, byte? platformOffset = null)
     {
-        ulong address = ProfileAddress(selected);
         if (delta is < 0 or > 50 || delta % 5 != 0 || boost is not (0 or 10 or 15 or 20 or 25))
             return new(false, "GPU offsets are outside the supported slider values.");
         if (platformOffset is byte po && (po > 100 || po % 5 != 0))
             return new(false, "Platform power offset is outside the supported slider values.");
+        if (!AcerErm4Table.EnsureResolved(memory, out _))
+            return new(false, "The Acer hardware profile table could not be identified; nothing was written.");
+        ulong address = ProfileAddress(selected);
         if (!modes.TryGetAcerPowerMode(out byte originalMode))
             return new(false, "Cannot determine the current Acer mode; nothing was written.");
         if (!memory.ReadPhysicalByte(address, out byte originalBoost) ||

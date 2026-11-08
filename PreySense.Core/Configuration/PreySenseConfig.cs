@@ -144,10 +144,10 @@ namespace PreySense.Core.Configuration
             && GpuDeltaWatts.HasValue && GpuDynamicBoostWatts.HasValue
             && PlatformPowerOffsetWatts.HasValue && EffectiveCpuBoostMode.HasValue;
 
-        /// <summary>Resolved on/off boost from CpuBoostMode or legacy CpuBoost bool. Values 2–6 migrate to Enabled.</summary>
+        /// <summary>Windows PERFBOOSTMODE 0–6 from <see cref="CpuBoostMode"/>, or legacy on/off <see cref="CpuBoost"/>.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public int? EffectiveCpuBoostMode =>
-            CpuBoostMode is >= 0 and <= 6 ? (CpuBoostMode > 0 ? 1 : 0)
+            CpuBoostMode is >= 0 and <= 6 ? CpuBoostMode
             : CpuBoost == true ? 1
             : CpuBoost == false ? 0
             : null;
@@ -164,7 +164,7 @@ namespace PreySense.Core.Configuration
         /// <summary>Legacy on/off boost flag. Prefer <see cref="CpuBoostMode"/>.</summary>
         public bool? CpuBoost { get; set; }
 
-        /// <summary>Per-mode Windows CPU boost (0 = Disabled, 1 = Enabled).</summary>
+        /// <summary>Per-mode Windows PERFBOOSTMODE (0 Disabled … 6 Efficient Aggressive At Guaranteed).</summary>
         public int? CpuBoostMode { get; set; }
 
         /// <summary>Target GPU Total Power limit in Watts.</summary>

@@ -102,7 +102,7 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <controls:SettingSwitchRow x:Name="SwitchCpuBoost" Title="CPU Boost"/>
+                                <controls:SettingDropdownRow x:Name="DropdownCpuBoost" Title="CPU Boost" DropdownMinWidth="220"/>
 
                                 <controls:SettingValueRow x:Name="RowPl1"
                                                           Title="Sustained Long Power [PL1]"
@@ -170,20 +170,6 @@
                                     </Grid>
                                     <Slider x:Name="SliderGpuDynamicBoost" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" Ticks="0,10,15,20,25" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDynamicBoostValue" AutomationProperties.Name="GPU Dynamic Boost" ValueChanged="GpuOffsets_ValueChanged"/>
                                 </StackPanel>
-
-                            </StackPanel>
-                        </Border>
-
-                        <!-- PLATFORM POWER LIMIT -->
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,8,0,0">
-                            <StackPanel>
-                                <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-processor-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Platform Power Limit" Style="{StaticResource OriginalSectionTitleStyle}"/>
-                                    </StackPanel>
-                                </Grid>
-
                                 <StackPanel Margin="{StaticResource StandardRowMargin}">
                                     <Grid>
                                         <TextBlock Text="Platform Power Limit Offset" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
@@ -193,7 +179,6 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-
                     </StackPanel>
                 </ScrollViewer>
 

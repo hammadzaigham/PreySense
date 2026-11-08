@@ -8,9 +8,9 @@ using PreySense.Core.Hardware;
 namespace PreySense.Tests;
 
 [TestClass]
-public class ThrottleStopCpuDriverBackendTests
+public class PreySenseDriverBackendTests
 {
-    private sealed class MockDriverDeviceOps : IThrottleStopDriverDeviceOperations
+    private sealed class MockDriverDeviceOps : IPreySenseDriverDeviceOperations
     {
         public bool IsOpen { get; set; }
         public string? OpenedPath { get; private set; }
@@ -70,7 +70,7 @@ public class ThrottleStopCpuDriverBackendTests
                         return true;
                     }
                     return false;
-                case ThrottleStopCpuDriverBackend.IOCTL_MSR_READ:
+                case PreySenseDriverBackend.IOCTL_MSR_READ:
                     if (inBuffer.Length == 4 && outBuffer.Length >= 8)
                     {
                         uint msr = MemoryMarshal.Read<uint>(inBuffer);
@@ -83,7 +83,7 @@ public class ThrottleStopCpuDriverBackendTests
                     }
                     return false;
 
-                case ThrottleStopCpuDriverBackend.IOCTL_MSR_WRITE:
+                case PreySenseDriverBackend.IOCTL_MSR_WRITE:
                     if (inBuffer.Length == 12)
                     {
                         uint msr = MemoryMarshal.Read<uint>(inBuffer[..4]);
@@ -94,7 +94,7 @@ public class ThrottleStopCpuDriverBackendTests
                     }
                     return false;
 
-                case ThrottleStopCpuDriverBackend.IOCTL_PHYS_READ:
+                case PreySenseDriverBackend.IOCTL_PHYS_READ:
                     if (inBuffer.Length == 8 && outBuffer.Length >= 4)
                     {
                         ulong addr = MemoryMarshal.Read<ulong>(inBuffer);
@@ -107,7 +107,7 @@ public class ThrottleStopCpuDriverBackendTests
                     }
                     return false;
 
-                case ThrottleStopCpuDriverBackend.IOCTL_PHYS_WRITE:
+                case PreySenseDriverBackend.IOCTL_PHYS_WRITE:
                     if (inBuffer.Length == 12)
                     {
                         ulong addr = MemoryMarshal.Read<ulong>(inBuffer[..8]);
@@ -208,7 +208,7 @@ public class ThrottleStopCpuDriverBackendTests
         ops.PciRegisters[0] = 0x7D1C8086;
         ops.PciRegisters[0x48UL << 32] = 0xFEDC0001;
         ops.PciRegisters[0x4CUL << 32] = 0;
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", ops);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", ops);
         Assert.IsTrue(backend.Initialize(out var error), error);
         Assert.IsTrue(backend.TryReadMchbar(out ulong address));
         Assert.AreEqual(0xFEDC0000UL, address);
@@ -218,13 +218,41 @@ public class ThrottleStopCpuDriverBackendTests
     }
 
     [TestMethod]
+    [DataRow(0x463B8086u)]
+    [DataRow(0x46378086u)]
+    [DataRow(0x7D1C8086u)]
+    public void MchbarDiscovery_AcceptsKnownRaptorLakeHostBridges(uint hostBridgeId)
+    {
+        var ops = new MockDriverDeviceOps();
+        ops.PciRegisters[0] = hostBridgeId;
+        ops.PciRegisters[0x48UL << 32] = 0xFEDC0001;
+        ops.PciRegisters[0x4CUL << 32] = 0;
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", ops);
+        Assert.IsTrue(backend.Initialize(out var error), error);
+        Assert.IsTrue(backend.TryReadMchbar(out ulong address));
+        Assert.AreEqual(0xFEDC0000UL, address);
+    }
+
+    [TestMethod]
+    public void MchbarDiscovery_RejectsUnknownHostBridge()
+    {
+        var ops = new MockDriverDeviceOps();
+        ops.PciRegisters[0] = 0x12348086;
+        ops.PciRegisters[0x48UL << 32] = 0xFEDC0001;
+        ops.PciRegisters[0x4CUL << 32] = 0;
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", ops);
+        Assert.IsTrue(backend.Initialize(out var error), error);
+        Assert.IsFalse(backend.TryReadMchbar(out _));
+    }
+
+    [TestMethod]
     public void Constructor_NormalizesDeviceAndServiceNames()
     {
-        using var backend1 = new ThrottleStopCpuDriverBackend("TSDriverProbe", new MockDriverDeviceOps());
-        Assert.AreEqual("TSDriverProbe", backend1.ServiceName);
-        Assert.AreEqual(@"\\.\TSDriverProbe", backend1.DevicePath);
+        using var backend1 = new PreySenseDriverBackend("PreySenseDriver", new MockDriverDeviceOps());
+        Assert.AreEqual("PreySenseDriver", backend1.ServiceName);
+        Assert.AreEqual(@"\\.\PreySenseDriver", backend1.DevicePath);
 
-        using var backend2 = new ThrottleStopCpuDriverBackend(@"\\.\CustomDriver", new MockDriverDeviceOps());
+        using var backend2 = new PreySenseDriverBackend(@"\\.\CustomDriver", new MockDriverDeviceOps());
         Assert.AreEqual("CustomDriver", backend2.ServiceName);
         Assert.AreEqual(@"\\.\CustomDriver", backend2.DevicePath);
     }
@@ -235,7 +263,7 @@ public class ThrottleStopCpuDriverBackendTests
         bool caught = false;
         try
         {
-            _ = new ThrottleStopCpuDriverBackend("   ");
+            _ = new PreySenseDriverBackend("   ");
         }
         catch (ArgumentException)
         {
@@ -248,13 +276,13 @@ public class ThrottleStopCpuDriverBackendTests
     public void Initialize_WhenServiceRunningAndDeviceAccessible_Succeeds()
     {
         var mockOps = new MockDriverDeviceOps { ServiceIsRunning = true };
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         bool ok = backend.Initialize(out string? err);
         Assert.IsTrue(ok);
         Assert.IsNull(err);
         Assert.IsTrue(backend.IsInitialized);
-        Assert.AreEqual(@"\\.\TSDriverProbe", mockOps.OpenedPath);
+        Assert.AreEqual(@"\\.\PreySenseDriver", mockOps.OpenedPath);
     }
 
     [TestMethod]
@@ -266,12 +294,12 @@ public class ThrottleStopCpuDriverBackendTests
             ServiceStatusDetail = "Service state is 1 (STOPPED)",
             OpenDeviceException = new FileNotFoundException("Device not found")
         };
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         bool ok = backend.Initialize(out string? err, attemptStartService: false);
         Assert.IsFalse(ok);
         Assert.IsNotNull(err);
-        StringAssert.Contains(err, "Driver service 'TSDriverProbe' is not running");
+        StringAssert.Contains(err, "Driver service 'PreySenseDriver' is not running");
         StringAssert.Contains(err, "Service state is 1 (STOPPED)");
         Assert.IsFalse(backend.IsInitialized);
     }
@@ -287,7 +315,7 @@ public class ThrottleStopCpuDriverBackendTests
             ServiceStartShouldSucceed = true
         };
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         bool ok = backend.Initialize(out string? err, attemptStartService: true);
         Assert.IsTrue(ok);
@@ -302,9 +330,9 @@ public class ThrottleStopCpuDriverBackendTests
         var mockOps = new MockDriverDeviceOps
         {
             ServiceIsRunning = true,
-            OpenDeviceException = new UnauthorizedAccessException("Access denied opening device '\\\\.\\TSDriverProbe'. Win32 Error 5 (ERROR_ACCESS_DENIED). Run as Administrator.")
+            OpenDeviceException = new UnauthorizedAccessException("Access denied opening device '\\\\.\\PreySenseDriver'. Win32 Error 5 (ERROR_ACCESS_DENIED). Run as Administrator.")
         };
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         bool ok = backend.Initialize(out string? err);
         Assert.IsFalse(ok);
@@ -319,13 +347,13 @@ public class ThrottleStopCpuDriverBackendTests
         var mockOps = new MockDriverDeviceOps();
         mockOps.MsrRegisters[0x610] = 0x0042846000DF82A8UL;
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
         bool ok = backend.ReadMsr(0x610, out ulong value);
 
         Assert.IsTrue(ok);
         Assert.AreEqual(0x0042846000DF82A8UL, value);
         Assert.HasCount(1, mockOps.RecordedIoctls);
-        Assert.AreEqual(ThrottleStopCpuDriverBackend.IOCTL_MSR_READ, mockOps.RecordedIoctls[0].Code);
+        Assert.AreEqual(PreySenseDriverBackend.IOCTL_MSR_READ, mockOps.RecordedIoctls[0].Code);
         Assert.HasCount(4, mockOps.RecordedIoctls[0].InData);
         Assert.AreEqual(0x610u, BitConverter.ToUInt32(mockOps.RecordedIoctls[0].InData, 0));
     }
@@ -335,12 +363,12 @@ public class ThrottleStopCpuDriverBackendTests
     {
         var mockOps = new MockDriverDeviceOps();
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
         bool ok = backend.WriteMsr(0x610, 0x0042846000DF82A8UL);
 
         Assert.IsTrue(ok);
         Assert.HasCount(1, mockOps.RecordedIoctls);
-        Assert.AreEqual(ThrottleStopCpuDriverBackend.IOCTL_MSR_WRITE, mockOps.RecordedIoctls[0].Code);
+        Assert.AreEqual(PreySenseDriverBackend.IOCTL_MSR_WRITE, mockOps.RecordedIoctls[0].Code);
         Assert.HasCount(12, mockOps.RecordedIoctls[0].InData);
 
         uint writtenMsr = BitConverter.ToUInt32(mockOps.RecordedIoctls[0].InData, 0);
@@ -355,22 +383,22 @@ public class ThrottleStopCpuDriverBackendTests
     public void WriteMsr_RestrictedKernelMsrs_BlockedBySafetyGuardrail()
     {
         var mockOps = new MockDriverDeviceOps();
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         // Sysenter MSRs (0x174 - 0x176)
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0x174));
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0x175));
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0x176));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0x174));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0x175));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0x176));
         Assert.IsFalse(backend.WriteMsr(0x174, 0x1234));
         Assert.IsFalse(backend.WriteMsr(0x175, 0x1234));
         Assert.IsFalse(backend.WriteMsr(0x176, 0x1234));
 
         // Syscall / LSTAR MSRs (0xC0000080 - 0xC0000084)
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0xC0000080));
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0xC0000081));
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0xC0000082)); // LSTAR
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0xC0000083));
-        Assert.IsTrue(ThrottleStopCpuDriverBackend.IsMsrRestricted(0xC0000084));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0xC0000080));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0xC0000081));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0xC0000082)); // LSTAR
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0xC0000083));
+        Assert.IsTrue(PreySenseDriverBackend.IsMsrRestricted(0xC0000084));
         Assert.IsFalse(backend.WriteMsr(0xC0000082, 0xDEADBEEFCAFEUL));
 
         // Ensure zero IOCTLs were dispatched for restricted writes
@@ -383,13 +411,13 @@ public class ThrottleStopCpuDriverBackendTests
         var mockOps = new MockDriverDeviceOps();
         mockOps.PhysicalDwords[0xFE8004BC] = 0xFF2D280FU;
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
         bool ok = backend.ReadPhysicalDword(0xFE8004BC, out uint value);
 
         Assert.IsTrue(ok);
         Assert.AreEqual(0xFF2D280FU, value);
         Assert.HasCount(1, mockOps.RecordedIoctls);
-        Assert.AreEqual(ThrottleStopCpuDriverBackend.IOCTL_PHYS_READ, mockOps.RecordedIoctls[0].Code);
+        Assert.AreEqual(PreySenseDriverBackend.IOCTL_PHYS_READ, mockOps.RecordedIoctls[0].Code);
         Assert.HasCount(8, mockOps.RecordedIoctls[0].InData);
         Assert.AreEqual(0xFE8004BCUL, BitConverter.ToUInt64(mockOps.RecordedIoctls[0].InData, 0));
     }
@@ -399,12 +427,12 @@ public class ThrottleStopCpuDriverBackendTests
     {
         var mockOps = new MockDriverDeviceOps();
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
         bool ok = backend.WritePhysicalDword(0xFE8004BC, 0xFF2D280FU);
 
         Assert.IsTrue(ok);
         Assert.HasCount(1, mockOps.RecordedIoctls);
-        Assert.AreEqual(ThrottleStopCpuDriverBackend.IOCTL_PHYS_WRITE, mockOps.RecordedIoctls[0].Code);
+        Assert.AreEqual(PreySenseDriverBackend.IOCTL_PHYS_WRITE, mockOps.RecordedIoctls[0].Code);
         Assert.HasCount(12, mockOps.RecordedIoctls[0].InData);
 
         ulong writtenAddr = BitConverter.ToUInt64(mockOps.RecordedIoctls[0].InData, 0);
@@ -419,7 +447,7 @@ public class ThrottleStopCpuDriverBackendTests
     public void IDisposable_ClosesHandleAndPreventsSubsequentCalls()
     {
         var mockOps = new MockDriverDeviceOps();
-        var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps);
+        var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps);
 
         Assert.IsTrue(backend.Initialize(out _));
         Assert.IsTrue(backend.IsInitialized);
@@ -443,7 +471,7 @@ public class ThrottleStopCpuDriverBackendTests
             ServiceIsRunning = true
         };
 
-        using (var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps))
+        using (var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps))
         {
             Assert.IsTrue(backend.Initialize(out string? err));
             Assert.AreEqual(DriverServiceOwnership.ExternalAttached, backend.ServiceOwnership);
@@ -464,7 +492,7 @@ public class ThrottleStopCpuDriverBackendTests
             ServiceStartShouldSucceed = true
         };
 
-        using (var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe", mockOps))
+        using (var backend = new PreySenseDriverBackend("PreySenseDriver", mockOps))
         {
             bool init = backend.Initialize(out string? err, attemptStartService: true);
             Assert.IsTrue(init, $"Initialize failed with error: {err}");
@@ -489,7 +517,7 @@ public class ThrottleStopCpuDriverBackendTests
             return;
         }
 
-        using var backend = new ThrottleStopCpuDriverBackend("TSDriverProbe");
+        using var backend = new PreySenseDriverBackend("PreySenseDriver");
         Assert.IsTrue(backend.Initialize(out string? err), $"Initialize failed: {err}");
 
         // Read MSR 0xCE (PLATFORM_INFO)

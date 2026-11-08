@@ -6,7 +6,7 @@ namespace PreySense.Core.Hardware;
 /// <summary>
 /// Controller for CPU power limit operations, supporting bit-level register preservation,
 /// hardware lock bit checks (PL_LOCK), strict request validation, and safe rollback on failure.
-/// Can operate via any ICpuDriverBackend (ThrottleStop driver).
+/// Can operate via any ICpuDriverBackend.
 /// </summary>
 public sealed class CpuPowerLimitController
 {

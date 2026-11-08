@@ -13,8 +13,8 @@ public interface IPreySenseDriverExtractor
 
 public class PreySenseDriverExtractor : IPreySenseDriverExtractor
 {
-    public const string DefaultResourceName = "PreySense.Core.Resources.embedded_x64.sys";
-    public const string DefaultDriverFileName = "PreySenseCpuDriver.sys";
+    public const string DefaultResourceName = "PreySense.Core.Resources.PreySenseDriver.sys";
+    public const string DefaultDriverFileName = "PreySenseDriver.sys";
 
     private readonly string _targetDirectory;
     private readonly string _driverFilePath;

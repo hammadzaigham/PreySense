@@ -16,7 +16,7 @@ Manual Apply uses editor values. Save applies those values and updates the mode'
 
 All manual, automatic, and session-restore operations share the mode-switch semaphore. GPU staging switches to an alternate Acer mode, writes and verifies the inactive target profile, waits for the EC, and reactivates the target mode. CPU static MSR and dynamic MMIO limits are written last because an EC transition can reload CPU limits. Intermediate mode notifications are ignored while an application is in progress.
 
-The tuning path does not require a laptop-model or BIOS-version name match. It still requires driver initialization and discovery of the supported host bridge/MCHBAR layout. GPU profile addresses are the existing ERM4 addresses; removing the name restriction does not establish support for every Acer firmware layout.
+The tuning path does not require a laptop-model or BIOS-version name match. It still requires driver initialization and discovery of a supported host bridge/MCHBAR layout (Raptor Lake IDs including `7D1C`, `4637`, `463B`). GPU profile addresses come from the live ERM4 base (DSDT `OperationRegion(ERM4)` or a signature probe at known bases such as `0xFE800400` / `0xFE708400`); the per-mode DB/CT/CP layout is unchanged.
 
 GPU staging failures use the existing verified rollback. CPU transaction failures retain their existing rollback and explicitly report that GPU staging already completed. Startup restore reports partial failure rather than claiming all settings were applied. Driver errors are surfaced; the removed injected ACPI interface is not used as a fallback.
 

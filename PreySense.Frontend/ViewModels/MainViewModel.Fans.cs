@@ -18,6 +18,7 @@ public partial class MainViewModel
     private bool _sentMaxFanMode, _fanOverrideActive, _autoFanModeApplied, _fanWriteFailed;
     private long _fanModeSettlesAt;
     private bool _fanSnapshotsSubscribed;
+    private int _fanWriteFailures;
 
     private bool RequiresFanTemperatures
     {
@@ -95,6 +96,7 @@ public partial class MainViewModel
         _sentCpuFan = _sentGpuFan = null;
         _sentMaxFanMode = false;
         _fanWriteFailed = false;
+        _fanWriteFailures = 0;
         _autoFanModeApplied = false;
         // Keep override ownership until hardware successfully returns to Auto.
     }
@@ -120,7 +122,8 @@ public partial class MainViewModel
             {
                 if (!_autoFanModeApplied)
                 {
-                    if (!_hw.SetFanMode(0, 0)) { FanWriteFailed(); return; }
+                    // Auto hands control back to firmware; one failure pauses (no OEM reclaim retries).
+                    if (!_hw.SetFanMode(0, 0)) { FanWriteFailed(allowRetry: false); return; }
                     _fanOverrideActive = false;
                     _autoFanModeApplied = true;
                     _sentCpuFan = _sentGpuFan = null;
@@ -138,9 +141,10 @@ public partial class MainViewModel
                         _sentMaxFanMode = _fanOverrideActive = true;
                         _autoFanModeApplied = false;
                         _sentCpuFan = _sentGpuFan = null;
+                        _fanWriteFailures = 0;
                         UpdateFanDemand();
                     }
-                    else FanWriteFailed();
+                    else FanWriteFailed(allowRetry: true);
                 }
                 return;
             }
@@ -157,12 +161,20 @@ public partial class MainViewModel
                 _sentCpuFan = cpu; _sentGpuFan = gpu;
                 _fanOverrideActive = true;
                 _autoFanModeApplied = _sentMaxFanMode = false;
+                _fanWriteFailures = 0;
             }
-            else FanWriteFailed();
+            else FanWriteFailed(allowRetry: true);
         }
     }
-    private void FanWriteFailed()
+    private void FanWriteFailed(bool allowRetry)
     {
+        // Max/Custom only: boot/OEM races often reject the first few WMI writes.
+        if (allowRetry)
+        {
+            _fanWriteFailures++;
+            if (_fanWriteFailures < 5)
+                return;
+        }
         _fanWriteFailed = true;
         UpdateFanDemand();
         _sentCpuFan = _sentGpuFan = null;

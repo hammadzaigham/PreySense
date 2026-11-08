@@ -18,7 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\embedded_x64.sys" LogicalName="PreySense.Core.Resources.embedded_x64.sys" />
+    <EmbeddedResource Include="Resources\PreySenseDriver.sys" LogicalName="PreySense.Core.Resources.PreySenseDriver.sys" />
   </ItemGroup>
 
   <ItemGroup>
