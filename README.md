@@ -23,10 +23,10 @@ Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
 
 ### GPU and display
 - GPU modes: Auto, iGPU Only, Hybrid, Advanced Optimus, and dGPU Only
-- Refresh rate control, Auto refresh on battery, LCD overdrive, BlueLightShield
+- Refresh rate control, Auto refresh rate to 60Hz on battery.
 
 ### Fans
-Per-mode Auto, Max, or Custom curves for Eco, Quiet, Balanced, Performance, and Turbo. Custom curves use independent CPU/GPU percentages against the hotter sensor, 5 °C edit points, and a shared 0-5 s response delay. Curves keep running while the app is in the tray.
+Per-mode Auto, Max, or Custom curves for Eco, Quiet, Balanced, Performance, and Turbo. Custom curves use independent CPU/GPU percentages against the hotter sensor, 5 °C edit points, and a 0-5 s response delay. Curves keep running while the app is in the tray.
 
 ### Lighting
 Four-zone keyboard RGB plus cover logo lighting, with static colors, hardware effects, software animations, and optional logo sync.
@@ -35,8 +35,8 @@ Four-zone keyboard RGB plus cover logo lighting, with static colors, hardware ef
 Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, separate GPU Active / Effective clocks, and CPU VID when the driver can read it.
 
 ### Battery and system
-- Charge limit (80% or 100%) and USB power-off charging cutoff
-- Run on Windows startup, tray integration, light/dark theme
+- Charge limit (80% or 100%).
+- Run on Windows startup, light/dark theme
 - Languages: English, Simplified Chinese, Hindi, Spanish, French
 
 ## Screenshots
