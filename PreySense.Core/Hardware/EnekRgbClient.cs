@@ -1,9 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
+using PreySense.Core.Hardware;
 
 namespace PreySense
 {
@@ -35,6 +37,10 @@ namespace PreySense
         private readonly object _lock = new();
         private SafeFileHandle? _deviceHandle;
         private bool _isDisposed;
+        private long _nextEnumerateTicks;
+        private bool _forceEnumerate;
+        private bool _loggedMissing;
+        private static readonly long EnumerateBackoffTicks = Stopwatch.Frequency; // 1s
 
         public bool IsAvailable
         {
@@ -50,6 +56,17 @@ namespace PreySense
 
         public EnekRgbClient()
         {
+            HidArrivalHub.Arrived += OnHidArrived;
+        }
+
+        private void OnHidArrived()
+        {
+            lock (_lock)
+            {
+                if (_isDisposed) return;
+                _forceEnumerate = true;
+                _nextEnumerateTicks = 0;
+            }
         }
 
         #region Device Connection Management
@@ -60,12 +77,22 @@ namespace PreySense
             if (_deviceHandle != null && !_deviceHandle.IsInvalid)
                 return true;
 
+            long now = Stopwatch.GetTimestamp();
+            if (!_forceEnumerate && now < _nextEnumerateTicks)
+                return false;
+            _forceEnumerate = false;
+
             try
             {
                 string? path = FindEnekDevicePath();
                 if (string.IsNullOrEmpty(path))
                 {
-                    AppLogger.Log("EnekRgbClient: ENEK5130 device not detected on system.");
+                    _nextEnumerateTicks = now + EnumerateBackoffTicks;
+                    if (!_loggedMissing)
+                    {
+                        _loggedMissing = true;
+                        AppLogger.Log("EnekRgbClient: ENEK5130 device not detected on system.");
+                    }
                     return false;
                 }
 
@@ -88,16 +115,20 @@ namespace PreySense
                 if (!handle.IsInvalid)
                 {
                     _deviceHandle = handle;
+                    _loggedMissing = false;
+                    _nextEnumerateTicks = 0;
                     AppLogger.Log($"EnekRgbClient: connected to ENEK5130 HID keyboard controller at '{path}'.");
                     return true;
                 }
 
                 int err = Marshal.GetLastWin32Error();
                 handle.Dispose();
+                _nextEnumerateTicks = now + EnumerateBackoffTicks;
                 AppLogger.Log($"EnekRgbClient: failed to open ENEK5130 handle (Win32 error {err}).");
             }
             catch (Exception ex)
             {
+                _nextEnumerateTicks = now + EnumerateBackoffTicks;
                 AppLogger.Log($"EnekRgbClient.EnsureDeviceOpen error: {ex.Message}");
             }
 
@@ -112,6 +143,8 @@ namespace PreySense
             }
             catch { }
             _deviceHandle = null;
+            _forceEnumerate = true;
+            _nextEnumerateTicks = 0;
         }
 
         #endregion
@@ -367,6 +400,7 @@ namespace PreySense
 
         public void Dispose()
         {
+            HidArrivalHub.Arrived -= OnHidArrived;
             lock (_lock)
             {
                 if (_isDisposed) return;

@@ -24,6 +24,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Validate release version and run tests
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $expectedTag = 'v' + $props.Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Tag $env:GITHUB_REF_NAME does not match $expectedTag."
+          }
+          dotnet test PreySense.slnx -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
+
       - name: Publish
         shell: pwsh
         run: ./.github/publish.ps1

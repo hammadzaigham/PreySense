@@ -31,6 +31,36 @@ public class GpuDisplayStateTests
     }
 
     [TestMethod]
+    public void IgpuOnlyActiveHidesAdvancedOptimusAndDgpuOnly()
+    {
+        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        vm.ActiveGpuMuxMode = 1; // Auto
+        Assert.IsTrue(vm.ShowIgpuOnlyTile);
+        Assert.IsTrue(vm.ShowAdvancedOptimusTile);
+        Assert.IsTrue(vm.ShowDgpuOnlyTile);
+        Assert.IsTrue(vm.ShowDdsGpuTiles);
+        Assert.AreEqual(5, vm.GpuModeTileColumns);
+
+        var changes = new List<string?>();
+        vm.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
+
+        vm.IsGpuIgpuOnlyActive = true;
+        Assert.IsTrue(vm.ShowIgpuOnlyTile);
+        Assert.IsTrue(vm.ShowDdsGpuTiles);
+        Assert.IsFalse(vm.ShowAdvancedOptimusTile);
+        Assert.IsFalse(vm.ShowDgpuOnlyTile);
+        Assert.AreEqual(3, vm.GpuModeTileColumns); // Auto, iGPU Only, Hybrid
+        CollectionAssert.Contains(changes, nameof(MainViewModel.ShowAdvancedOptimusTile));
+        CollectionAssert.Contains(changes, nameof(MainViewModel.ShowDgpuOnlyTile));
+        CollectionAssert.Contains(changes, nameof(MainViewModel.GpuModeTileColumns));
+
+        vm.IsGpuIgpuOnlyActive = false;
+        Assert.IsTrue(vm.ShowAdvancedOptimusTile);
+        Assert.IsTrue(vm.ShowDgpuOnlyTile);
+        Assert.AreEqual(5, vm.GpuModeTileColumns);
+    }
+
+    [TestMethod]
     public void AutomaticSelectionAndPhysicalDisplayRoutingAreDifferentStates()
     {
         var autoIgpu = new DdsStatus(true, true, DdsActiveMux.Optimus, 0, 0);
@@ -80,7 +110,7 @@ public class GpuDisplayStateTests
         Assert.AreEqual(1, vm.ActiveGpuMuxMode);
         Assert.IsTrue(vm.IsGpuAutoActive);
         Assert.IsFalse(vm.IsGpuNvidiaOnlyActive);
-        Assert.Contains("blocked by test driver", vm.StatusMessage);
+        Assert.Contains("blocked by test driver", vm.DiagnosticMessage);
     }
 
     private sealed class RejectingDds : MockHardwareService, IHardwareService

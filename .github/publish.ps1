@@ -11,6 +11,24 @@ $root = Split-Path -Parent $scriptDir
 Set-Location $root
 
 $outputPath = if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path $root $Output }
+$outputPath = [System.IO.Path]::GetFullPath($outputPath)
+$rootPrefix = [System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+if (-not $outputPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Publish output must be a subdirectory of the repository."
+}
+# Only clean dedicated artifact directories, never source or the repository root.
+$relativeOutput = $outputPath.Substring($rootPrefix.Length)
+if (($relativeOutput -split '[\\/]')[0] -notin @('dist', 'publish')) {
+    throw "Publish output must be under dist or publish."
+}
+$ancestor = $outputPath
+while ($ancestor.Length -ge $rootPrefix.Length) {
+    if ((Test-Path -LiteralPath $ancestor) -and
+        ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Publish output cannot traverse a symbolic link or junction."
+    }
+    $ancestor = Split-Path -Parent $ancestor
+}
 
 if (Test-Path -LiteralPath $outputPath) {
     $locked = @()
@@ -42,10 +60,17 @@ dotnet publish PreySense.Frontend\PreySense.Frontend.csproj `
     -p:DebugSymbols=false `
     -o $outputPath
 
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
+
 $publishedExe = Join-Path $outputPath "PreySense.Frontend.exe"
 $releaseExe = Join-Path $outputPath "PreySense.exe"
 if (Test-Path -LiteralPath $publishedExe) {
     Move-Item -LiteralPath $publishedExe -Destination $releaseExe -Force
+}
+if (-not (Test-Path -LiteralPath $releaseExe -PathType Leaf)) {
+    throw "Publish did not produce PreySense.exe."
 }
 
 $pdb = Join-Path $outputPath "PreySense.pdb"

@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+using PreySense.Core.Configuration;
 using PreySense.Frontend.Controls;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -12,8 +12,6 @@ namespace PreySense.Frontend.Services;
 
 public static class LocalizationService
 {
-    private const string SettingsKey = @"SOFTWARE\PreySense";
-    private const string LanguageValue = "Language";
     private static readonly string[] TitlePrefixes = ["PreySense • ", "PreySense — ", " • ", " — "];
     private static readonly ConditionalWeakTable<DependencyObject, Dictionary<DependencyProperty, string>> Originals = new();
 
@@ -34,8 +32,9 @@ public static class LocalizationService
 
     public static void Initialize()
     {
-        using RegistryKey? key = Registry.CurrentUser.OpenSubKey(SettingsKey);
-        string saved = key?.GetValue(LanguageValue) as string ?? CultureInfo.CurrentUICulture.Name;
+        string saved = ConfigurationService.Instance.GetCurrent().General.Language;
+        if (string.IsNullOrWhiteSpace(saved))
+            saved = CultureInfo.CurrentUICulture.Name;
         CurrentLanguage = Normalize(saved);
         ApplyCulture();
         EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
@@ -51,8 +50,7 @@ public static class LocalizationService
         ApplyCulture();
         if (!persist)
             return;
-        using RegistryKey? key = Registry.CurrentUser.CreateSubKey(SettingsKey);
-        key?.SetValue(LanguageValue, CurrentLanguage, RegistryValueKind.String);
+        ConfigurationService.Instance.Update(cfg => cfg.General.Language = CurrentLanguage);
         if (Application.Current == null)
             return;
         var viewModels = new HashSet<ViewModels.MainViewModel>();
@@ -126,6 +124,7 @@ public static class LocalizationService
     {
         if (element == null) return;
         Apply(element, ToolTipService.ToolTipProperty);
+        Apply(element, System.Windows.Automation.AutomationProperties.NameProperty);
 
         switch (element)
         {

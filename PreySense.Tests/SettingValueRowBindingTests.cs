@@ -9,6 +9,35 @@ namespace PreySense.Tests;
 public class SettingValueRowBindingTests
 {
     [TestMethod]
+    public void EmptyTuningNumber_RemainsBlankInsteadOfCreatingAMinimumValue()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var row = new SettingValueRow { AllowEmpty = true, Minimum = 5, Value = double.NaN };
+                var text = (TextBox)row.FindName("InnerValueBox");
+                Assert.AreEqual(string.Empty, text.Text);
+                row.CommitText();
+                Assert.IsTrue(double.IsNaN(row.Value));
+                text.Text = "65";
+                row.CommitText();
+                Assert.AreEqual(65d, row.Value);
+                text.Text = string.Empty;
+                row.CommitText();
+                Assert.IsTrue(double.IsNaN(row.Value));
+                Assert.AreEqual(string.Empty, text.Text);
+            }
+            catch (Exception ex) { failure = ex; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.IsTrue(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) throw new AssertFailedException("Empty tuning field failed.", failure);
+    }
+
+    [TestMethod]
     public void EditingAndClampingPreserveTwoWayProfileBinding()
     {
         Exception? failure = null;

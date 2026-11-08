@@ -15,6 +15,7 @@ namespace PreySense.Frontend
     {
         private Services.KeyboardHook? _keyboardHook;
         private Services.TrayIconManager? _trayIconManager;
+        private Services.HidDeviceArrivalWatcher? _hidArrivalWatcher;
         private bool _isExplicitExit = false;
         private readonly List<Window> _autoHiddenWindows = new();
         private Window? _autoHiddenActiveWindow;
@@ -30,6 +31,7 @@ namespace PreySense.Frontend
             _trayIconManager = new Services.TrayIconManager(hWnd, onOpen: ShowAndRestore, onQuit: QuitApplication);
             var source = System.Windows.Interop.HwndSource.FromHwnd(hWnd);
             source?.AddHook(_trayIconManager.WndProc);
+            try { _hidArrivalWatcher = new Services.HidDeviceArrivalWatcher(hWnd); } catch { }
 
             IHardwareService hw;
             try
@@ -106,6 +108,8 @@ namespace PreySense.Frontend
 
             Closed += (s, e) =>
             {
+                _hidArrivalWatcher?.Dispose();
+                _hidArrivalWatcher = null;
                 _keyboardHook?.Dispose();
                 _keyboardHook = null;
                 _trayIconManager?.Dispose();
@@ -127,41 +131,52 @@ namespace PreySense.Frontend
         {
             RunOnUi(() =>
             {
-                if (WindowState == WindowState.Minimized)
+                // Ignore click-away hide while we are bringing the app forward.
+                App.SuppressAutoHide = true;
+                try
                 {
-                    WindowState = WindowState.Normal;
-                }
-                if (!IsVisible)
-                {
-                    Show();
-                }
+                    ShowInTaskbar = false;
+                    if (WindowState == WindowState.Minimized)
+                        WindowState = WindowState.Normal;
+                    if (!IsVisible)
+                        Show();
 
-                if (_autoHiddenWindows.Count > 0)
-                {
-                    foreach (Window window in _autoHiddenWindows.ToArray())
+                    if (_autoHiddenWindows.Count > 0)
                     {
-                        try
+                        foreach (Window window in _autoHiddenWindows.ToArray())
                         {
-                            if (!window.IsVisible)
+                            try
                             {
-                                window.Show();
+                                window.ShowInTaskbar = false;
+                                if (window.WindowState == WindowState.Minimized)
+                                    window.WindowState = WindowState.Normal;
+                                if (!window.IsVisible)
+                                    window.Show();
+                            }
+                            catch (InvalidOperationException)
+                            {
+                                // A window that was closed while hidden cannot be shown again.
                             }
                         }
-                        catch (InvalidOperationException)
-                        {
-                            // A window that was closed while hidden cannot be shown again.
-                        }
                     }
+
+                    Window activationTarget = _autoHiddenActiveWindow is { IsLoaded: true, IsVisible: true } target
+                        && new WindowInteropHelper(target).Handle != IntPtr.Zero
+                            ? target
+                            : this;
+                    _autoHiddenWindows.Clear();
+                    _autoHiddenActiveWindow = null;
+
+                    ForceToForeground(activationTarget);
                 }
-
-                Window activationTarget = _autoHiddenActiveWindow is { IsLoaded: true, IsVisible: true } target
-                    && new WindowInteropHelper(target).Handle != IntPtr.Zero
-                        ? target
-                        : this;
-                _autoHiddenWindows.Clear();
-                _autoHiddenActiveWindow = null;
-
-                ForceToForeground(activationTarget);
+                finally
+                {
+                    // Defer clear so startup/activation focus churn cannot instantly re-hide.
+                    Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+                    {
+                        App.SuppressAutoHide = false;
+                    });
+                }
             });
         }
 
@@ -254,6 +269,7 @@ namespace PreySense.Frontend
 
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
+
         public void HideApplicationWindowsForAutoHide()
         {
             RunOnUi(() =>
@@ -277,7 +293,17 @@ namespace PreySense.Frontend
                 }
 
                 foreach (Window window in _autoHiddenWindows)
+                {
+                    window.ShowInTaskbar = false;
+                    if (window.WindowState == WindowState.Minimized)
+                        window.WindowState = WindowState.Normal;
                     window.Hide();
+                }
+
+                // Tray-only: never leave a minimized taskbar button behind.
+                ShowInTaskbar = false;
+                if (WindowState == WindowState.Minimized)
+                    WindowState = WindowState.Normal;
                 Hide();
             });
         }
@@ -297,7 +323,7 @@ namespace PreySense.Frontend
             if (!_isExplicitExit)
             {
                 e.Cancel = true;
-                Hide();
+                HideApplicationWindowsForAutoHide();
                 return;
             }
             base.OnClosing(e);
@@ -366,7 +392,7 @@ namespace PreySense.Frontend
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            ShowDialog<Views.AdvancedSettingsWindow>();
+            ShowDialog<Views.SettingsWindow>();
         }
 
         private void ModeSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -392,11 +418,6 @@ namespace PreySense.Frontend
             window.ShowDialog();
         }
 
-        private void AdvancedButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowDialog<Views.AdvancedWindow>();
-        }
-
         private Views.ModeSettingsWindow CreateModeSettingsWindow()
         {
             return new Views.ModeSettingsWindow
@@ -411,11 +432,6 @@ namespace PreySense.Frontend
         {
             var dialog = CreateModeSettingsWindow();
             dialog.ShowDialog();
-        }
-
-        private void GamesButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowDialog<Views.GamesWindow>();
         }
 
         private void KeyboardButton_Click(object sender, RoutedEventArgs e)

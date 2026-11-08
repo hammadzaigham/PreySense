@@ -35,7 +35,7 @@ public partial class WmiController
                 source = PowerSourceKind.Ac;
                 return true;
             case 4:
-                source = PowerSourceKind.UsbC;
+                source = PowerSourceKind.Ac;
                 return true;
             default:
                 return false;
@@ -50,11 +50,8 @@ public partial class WmiController
                 !TryParseAcerPowerEvent(detail, out PowerSourceKind source))
                 return;
 
-            if (source is PowerSourceKind.Ac or PowerSourceKind.UsbC)
-                Volatile.Write(ref _pluggedSource, (int)source);
-
             AppLogger.Log($"Acer power source event: {source}.");
-            PowerSourceChanged?.Invoke(this, EventArgs.Empty);
+            PowerSourceChanged?.Invoke(this, source);
         }
         catch (Exception ex)
         {

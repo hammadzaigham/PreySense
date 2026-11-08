@@ -6,9 +6,9 @@ namespace PreySense.Core.Services
 {
     public enum PowerSourceKind
     {
+        Unknown = -1,
         Battery = 0,
-        Ac = 1,
-        UsbC = 4
+        Ac = 1
     }
 
     public readonly record struct HardwareTelemetry(
@@ -21,20 +21,18 @@ namespace PreySense.Core.Services
         float BatteryPercent,
         bool IsAcConnected,
         int BatteryDischargeRateMw,
-        float CpuPkgPowerWatts = 0f,
+        float? CpuPkgPowerWatts = null,
         PowerSourceKind PowerSource = PowerSourceKind.Ac
     );
 
     /// <summary>
     /// Unified hardware control and telemetry interface for PreySense.
-    /// Cleanly isolates the UI from Acer WMI, NVAPI, ENEK HID, and PawnIO MSR specifics.
+    /// Cleanly isolates the UI from Acer WMI, NVAPI, ENEK HID, and CPU driver MSR specifics.
     /// </summary>
     public interface IHardwareService
     {
-        // Power source notifications and control state
+        // Power source state (live AC/battery transitions use Acer APGeEvent via TurboKeyWatcher)
         PowerSourceKind GetPowerSource();
-        void NotePluggedSource(PowerSourceKind kind);
-        event EventHandler? PowerSourceChanged;
 
         // Power Profiles
         byte CurrentPowerMode { get; }
@@ -51,7 +49,7 @@ namespace PreySense.Core.Services
         int GetBatteryChargeLimit();
         bool SetBatteryChargeLimit(int limitMode);
 
-        // GPU Limits (Power limits are governed via ACPI NVPCF)
+        // GPU Limits (power limits are governed via NVPCF / driver)
         int? GetGpuMuxMode();
         bool SetGpuMuxMode(int muxMode);
         bool IsBiosDiscreteGpuActive { get; }
@@ -80,7 +78,7 @@ namespace PreySense.Core.Services
         // Cover / Top Logo Backlight
         void SetCoverLogoLighting(int mode, Color color, byte brightness, byte speed, bool enabled = true);
 
-        // Native ACPI / WMI System Controls
+        // Native WMI / platform system controls
         bool GetLcdOverdrive();
         bool SetLcdOverdrive(bool enable);
         bool GetBootSound();

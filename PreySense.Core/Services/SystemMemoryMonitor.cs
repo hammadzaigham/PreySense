@@ -73,7 +73,8 @@ public static class SystemMemoryMonitor
             var status = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
             if (!_globalMemoryStatusExImpl(ref status))
             {
-                return _cachedMemoryInfo;
+                _cachedMemoryInfo = null;
+                return null;
             }
 
             int totalMb = (int)(status.ullTotalPhys / (1024 * 1024));

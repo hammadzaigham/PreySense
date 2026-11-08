@@ -1,5 +1,5 @@
 using System;
-using Microsoft.Win32;
+using PreySense.Core.Configuration;
 using PreySense;
 using PreySense.Helpers;
 
@@ -7,8 +7,6 @@ namespace PreySense.Battery
 {
     public static class BatteryControl
     {
-        private const string RegistryKeyPath = @"SOFTWARE\PreySense";
-        private const string BatteryLimitValueName = "BatteryLimit";
         private const int BatteryLimitDisabled = 0;
         private const int BatteryLimitEnabled = 1;
 
@@ -16,8 +14,9 @@ namespace PreySense.Battery
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-                return key == null ? BatteryLimitDisabled : Convert.ToInt32(key.GetValue(BatteryLimitValueName, BatteryLimitDisabled));
+                return ConfigurationService.Instance.GetCurrent().Battery.ChargeLimitEnabled
+                    ? BatteryLimitEnabled
+                    : BatteryLimitDisabled;
             }
             catch
             {
@@ -29,12 +28,12 @@ namespace PreySense.Battery
         {
             try
             {
-                using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath);
-                key?.SetValue(BatteryLimitValueName, NormalizeMode(mode), RegistryValueKind.DWord);
+                bool enabled = NormalizeMode(mode) == BatteryLimitEnabled;
+                ConfigurationService.Instance.Update(cfg => cfg.Battery.ChargeLimitEnabled = enabled);
             }
             catch
             {
-                // Intentionally ignore registry write failures.
+                // Intentionally ignore write failures.
             }
         }
 

@@ -16,12 +16,49 @@ namespace PreySense.Gpu
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetMemoryInfo(IntPtr device, out nvmlMemory_t memory);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetClockInfo(IntPtr device, int clockType, out uint clockMHz);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetTemperature(IntPtr device, int sensorType, out uint tempC);
+        [DllImport(NvmlDll)] static extern int nvmlDeviceGetCurrentClocksThrottleReasons(IntPtr device, out ulong clocksThrottleReasons);
+        [DllImport(NvmlDll)] static extern int nvmlDeviceGetEnforcedPowerLimit(IntPtr device, out uint limitMilliWatts);
+        [DllImport(NvmlDll)] static extern int nvmlDeviceGetFieldValues(IntPtr device, int valuesCount, [In, Out] nvmlFieldValue_t[] values);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct nvmlFieldValue_t
+        {
+            public uint fieldId;
+            public uint scopeId;
+            public ulong timestamp;
+            public ulong latencyUsec;
+            public int valueType;
+            public int nvmlReturn;
+            public nvmlValue_t value;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        public struct nvmlValue_t
+        {
+            [FieldOffset(0)] public double doubleNumber;
+            [FieldOffset(0)] public uint uiVal;
+            [FieldOffset(0)] public ulong ulVal;
+            [FieldOffset(0)] public ulong ullVal;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct nvmlProcessInfo_t { public uint pid; public ulong usedGpuMemory; }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct nvmlProcessInfo_v2_t
+        {
+            public uint pid;
+            public ulong usedGpuMemory;
+            public uint gpuInstanceId;
+            public uint computeInstanceId;
+        }
+
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetGraphicsRunningProcesses(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_t[]? infos);
         [DllImport(NvmlDll)] static extern int nvmlDeviceGetComputeRunningProcesses(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_t[]? infos);
+        [DllImport(NvmlDll, EntryPoint = "nvmlDeviceGetGraphicsRunningProcesses_v2")]
+        static extern int nvmlDeviceGetGraphicsRunningProcesses_v2(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_v2_t[]? infos);
+        [DllImport(NvmlDll, EntryPoint = "nvmlDeviceGetComputeRunningProcesses_v2")]
+        static extern int nvmlDeviceGetComputeRunningProcesses_v2(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_v2_t[]? infos);
 
         [StructLayout(LayoutKind.Sequential)]
         struct nvmlMemory_t { public ulong total; public ulong free; public ulong used; }
@@ -57,7 +94,7 @@ namespace PreySense.Gpu
                 {
                     if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return null;
                     if (nvmlDeviceGetPowerManagementDefaultLimit(device, out uint milliWatts) != NVML_SUCCESS) return null;
-                    return PreySense.Core.Acpi.GpuPowerBaseline.FromMilliwatts(milliWatts);
+                    return PreySense.Core.Driver.GpuPowerBaseline.FromMilliwatts(milliWatts);
                 }
                 catch { return null; }
             }
@@ -115,7 +152,10 @@ namespace PreySense.Gpu
             }
         }
 
-        public static int? GetGpuClock(uint gpuIndex = 0)
+        // No verified hotspot provider yet; report unavailable without querying a non-thermal field.
+        public static int? GetGpuHotspot(uint gpuIndex = 0) => null;
+
+        public static ulong? GetThrottleReasons(uint gpuIndex = 0)
         {
             lock (_lock)
             {
@@ -124,8 +164,25 @@ namespace PreySense.Gpu
                 try
                 {
                     if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return null;
-                    if (nvmlDeviceGetClockInfo(device, 0, out uint clockMHz) != NVML_SUCCESS) return null;
-                    return (int)clockMHz;
+                    if (nvmlDeviceGetCurrentClocksThrottleReasons(device, out ulong reasons) != NVML_SUCCESS) return null;
+                    return reasons;
+                }
+                catch { return null; }
+            }
+        }
+
+        public static float? GetGpuPowerLimitWatts(uint gpuIndex = 0)
+        {
+            lock (_lock)
+            {
+                Init();
+                if (!_init) return null;
+                try
+                {
+                    if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return null;
+                    if (nvmlDeviceGetEnforcedPowerLimit(device, out uint mW) != NVML_SUCCESS) return null;
+                    if (mW == 0 || mW > 300_000) return null;
+                    return mW / 1000f;
                 }
                 catch { return null; }
             }
@@ -157,6 +214,38 @@ namespace PreySense.Gpu
                 try
                 {
                     if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return pids;
+
+                    void CollectV2(bool graphics)
+                    {
+                        uint count = 0;
+                        int rc = graphics
+                            ? nvmlDeviceGetGraphicsRunningProcesses_v2(device, ref count, null)
+                            : nvmlDeviceGetComputeRunningProcesses_v2(device, ref count, null);
+                        if (rc != NVML_SUCCESS && rc != NVML_ERROR_INSUFFICIENT_SIZE) return;
+                        if (count == 0) count = 64;
+                        var infos = new nvmlProcessInfo_v2_t[count];
+                        rc = graphics
+                            ? nvmlDeviceGetGraphicsRunningProcesses_v2(device, ref count, infos)
+                            : nvmlDeviceGetComputeRunningProcesses_v2(device, ref count, infos);
+                        if (rc != NVML_SUCCESS) return;
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (infos[i].pid > 0 && !pids.Contains(infos[i].pid))
+                                pids.Add(infos[i].pid);
+                        }
+                    }
+
+                    try
+                    {
+                        CollectV2(graphics: true);
+                        CollectV2(graphics: false);
+                    }
+                    catch (EntryPointNotFoundException)
+                    {
+                        // Older nvml.dll without the v2 exports.
+                    }
+
+                    if (pids.Count > 0) return pids;
 
                     uint count = 64;
                     var procInfos = new nvmlProcessInfo_t[count];

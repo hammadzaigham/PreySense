@@ -2,7 +2,7 @@
 
 Modes, fans, sensors, battery, USB charging, and overdrive use `root\WMI`. Lighting does not.
 
-There is no AcerService TCP client in PreySense. Constants for ports `46933` / `46753` remain in `AcerWmi.Service` as unused leftovers.
+There is no AcerService TCP client in PreySense.
 
 ---
 
@@ -78,7 +78,7 @@ Identical custom PWM is not rewritten on a timer. Repeating the same duty made t
 
 ## Battery charge limit
 
-`BatteryControl.SetBatteryHealthControl`: status **1** = 80% cap, **0** = 100%. Stored at `HKCU\SOFTWARE\PreySense\BatteryLimit`.
+`BatteryControl.SetBatteryLimit`: status **1** = 80% cap, **0** = 100%. Preference stored as `Battery.ChargeLimitEnabled` in `preysense.json`.
 
 ---
 
@@ -125,7 +125,3 @@ PreySense does not need them. Disable also kills leftover Acer/Predator Sense pr
 PredatorSense itself, if left running, will fight over mode and fans. Turn it off.
 
 ---
-
-## Isolated PreySense WMI (OpenCore)
-
-`PreySenseControl` is a **separate** class injected by `SSDT-PREYDEV`. It is not an Acer method. See [CPU](cpu_power_limits_acpi.md) and [OpenCore](opencore_acpi_patching.md).

@@ -142,7 +142,7 @@ public class FanCurveFollowerTests
         var profile = new FanCurveProfile { RampUpSeconds = 99, Cpu = [-4, 150] };
         profile.Normalize();
         Assert.AreEqual(5, profile.RampUpSeconds);
-        Assert.AreEqual(FanCurveProfile.PointCount, profile.Cpu.Length);
+        Assert.HasCount(FanCurveProfile.PointCount, profile.Cpu);
         Assert.AreEqual(0, profile.Cpu[0]);
         Assert.AreEqual(100, profile.Cpu[1]);
         var draft = profile.Copy();
@@ -172,7 +172,7 @@ public class FanCurveFollowerTests
         Assert.AreEqual(40, profile.Cpu[2]);
         Assert.AreEqual(60, profile.Cpu[4]);
         foreach (var curve in new[] { profile.Cpu, profile.Gpu })
-            for (int i = 1; i < curve.Length; i++) Assert.IsTrue(curve[i] >= curve[i - 1]);
+            for (int i = 1; i < curve.Length; i++) Assert.IsGreaterThanOrEqualTo(curve[i - 1], curve[i]);
     }
 
     [TestMethod]
@@ -204,12 +204,12 @@ public class FanCurveFollowerTests
             var profile = FanCurveProfile.CreateDefault(mode);
             foreach (var curve in new[] { profile.Cpu, profile.Gpu })
             {
-                Assert.AreEqual(FanCurveProfile.PointCount, curve.Length);
+                Assert.HasCount(FanCurveProfile.PointCount, curve);
                 Assert.AreEqual(100, curve[11]);
                 for (int i = 0; i < curve.Length; i++)
                 {
                     Assert.IsTrue(curve[i] is >= 20 and <= 100);
-                    if (i > 0) Assert.IsTrue(curve[i] >= curve[i - 1]);
+                    if (i > 0) Assert.IsGreaterThanOrEqualTo(curve[i - 1], curve[i]);
                 }
             }
         }

@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+using System;
 
 namespace PreySense.Mode;
 
@@ -70,24 +70,34 @@ public sealed class FanCurveProfile
 
 public static class FanCurveStorage
 {
-    private const string Root = @"SOFTWARE\PreySense";
+    private static PreySense.Core.Configuration.ModeFanCurveConfig GetModeFanConfig(PreySense.Core.Configuration.PreySenseConfig cfg, byte mode) => mode switch
+    {
+        0 => cfg.Fans.Quiet,
+        6 => cfg.Fans.Eco,
+        4 => cfg.Fans.Performance,
+        5 => cfg.Fans.Turbo,
+        _ => cfg.Fans.Balanced
+    };
+
     public static FanCurveProfile Load(byte mode)
     {
         var profile = FanCurveProfile.CreateDefault(mode);
-        using var key = Registry.CurrentUser.OpenSubKey($@"{Root}\Profiles\{ProfileManager.ModeToProfileName(mode)}");
-        using var legacy = Registry.CurrentUser.OpenSubKey(Root);
-        bool hasLegacyCurve = key?.GetValue("CpuCurve_0_Y") != null || key?.GetValue("GpuCurve_0_Y") != null;
-        int legacyEnabled = hasLegacyCurve ? key?.GetValue("ApplyFanCurve") as int? ?? 1 : 0;
-        bool enabled = (key?.GetValue("FanCurveEnabled") as int? ?? legacyEnabled) != 0;
-        bool max = (key?.GetValue("FanMax") as int? ?? 0) != 0;
-        profile.ControlMode = DecodeControlMode(key?.GetValue("FanControlMode") as int?, enabled, max,
-            legacy?.GetValue("FanMode") as int?);
-        profile.RampUpSeconds = key?.GetValue("FanRampUp") as int? ?? 2;
-        LoadCurve(profile.Cpu, "CpuCurve", key, legacy);
-        LoadCurve(profile.Gpu, "GpuCurve", key, legacy);
+        try
+        {
+            var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
+            var fanMode = GetModeFanConfig(cfg, mode);
+            profile.ControlMode = (FanControlMode)Math.Clamp(fanMode.ControlMode, 0, 2);
+            profile.RampUpSeconds = Math.Clamp(fanMode.RampUpSeconds, 0, 5);
+            if (fanMode.CpuCurve != null && fanMode.CpuCurve.Length == FanCurveProfile.PointCount)
+                Array.Copy(fanMode.CpuCurve, profile.Cpu, FanCurveProfile.PointCount);
+            if (fanMode.GpuCurve != null && fanMode.GpuCurve.Length == FanCurveProfile.PointCount)
+                Array.Copy(fanMode.GpuCurve, profile.Gpu, FanCurveProfile.PointCount);
+        }
+        catch { }
         profile.Normalize();
         return profile;
     }
+
     public static FanControlMode DecodeControlMode(int? saved, bool legacyEnabled, bool legacyMax, int? legacyGlobalMode)
     {
         if (saved.HasValue)
@@ -95,23 +105,22 @@ public static class FanCurveStorage
         if (legacyGlobalMode == 0 || !legacyEnabled) return FanControlMode.Auto;
         return legacyMax ? FanControlMode.Max : FanControlMode.Custom;
     }
-    private static void LoadCurve(int[] curve, string name, RegistryKey? key, RegistryKey? legacy)
-    {
-        for (int i = 0; i < curve.Length; i++)
-            curve[i] = key?.GetValue($"{name}_{i}_Y") as int?
-                ?? legacy?.GetValue($"{name}_{i}_Y") as int? ?? curve[i];
-    }
+
     public static void Save(byte mode, FanCurveProfile profile)
     {
         var saved = profile.Copy();
         saved.Normalize();
-        using var key = Registry.CurrentUser.CreateSubKey($@"{Root}\Profiles\{ProfileManager.ModeToProfileName(mode)}");
-        for (int i = 0; i < FanCurveProfile.PointCount; i++)
+        try
         {
-            key.SetValue($"CpuCurve_{i}_Y", saved.Cpu[i]);
-            key.SetValue($"GpuCurve_{i}_Y", saved.Gpu[i]);
+            PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
+            {
+                var fanMode = GetModeFanConfig(cfg, mode);
+                fanMode.ControlMode = (int)saved.ControlMode;
+                fanMode.RampUpSeconds = saved.RampUpSeconds;
+                fanMode.CpuCurve = (int[])saved.Cpu.Clone();
+                fanMode.GpuCurve = (int[])saved.Gpu.Clone();
+            });
         }
-        key.SetValue("FanRampUp", saved.RampUpSeconds);
-        key.SetValue("FanControlMode", (int)saved.ControlMode);
+        catch { }
     }
 }

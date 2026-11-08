@@ -22,7 +22,7 @@
             <Button AutomationProperties.AutomationId="BtnClose"
                     Style="{DynamicResource TitleBarCloseButtonStyle}"
                     Content="✕"
-                    FontSize="{DynamicResource FontSizeTitle}"
+                    FontSize="{DynamicResource FontSizeBody}"
                     Click="CloseButton_Click"/>
         </StackPanel>
     </Grid>

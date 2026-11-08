@@ -1,0 +1,487 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PreySenseConfig",
+  "description": "PreySense user configuration file schema.",
+  "type": "object",
+  "required": [
+    "SchemaVersion",
+    "General",
+    "Display",
+    "Battery",
+    "Session",
+    "Tuning",
+    "Fans",
+    "Lighting",
+    "Overlay"
+  ],
+  "properties": {
+    "SchemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version indicator for migration compatibility."
+    },
+    "General": {
+      "type": "object",
+      "properties": {
+        "Language": {
+          "type": "string",
+          "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR)."
+        },
+        "LightTheme": {
+          "type": "boolean",
+          "description": "True for light UI theme, false for dark UI theme."
+        },
+        "AcerServicesDebloated": {
+          "type": "boolean",
+          "description": "True if Acer background services are stopped and disabled."
+        },
+        "HardwareTuningEnabled": {
+          "type": "boolean",
+          "description": "True if hardware override is enabled."
+        }
+      }
+    },
+    "Display": {
+      "type": "object",
+      "properties": {
+        "AutoRefreshRate": {
+          "type": "boolean",
+          "description": "Automatic 60Hz switch on battery."
+        }
+      }
+    },
+    "Battery": {
+      "type": "object",
+      "properties": {
+        "ChargeLimitEnabled": {
+          "type": "boolean",
+          "description": "Acer 80% battery charge care limit toggle."
+        },
+        "UsbChargingPercent": {
+          "type": "integer",
+          "enum": [
+            0,
+            10,
+            20,
+            30
+          ],
+          "description": "Cutoff battery percentage for USB charging while system is off."
+        },
+        "BatteryEnergySaver": {
+          "type": "boolean",
+          "description": "Automatic Windows energy saver toggle when on battery."
+        },
+        "GpuBatteryAuto": {
+          "type": "boolean",
+          "description": "Automatic switch to Eco mode on battery."
+        }
+      }
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "ActivePowerMode": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            4,
+            5,
+            6
+          ],
+          "description": "0 = Quiet, 1 = Balanced, 4 = Performance, 5 = Turbo, 6 = Eco."
+        },
+        "AcPowerMode": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            4,
+            5,
+            6
+          ]
+        },
+        "BatteryPowerMode": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            4,
+            5,
+            6
+          ]
+        },
+        "GpuModePreference": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "description": "0 = Integrated, 1 = Dynamic/Optimus, 2 = Discrete."
+        }
+      }
+    },
+    "Tuning": {
+      "type": "object",
+      "properties": {
+        "CpuBoostMode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "Quiet": {
+          "$ref": "#/definitions/ModeTuning"
+        },
+        "Eco": {
+          "$ref": "#/definitions/ModeTuning"
+        },
+        "Balanced": {
+          "$ref": "#/definitions/ModeTuning"
+        },
+        "Performance": {
+          "$ref": "#/definitions/ModeTuning"
+        },
+        "Turbo": {
+          "$ref": "#/definitions/ModeTuning"
+        },
+        "FactoryDefaults": {
+          "type": "object",
+          "description": "Driver-read factory defaults, stored separately from optional user profiles.",
+          "additionalProperties": {
+            "$ref": "#/definitions/ModeTuning"
+          }
+        },
+        "ApplyProchotOffset": {
+          "type": "boolean",
+          "description": "Include the global PROCHOT offset when applying tuning. False leaves it untouched."
+        },
+        "ProchotOffsetCelsius": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 63
+        },
+        "FactoryProchotOffsetLocked": {
+          "type": ["boolean", "null"]
+        },
+        "FactoryProchotOffsetCelsius": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 63
+        },
+        "GpuBasePowerWatts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 999,
+          "description": "Hardware default GPU power limit in Watts detected via NVML or factory calibration. Null until captured once. Valid range matches GpuPowerBaseline / GpuPowerLimitConfiguration (1-999 W)."
+        }
+      }
+    },
+    "Fans": {
+      "type": "object",
+      "properties": {
+        "Quiet": {
+          "$ref": "#/definitions/ModeFanCurve"
+        },
+        "Eco": {
+          "$ref": "#/definitions/ModeFanCurve"
+        },
+        "Balanced": {
+          "$ref": "#/definitions/ModeFanCurve"
+        },
+        "Performance": {
+          "$ref": "#/definitions/ModeFanCurve"
+        },
+        "Turbo": {
+          "$ref": "#/definitions/ModeFanCurve"
+        }
+      }
+    },
+    "Lighting": {
+      "type": "object",
+      "properties": {
+        "Keyboard": {
+          "type": "object",
+          "properties": {
+            "Brightness": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "Speed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "BacklightTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120
+            },
+            "SelectedColorHex": {
+              "type": "string"
+            },
+            "SelectedZone": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "SyncZones": {
+              "type": "boolean"
+            },
+            "Zone1ColorHex": {
+              "type": "string"
+            },
+            "Zone2ColorHex": {
+              "type": "string"
+            },
+            "Zone3ColorHex": {
+              "type": "string"
+            },
+            "Zone4ColorHex": {
+              "type": "string"
+            },
+            "EffectTag": {
+              "type": "string"
+            },
+            "PresetTheme": {
+              "type": "string"
+            }
+          }
+        },
+        "Cover": {
+          "type": "object",
+          "properties": {
+            "Enabled": {
+              "type": "boolean"
+            },
+            "Mode": {
+              "type": "integer"
+            },
+            "ColorHex": {
+              "type": "string"
+            },
+            "Brightness": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "Speed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "SyncWithKeyboard": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "Overlay": {
+      "type": "object",
+      "properties": {
+        "Enabled": {
+          "type": "boolean"
+        },
+        "ShowFps": {
+          "type": "boolean"
+        },
+        "ScalePercent": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 200
+        },
+        "BackgroundAlphaPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "TextAlphaPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "PositionHorizontal": {
+          "type": "string",
+          "enum": [
+            "Left",
+            "Center",
+            "Right"
+          ]
+        },
+        "PositionVertical": {
+          "type": "string",
+          "enum": [
+            "Top",
+            "Center",
+            "Bottom"
+          ]
+        },
+        "Anchor": {
+          "type": "integer"
+        },
+        "OffsetX": {
+          "type": "integer"
+        },
+        "OffsetY": {
+          "type": "integer"
+        },
+        "Slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "CpuMetric": {
+                "type": "string"
+              },
+              "GpuMetric": {
+                "type": "string"
+              },
+              "ShowGraph": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "CpuMetric",
+              "GpuMetric"
+            ]
+          }
+        },
+        "HideHeader": {
+          "default": false,
+          "description": "Hide CPU and GPU row headers.",
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "ModeTuning": {
+      "type": "object",
+      "properties": {
+        "CpuPl1Watts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 5,
+          "maximum": 300
+        },
+        "CpuPl2Watts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 5,
+          "maximum": 300
+        },
+        "TauSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 449
+        },
+        "CpuBoost": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Legacy on/off boost flag. Prefer CpuBoostMode."
+        },
+        "CpuBoostMode": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 6,
+          "description": "Per-mode Windows CPU boost level (0 = Disabled … 6 = Aggressive)."
+        },
+        "GpuWatts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 999
+        },
+        "GpuDeltaWatts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 255
+        },
+        "GpuDynamicBoostWatts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 255
+        },
+        "ApplyCpuLimits": {
+          "type": "boolean"
+        },
+        "ApplyGpuLimits": {
+          "type": "boolean"
+        },
+        "ApplyFanCurve": {
+          "type": "boolean"
+        },
+        "FanRampUp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "ModeFanCurve": {
+      "type": "object",
+      "properties": {
+        "ControlMode": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ]
+        },
+        "RampUpSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "CpuCurve": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "GpuCurve": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      }
+    }
+  }
+}

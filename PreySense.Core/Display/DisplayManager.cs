@@ -70,26 +70,22 @@ namespace PreySense.Helpers
             var dispDev = new DISPLAY_DEVICE();
             dispDev.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
             uint devIdx = 0;
-            string? fallback = null;
             while (EnumDisplayDevices(null, devIdx, ref dispDev, 0))
             {
                 if ((dispDev.StateFlags & 4) != 0) // DISPLAY_DEVICE_PRIMARY_DEVICE
                 {
                     return dispDev.DeviceName;
                 }
-                if ((dispDev.StateFlags & 1) != 0 && fallback == null) // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
-                {
-                    fallback = dispDev.DeviceName;
-                }
                 devIdx++;
             }
-            return fallback;
+            return null;
         }
 
         public static System.Collections.Generic.List<int> GetSupportedRefreshRates()
         {
             var rates = new System.Collections.Generic.List<int>();
             string? devName = GetPrimaryDeviceName();
+            if (devName is null) return rates;
             DEVMODE dm = new();
             dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
             int modeNum = 0;
@@ -108,13 +104,14 @@ namespace PreySense.Helpers
         public static int GetCurrentRefreshRate()
         {
             string? devName = GetPrimaryDeviceName();
+            if (devName is null) return 0;
             DEVMODE dm = new();
             dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
             if (EnumDisplaySettings(devName, -1, ref dm))
             {
                 return dm.dmDisplayFrequency;
             }
-            return 60;
+            return 0;
         }
 
         public static bool SetRefreshRate(int hz)
@@ -122,6 +119,7 @@ namespace PreySense.Helpers
             try
             {
                 string? devName = GetPrimaryDeviceName();
+                if (devName is null) return false;
                 DEVMODE currentDm = new();
                 currentDm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
                 if (!EnumDisplaySettings(devName, -1, ref currentDm))

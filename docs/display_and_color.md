@@ -10,7 +10,7 @@ Hybrid graphics expose the panel through a changing `\\.\DISPLAYn` name. PreySen
 2. Applies the matching width/height/frequency with `ChangeDisplaySettingsEx(..., CDS_UPDATEREGISTRY)`
 3. Retries without `CDS_UPDATEREGISTRY` if the registry write is rejected
 
-**Auto:** highest listed rate on AC, **60 Hz** on battery. Manual: any rate the panel reported. Persisted under `HKCU\SOFTWARE\PreySense\Session\AutoRefreshRate`.
+**Auto:** highest listed rate on AC, **60 Hz** on battery. Manual: any rate the panel reported. Preference persisted as `Display.AutoRefreshRate` in `preysense.json`.
 
 ---
 
@@ -21,7 +21,7 @@ Hybrid graphics expose the panel through a changing `\\.\DISPLAYn` name. PreySen
 - On: `0x1000000000010`
 - Off: `0x10`
 
-This is firmware overdrive on the panel (short gray-to-gray pulses). Settings switch; stored as `AdvancedSettings\LcdOverdrive`.
+This is firmware overdrive on the panel (short gray-to-gray pulses). Settings switch; preference stored as `Display.LcdOverdrive` in `preysense.json`.
 
 ---
 

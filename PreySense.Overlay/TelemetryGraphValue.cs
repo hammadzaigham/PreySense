@@ -9,20 +9,21 @@ public static class TelemetryGraphValue
         float? value = metric switch
         {
             "Usage" => gpu ? snapshot.GpuUsage : snapshot.CpuUsage,
-            "Max Core" or "Max Core Usage" => snapshot.CpuMaxCoreUsage,
-            "P-Core Usage" => snapshot.CpuPCoreUsage,
-            "E-Core Usage" => snapshot.CpuECoreUsage,
             "Temperature" => gpu ? snapshot.GpuTemp : snapshot.CpuTemp,
-            "P-Core" => snapshot.CpuClockMhz,
-            "E-Core" => snapshot.ECoreClockMhz,
-            "Clock" => gpu ? snapshot.GpuClockMhz : snapshot.CpuClockMhz,
-            "Voltage" => gpu ? snapshot.GpuVoltage : snapshot.CpuVoltage,
+            "Hotspot" => snapshot.GpuHotspotTemp,
+            "Memory Temperature" => snapshot.GpuMemoryTemp,
+            "Clock" or "Active Clock" => gpu ? snapshot.GpuActiveClockMhz : snapshot.CpuActiveFrequencyMhz,
+            "Effective Clock" => gpu ? null : snapshot.CpuEffectiveFrequencyMhz,
+            "Voltage" or "CPU VID" => gpu ? snapshot.GpuVoltage : snapshot.CpuVoltage,
             "Power" => gpu ? snapshot.GpuPowerWatts : snapshot.CpuPkgPowerWatts,
+            "Power Limit" => gpu ? snapshot.GpuPowerLimitWatts : snapshot.CpuPl1Watts,
+            "PL1" => snapshot.CpuPl1Watts,
+            "PL2" => snapshot.CpuPl2Watts,
             "Memory" => gpu ? snapshot.VramUsedMb : snapshot.RamUsedMb,
             "Memory Speed" => gpu ? snapshot.VramSpeedMhz : snapshot.RamSpeedMhz,
             "Fan Speed" => gpu ? snapshot.GpuRpm : snapshot.CpuRpm,
             _ => null
         };
-        return Math.Max(0, value ?? 0);
+        return value.HasValue && float.IsFinite(value.Value) && value.Value >= 0 ? value.Value : float.NaN;
     }
 }

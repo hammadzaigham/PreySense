@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=mscorlib">
   <FontFamily x:Key="AppFontFamily">Segoe UI, -apple-system, sans-serif</FontFamily>
-  <!-- Keep the application on a compact four-step type scale. -->
-  <system:Double x:Key="FontSizeSectionTitle" xmlns:system="clr-namespace:System;assembly=System.Private.CoreLib">13</system:Double>
+  <!-- One app text size for headings, labels, and body. Only dropdown/switch chrome uses FontSizeControl. -->
+  <Double x:Key="FontSizeBody" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
+  <Double x:Key="FontSizeControl" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">11</Double>
+  <!-- Aliases kept so existing DynamicResource keys stay valid. -->
+  <Double x:Key="FontSizeSectionTitle" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
   <Double x:Key="FontSizeTitle" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
   <Double x:Key="FontSizeTelemetry" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
   <Double x:Key="FontSizeTile" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeBody" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeCaption" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">10</Double>
-  <Double x:Key="FontSizeSmall" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">9</Double>
+  <Double x:Key="FontSizeCaption" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
+  <Double x:Key="FontSizeSmall" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">11</Double>
   <Style x:Key="BodyTextStyle" TargetType="{x:Type TextBlock}">
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
     <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
@@ -17,20 +19,24 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style x:Key="CaptionTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource BodyTextStyle}">
-    <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
     <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
   </Style>
   <Style x:Key="OriginalSectionTitleStyle" TargetType="{x:Type TextBlock}">
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="{StaticResource FontSizeSectionTitle}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="TextAlignment" Value="Left" />
+    <Style.Triggers>
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+      </Trigger>
+    </Style.Triggers>
   </Style>
   <Style x:Key="OriginalStatusTextStyle" TargetType="{x:Type TextBlock}">
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="{StaticResource FontSizeTelemetry}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="TextAlignment" Value="Right" />
@@ -52,11 +58,8 @@
     <Setter Property="HorizontalAlignment" Value="Right" />
     <Setter Property="TextAlignment" Value="Right" />
   </Style>
-  <Style x:Key="WindowTitleTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SettingLabelStyle}">
-    <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
-  </Style>
+  <Style x:Key="WindowTitleTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SettingLabelStyle}" />
   <Style x:Key="WindowSubtitleTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource WindowTitleTextStyle}">
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 </ResourceDictionary>
-

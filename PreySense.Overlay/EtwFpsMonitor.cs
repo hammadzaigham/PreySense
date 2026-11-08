@@ -402,7 +402,7 @@ namespace PreySense.Overlay
 
             long now = Stopwatch.GetTimestamp();
             bool idleFlushDue = now - _lastFlushTick >= Stopwatch.Frequency;
-            if (SampleFps() < MinFlushFps && !idleFlushDue) return;
+            if ((!double.IsFinite(SampleFps()) || SampleFps() < MinFlushFps) && !idleFlushDue) return;
 
             _lastFlushTick = now;
             var props = BuildSessionProperties();
@@ -460,13 +460,13 @@ namespace PreySense.Overlay
         public double SampleFps()
         {
             int filled = _framesFilled;
-            if (filled < 2) return 0;
+            if (filled < 2) return double.NaN;
 
             long freq = Stopwatch.Frequency;
             int head = _frameHead;
             long newest = _frameTimes[(head - 1 + RollingWindowSize) % RollingWindowSize];
 
-            if (Stopwatch.GetTimestamp() - newest > freq) return 0;
+            if (Stopwatch.GetTimestamp() - newest > freq) return double.NaN;
 
             long cutoff = newest - freq;
             int count = 1;
@@ -480,7 +480,7 @@ namespace PreySense.Overlay
             }
 
             double elapsed = (double)(newest - oldest) / freq;
-            if (elapsed <= 0) return 0;
+            if (elapsed <= 0) return double.NaN;
             return (count - 1) / elapsed;
         }
 

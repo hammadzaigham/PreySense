@@ -30,11 +30,13 @@ public static class IntelRaplPowerLimits
 
     public static byte EncodeTau(int seconds, ulong units)
     {
-        if (seconds >= PreySense.Core.Acpi.CpuPowerLimitConfiguration.InfiniteTauSliderValue) return 0x7F;
+        // Encoded 0 is a no-op on this platform; "Off" (0) means the shortest window (0x01).
+        if (seconds <= 0) return 0x01;
+        if (seconds >= PreySense.Core.Driver.CpuPowerLimitConfiguration.InfiniteTauSliderValue) return 0x7F;
         double timeUnit = Math.Pow(2, -(int)((units >> 16) & 0xF));
         double bestError = double.MaxValue;
-        byte best = 0;
-        for (int encoded = 0; encoded < 128; encoded++)
+        byte best = 0x01;
+        for (int encoded = 1; encoded < 128; encoded++)
         {
             double actual = Math.Pow(2, encoded & 31) * (1 + ((encoded >> 5) & 3) / 4.0) * timeUnit;
             double error = Math.Abs(actual - seconds);

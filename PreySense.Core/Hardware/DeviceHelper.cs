@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,6 +9,12 @@ namespace PreySense.Helpers
 {
     public static class DeviceHelper
     {
+        private static readonly object PowerStateCacheGate = new();
+        private static string? _cachedPowerStateHwId;
+        private static int? _cachedPowerState;
+        private static long _cachedPowerStateTicks;
+        private static readonly long PowerStateCacheTicks = Stopwatch.Frequency; // ~1s
+
         private const uint DIF_PROPERTYCHANGE = 0x00000012;
         private const uint DICS_ENABLE = 0x00000001;
         private const uint DICS_DISABLE = 0x00000002;
@@ -68,6 +75,36 @@ namespace PreySense.Helpers
 
         /// <summary>Reads Windows-maintained CM_POWER_DATA; does not query the GPU driver.</summary>
         public static int? GetDisplayDevicePowerState(string hardwareIdSubstring)
+        {
+            long now = Stopwatch.GetTimestamp();
+            lock (PowerStateCacheGate)
+            {
+                if (string.Equals(_cachedPowerStateHwId, hardwareIdSubstring, StringComparison.OrdinalIgnoreCase)
+                    && now - _cachedPowerStateTicks < PowerStateCacheTicks)
+                    return _cachedPowerState;
+            }
+
+            int? state = QueryDisplayDevicePowerState(hardwareIdSubstring);
+            lock (PowerStateCacheGate)
+            {
+                _cachedPowerStateHwId = hardwareIdSubstring;
+                _cachedPowerState = state;
+                _cachedPowerStateTicks = now;
+            }
+            return state;
+        }
+
+        public static void InvalidateDisplayDevicePowerStateCache()
+        {
+            lock (PowerStateCacheGate)
+            {
+                _cachedPowerStateHwId = null;
+                _cachedPowerState = null;
+                _cachedPowerStateTicks = 0;
+            }
+        }
+
+        private static int? QueryDisplayDevicePowerState(string hardwareIdSubstring)
         {
             Guid displayGuid = DisplayClassGuid;
             IntPtr devices = SetupDiGetClassDevs(ref displayGuid, null, IntPtr.Zero, DIGCF_PRESENT);
@@ -154,6 +191,8 @@ namespace PreySense.Helpers
             {
                 SetupDiDestroyDeviceInfoList(devInfoSet);
             }
+            if (success)
+                InvalidateDisplayDevicePowerStateCache();
             return success;
         }
 
@@ -215,6 +254,8 @@ namespace PreySense.Helpers
             {
                 SetupDiDestroyDeviceInfoList(devInfoSet);
             }
+            if (success)
+                InvalidateDisplayDevicePowerStateCache();
             return success;
         }
 

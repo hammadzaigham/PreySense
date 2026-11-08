@@ -7,7 +7,6 @@ namespace PreySense.Overlay
     {
         private static HardwareOverlay? _overlay;
         private static readonly object _lock = new();
-        private static bool _gameSessionActive;
 
         public static bool IsActive => _overlay?.IsActive ?? false;
         public static bool IsShowing => _overlay?.IsShowing ?? false;
@@ -27,27 +26,14 @@ namespace PreySense.Overlay
 
         public static void Toggle()
         {
-            if (AppConfig.IsOverlayGameOnly())
-                return;
-
             if (AppConfig.IsOverlay())
-            {
                 Stop();
-            }
             else
-            {
                 Start();
-            }
         }
 
         public static void Start()
         {
-            if (AppConfig.IsOverlayGameOnly())
-            {
-                SyncRunningState();
-                return;
-            }
-
             AppConfig.Set("overlay", 1);
             SyncRunningState();
         }
@@ -60,18 +46,13 @@ namespace PreySense.Overlay
 
         public static void SyncRunningState()
         {
-            bool shouldRun = AppConfig.IsOverlay() || (AppConfig.IsOverlayGameOnly() && _gameSessionActive);
-            if (shouldRun)
+            if (AppConfig.IsOverlay())
             {
                 var overlay = GetOverlay();
                 if (!overlay.IsActive)
-                {
                     overlay.StartOverlay();
-                }
                 else
-                {
                     overlay.RefreshDisplayFlags();
-                }
             }
             else
             {
@@ -79,24 +60,7 @@ namespace PreySense.Overlay
             }
         }
 
-        public static void StartForConfiguredGame()
-        {
-            lock (_lock) _gameSessionActive = true;
-            GetOverlay().SetGameSessionActive(true);
-            SyncRunningState();
-        }
-
-        public static void StopForConfiguredGame()
-        {
-            lock (_lock) _gameSessionActive = false;
-            _overlay?.SetGameSessionActive(false);
-            SyncRunningState();
-        }
-
-        public static void RefreshDisplayFlags()
-        {
-            SyncRunningState();
-        }
+        public static void RefreshDisplayFlags() => SyncRunningState();
 
         public static void Reposition(string horizontal, string vertical)
         {
@@ -104,9 +68,7 @@ namespace PreySense.Overlay
             AppConfig.Set("overlay_pos_vertical", vertical);
             var overlay = GetOverlay();
             if (overlay.IsActive)
-            {
                 overlay.SetConfiguredPosition(horizontal, vertical);
-            }
         }
 
         public static void Dispose()

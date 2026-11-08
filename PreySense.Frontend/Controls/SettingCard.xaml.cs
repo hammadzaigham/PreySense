@@ -39,19 +39,6 @@ namespace PreySense.Frontend.Controls
             set => SetValue(TitleProperty, value);
         }
 
-        public static readonly DependencyProperty StatusTextProperty =
-            DependencyProperty.Register(
-                nameof(StatusText),
-                typeof(string),
-                typeof(SettingCard),
-                new PropertyMetadata(string.Empty));
-
-        public string StatusText
-        {
-            get => (string)GetValue(StatusTextProperty);
-            set => SetValue(StatusTextProperty, value);
-        }
-
         public static readonly DependencyProperty HeaderRightContentProperty =
             DependencyProperty.Register(
                 nameof(HeaderRightContent),

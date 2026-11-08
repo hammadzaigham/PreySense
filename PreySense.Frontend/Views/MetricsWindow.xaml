@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
         mc:Ignorable="d"
-        Title="PreySense • Metrics"
+        Title="PreySense • Overlay"
         Width="540"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
@@ -24,7 +24,7 @@
             </Grid.RowDefinitions>
 
             <!-- Title Bar -->
-            <controls:WindowTitleBar Grid.Row="0" Title="Metrics"/>
+            <controls:WindowTitleBar Grid.Row="0" Title="Overlay"/>
 
             <!-- Main Content -->
             <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
@@ -68,7 +68,7 @@
                             </StackPanel>
                         </Grid>
 
-                                                <!-- Text Opacity -->
+                        <!-- Text Opacity -->
                         <Grid Margin="0,4">
                             <StackPanel>
                                 <Grid>
@@ -78,7 +78,8 @@
                                 <Slider x:Name="SliderTextOpacity" Minimum="0" Maximum="100" Value="100" SmallChange="10" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="True" Margin="0,3,0,0" ValueChanged="SliderTextOpacity_ValueChanged"/>
                             </StackPanel>
                         </Grid>
-<Separator Margin="0,4,0,8"/>
+
+                        <Separator Margin="0,4,0,8"/>
 
                         <!-- Horizontal Position -->
                         <controls:SettingDropdownRow x:Name="DropdownHorizontalPos"
@@ -109,11 +110,15 @@
                 <Separator Margin="0,4,0,8"/>
 
                 <Border Style="{StaticResource OriginalSectionPanelStyle}">
-                    <StackPanel x:Name="PanelColumnsContainer"/>
+                    <StackPanel>
+                        <Grid Margin="0,2,0,6">
+                            <TextBlock Text="Overlay Metric Slots" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="ButtonAddSlot" Content="+ Add Slot" HorizontalAlignment="Right" Width="88" Height="26" Padding="6,2" Click="ButtonAddSlot_Click"/>
+                        </Grid>
+                        <StackPanel x:Name="PanelColumnsContainer"/>
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </Grid>
     </Border>
 </Window>
-
-

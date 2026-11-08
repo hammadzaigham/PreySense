@@ -25,7 +25,7 @@ PowerShell helpers that launch PreySense on the interactive desktop (`WinSta0\De
 | Lighting / Keyboard | `BtnNavLighting` | Keyboard / cover lighting |
 | Metrics | `BtnNavMetrics` | Overlay column editor |
 | Advanced | `BtnNavAdvanced` | Mode CPU/GPU limits |
-| Settings | `BtnSettings` | Platform settings / OpenCore |
+| Settings | `BtnSettings` | Platform settings |
 | Fans | `BtnFanCustom` | Selects Custom fans on the main window |
 
 ## Scripts

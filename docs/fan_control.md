@@ -80,12 +80,12 @@ is needed on an affected machine before claiming an audio fix. See Microsoft's
 
 ## v1.4 compatibility
 
-Existing per-mode CpuCurve_i_Y / GpuCurve_i_Y points and FanRampUp are reused under
-HKCU\SOFTWARE\PreySense\Profiles\{mode}. FanRampUp is retained as the storage key
-for Fan Control Delay and controls increases and decreases. FanControlMode stores
-Auto (0), Max (1), or Custom (2). FanCurveEnabled and FanMax are read only for
-legacy migration. Legacy global curve points are read as a
-fallback. The old editor's points above 100°C are not needed by the new curve.
+Per-mode fan curves persist under `Fans.{Quiet|Eco|Balanced|Performance|Turbo}` in
+`preysense.json` (`ControlMode`, `RampUpSeconds`, `CpuCurve`, `GpuCurve`).
+`RampUpSeconds` is the Fan Control Delay and controls increases and decreases.
+`ControlMode` stores Auto (0), Max (1), or Custom (2). Profile apply flags such as
+`Tuning.*.FanRampUp` / `ApplyFanCurve` live beside the CPU/GPU tuning profiles.
+The old editor's points above 100°C are not needed by the new curve.
 Reset supplies the selected mode's app preset. New profiles use the same presets
 on all laptops; there is no model restriction. Existing saved curves take priority.
 
@@ -121,9 +121,8 @@ a verified factory-curve read command.
 
 ### Live diagnostic results
 
-An elevated diagnostic batch opened the installed PawnIO driver and loaded the
-official LpcACPIEC module from PawnIO.Modules 0.2.11. The standard 0x80 EC read
-transaction timed out waiting for output; the batch stopped that read path.
+A legacy elevated diagnostic EC read transaction timed out waiting for output;
+the batch stopped that read path. That diagnostic transport is no longer used.
 
 Acer WMI temperature, RPM, and behavior reads succeeded. GetGamingFanTable
 (method 19) returned 0x1: status 1, with no usable table selection. That getter

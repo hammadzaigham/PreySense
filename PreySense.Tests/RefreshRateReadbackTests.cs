@@ -27,7 +27,7 @@ public class RefreshRateReadbackTests
         await vm.SetRefreshRateAsync(120);
         Assert.AreEqual(240, vm.CurrentRefreshRate);
         Assert.AreEqual("240 Hz", vm.SelectedRefreshRateOption);
-        Assert.Contains("rejected", vm.StatusMessage);
+        Assert.Contains("rejected", vm.DiagnosticMessage);
     }
 
     [TestMethod]
@@ -36,7 +36,7 @@ public class RefreshRateReadbackTests
         var vm = Create(new DisplayHardware { Change = false });
         await vm.SetRefreshRateAsync(120);
         Assert.AreEqual(240, vm.CurrentRefreshRate);
-        Assert.Contains("not confirmed", vm.StatusMessage);
+        Assert.Contains("not confirmed", vm.DiagnosticMessage);
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class RefreshRateReadbackTests
         await vm.SetRefreshRateAsync(120);
         Assert.AreEqual(240, vm.CurrentRefreshRate);
         Assert.AreEqual("240 Hz", vm.SelectedRefreshRateOption);
-        Assert.Contains("failed", vm.StatusMessage);
+        Assert.Contains("failed", vm.DiagnosticMessage);
     }
 
     private sealed class DisplayHardware : MockHardwareService, IHardwareService

@@ -104,7 +104,7 @@ public class CpuUsageMonitorTests
     }
 
     [TestMethod]
-    public void StaleReadings_ExpireAfterThreshold()
+    public void FailedRead_ImmediatelyInvalidatesCachedReading()
     {
         long mockTime = 1000;
         long idle = 1000, kernel = 2000, user = 1000;
@@ -126,10 +126,10 @@ public class CpuUsageMonitorTests
         idle += 600; kernel += 500; user += 500;
         Assert.AreEqual(40, CpuUsageMonitor.GetCpuUsage());
 
-        // SystemTimes fails for 2 seconds (< 4s stale threshold) => cached value retained
+        // A failed read becomes unavailable immediately.
         failSystemTimes = true;
         mockTime += SecondsToTicks(2.0);
-        Assert.AreEqual(40, CpuUsageMonitor.GetCpuUsage());
+        Assert.IsNull(CpuUsageMonitor.GetCpuUsage());
 
         // SystemTimes fails for 5 seconds total (> 4s stale threshold) => expires to null
         mockTime += SecondsToTicks(3.0);
@@ -210,7 +210,7 @@ public class CpuUsageMonitorTests
         foreach (var t in threads) t.Start();
         foreach (var t in threads) t.Join();
 
-        Assert.AreEqual(0, exceptions.Count, "Concurrent CPU sampling caused exceptions: " + string.Join(", ", exceptions.Select(e => e.Message)));
+        Assert.IsEmpty(exceptions, "Concurrent CPU sampling caused exceptions: " + string.Join(", ", exceptions.Select(e => e.Message)));
     }
 
     [TestMethod]

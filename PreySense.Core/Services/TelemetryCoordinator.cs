@@ -44,7 +44,16 @@ public readonly record struct TelemetrySnapshot(
     bool IsValid,
     bool IsFanOnly = false,
     long ThermalTimestampTicks = 0,
-    int? RamSpeedMhz = null)
+    int? RamSpeedMhz = null,
+    float? GpuHotspotTemp = null,
+    float? GpuPowerLimitWatts = null,
+    ulong? GpuThrottleReasons = null,
+    int? CpuActiveFrequencyMhz = null,
+    int? CpuEffectiveFrequencyMhz = null,
+    int? CpuPl1Watts = null,
+    int? CpuPl2Watts = null,
+    float? GpuMemoryTemp = null,
+    int? GpuActiveClockMhz = null)
 {
     public long EffectiveThermalTicks => ThermalTimestampTicks > 0 ? ThermalTimestampTicks : TimestampTicks;
 
@@ -58,23 +67,30 @@ public readonly record struct TelemetrySnapshot(
         RamUsedMb: null,
         CpuTemp: null,
         GpuTemp: null,
+        GpuHotspotTemp: null,
         CpuRpm: null,
         GpuRpm: null,
-        CpuFanMaxRpm: 6800,
-        GpuFanMaxRpm: 6800,
+        CpuFanMaxRpm: -1,
+        GpuFanMaxRpm: -1,
         CpuPkgPowerWatts: null,
         GpuPowerWatts: null,
+        GpuPowerLimitWatts: null,
         CpuVoltage: null,
         GpuVoltage: null,
         CpuClockMhz: null,
         ECoreClockMhz: null,
+        CpuActiveFrequencyMhz: null,
+        CpuEffectiveFrequencyMhz: null,
+        CpuPl1Watts: null,
+        CpuPl2Watts: null,
         GpuClockMhz: null,
         GpuUsage: null,
         VramUsedMb: null,
         VramTotalMb: null,
         VramSpeedMhz: null,
+        GpuThrottleReasons: null,
         GpuInUse: false,
-        BatteryPercent: 0f,
+        BatteryPercent: float.NaN,
         IsAcConnected: false,
         PowerSource: PowerSourceKind.Ac,
         IsValid: false,
@@ -108,13 +124,22 @@ public readonly record struct TelemetrySnapshot(
                 RamUsage = null,
                 RamUsedMb = null,
                 CpuPkgPowerWatts = null,
+                CpuPl1Watts = null,
+                CpuPl2Watts = null,
                 GpuPowerWatts = null,
+                GpuPowerLimitWatts = null,
                 CpuVoltage = null,
                 GpuVoltage = null,
                 CpuClockMhz = null,
                 ECoreClockMhz = null,
+                CpuActiveFrequencyMhz = null,
+                CpuEffectiveFrequencyMhz = null,
                 GpuClockMhz = null,
+                GpuActiveClockMhz = null,
                 GpuUsage = null,
+                GpuHotspotTemp = null,
+                GpuMemoryTemp = null,
+                GpuThrottleReasons = null,
                 VramUsedMb = null,
                 VramTotalMb = null,
                 VramSpeedMhz = null,
@@ -129,12 +154,12 @@ public readonly record struct TelemetrySnapshot(
         GpuTemp: GpuTemp ?? -1,
         CpuRpm: CpuRpm ?? -1,
         GpuRpm: GpuRpm ?? -1,
-        CpuFanMaxRpm: CpuFanMaxRpm > 0 ? CpuFanMaxRpm : 5800,
-        GpuFanMaxRpm: GpuFanMaxRpm > 0 ? GpuFanMaxRpm : 5600,
+        CpuFanMaxRpm: CpuFanMaxRpm,
+        GpuFanMaxRpm: GpuFanMaxRpm,
         BatteryPercent: BatteryPercent,
         IsAcConnected: IsAcConnected,
         BatteryDischargeRateMw: 0,
-        CpuPkgPowerWatts: CpuPkgPowerWatts ?? 0f,
+        CpuPkgPowerWatts: CpuPkgPowerWatts,
         PowerSource: PowerSource
     );
 }
@@ -381,7 +406,7 @@ public static class TelemetryCoordinator
     /// <summary>Reads the shared thermal snapshot without issuing hardware queries.</summary>
     public static HardwareTelemetry GetFanTemperaturesSnapshot() =>
         IsThermalExpired(MaxThermalStalenessSeconds)
-            ? new HardwareTelemetry(-1, -1, -1, -1, 5800, 5600, 0, false, 0)
+            ? new HardwareTelemetry(-1, -1, -1, -1, -1, -1, float.NaN, false, 0, PowerSource: PowerSourceKind.Unknown)
             : CurrentSnapshot.ToHardwareTelemetry();
 
     /// <summary>Samples once at most per second, including explicit requests and timer ticks.</summary>

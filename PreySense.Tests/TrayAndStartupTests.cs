@@ -20,8 +20,52 @@ namespace PreySense.Tests
             StringAssert.Contains(xml, "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>");
             StringAssert.Contains(xml, "<LogonType>InteractiveToken</LogonType>");
             StringAssert.Contains(xml, "<Arguments>--minimized</Arguments>");
+            StringAssert.Contains(xml, @"<WorkingDirectory>D:\Applications\Prey Sense</WorkingDirectory>");
             StringAssert.Contains(xml, @"D:\Applications\Prey Sense\PreySense.exe");
             Assert.DoesNotContain("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", xml);
+        }
+
+        [TestMethod]
+        public void StartupTask_WorkingDirectory_IsValidXmlWithSpecialCharacters()
+        {
+            string xml = StartupTaskService.BuildLogonTaskXml(
+                @"D:\Apps & Tools\PreySense.exe", "S-1-5-21-1-2-3-1001");
+            var document = System.Xml.Linq.XDocument.Parse(xml);
+            System.Xml.Linq.XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+            Assert.AreEqual(@"D:\Apps & Tools", document.Root!
+                .Element(ns + "Actions")!.Element(ns + "Exec")!.Element(ns + "WorkingDirectory")!.Value);
+        }
+
+        [TestMethod]
+        public void StartupTask_UsesSchtasksOnly_NoRunKey()
+        {
+            string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string startup = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "Services", "StartupTaskService.cs"));
+            Assert.Contains("schtasks.exe", startup);
+            Assert.DoesNotContain(@"CurrentVersion\Run", startup);
+            Assert.DoesNotContain("Registry.CurrentUser", startup);
+            Assert.DoesNotContain(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", startup);
+        }
+
+        [TestMethod]
+        public void Sources_HaveNoPreySenseHkcuAppKeys()
+        {
+            string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string[] projects = ["PreySense.Core", "PreySense.Frontend", "PreySense.Overlay"];
+            foreach (string project in projects)
+            {
+                string projectRoot = System.IO.Path.Combine(root, project);
+                foreach (string path in System.IO.Directory.EnumerateFiles(projectRoot, "*.cs", System.IO.SearchOption.AllDirectories))
+                {
+                    if (path.Contains($"{System.IO.Path.DirectorySeparatorChar}obj{System.IO.Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                        || path.Contains($"{System.IO.Path.DirectorySeparatorChar}bin{System.IO.Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string source = System.IO.File.ReadAllText(path);
+                    Assert.IsFalse(source.Contains("SOFTWARE" + "\\PreySense", StringComparison.Ordinal), path);
+                    Assert.IsFalse(source.Contains("SOFTWARE" + "\\\\PreySense", StringComparison.Ordinal), path);
+                }
+            }
         }
 
         [TestMethod]
@@ -78,18 +122,6 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public async System.Threading.Tasks.Task PawnIoInstallService_SkipsModalDialog_WhenOwnerNotVisible()
-        {
-            string reported = string.Empty;
-            bool result = await PawnIoInstallService.EnsureInstalledAsync(null!, msg => reported = msg);
-            // If not already ready, must return false non-blockingly without showing modal dialog
-            if (!result)
-            {
-                StringAssert.Contains(reported, "PawnIO");
-            }
-        }
-
-        [TestMethod]
         public void MainWindow_PredatorKeyActivation_UsesCleanForegroundAndFocusArchitecture()
         {
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -121,7 +153,7 @@ namespace PreySense.Tests
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
             string xaml = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml"));
             int ecoIndex = xaml.IndexOf("AutomationProperties.AutomationId=\"BtnModeEco\"", StringComparison.Ordinal);
-            Assert.IsTrue(ecoIndex >= 0, "BtnModeEco must exist");
+            Assert.IsGreaterThanOrEqualTo(0, ecoIndex, "BtnModeEco must exist");
             int quietIndex = xaml.IndexOf("AutomationProperties.AutomationId=\"BtnModeQuiet\"", StringComparison.Ordinal);
             string ecoBlock = xaml.Substring(ecoIndex, quietIndex - ecoIndex);
             Assert.Contains("Property=\"BorderBrush\"", ecoBlock);
@@ -153,8 +185,8 @@ namespace PreySense.Tests
             Assert.Contains("Tag=\"HW:3\"", dynBlock);
             Assert.DoesNotContain("Tag=\"DYN:", dynBlock);
 
-            // Preset Themes combo has SelectedIndex="0" (Custom)
-                        Assert.Contains("x:Name=\"ComboPresetStatic\" SelectedIndex=\"0\"", xaml);
+            // Preset Themes combo defaults to Predator (index 1 after Custom)
+            Assert.Contains("x:Name=\"ComboPresetStatic\" SelectedIndex=\"1\"", xaml);
         }
 
         [TestMethod]

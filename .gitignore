@@ -26,21 +26,13 @@ debug.log
 *.cache
 
 scratch/
-acpi_staging/*
-!acpi_staging/preysense.mof
-!acpi_staging/SSDT-PREYDEV.aml
-!acpi_staging/SSDT-PREYDEV.dsl
-acer-predator-re/
 
-# Local editor and UI-test state
+# Local reports, settings, firmware research, and development tools
+outputs/
+preysense.json
+Throttlestop/
+tools/rea/
+tools/rw/
 .cursor/
 CURSOR.md
 test_tools/captures/
-
-# Machine-specific firmware dumps and external research checkouts
-docs/acpi_tables/
-docs/bios/
-tools/rea/
-tools/rw/
-tools/Configuration.pdf
-tools/OpenCore_PreyBoost_EFI/OpenCore-*-RELEASE.zip

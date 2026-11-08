@@ -94,7 +94,7 @@ public class FanModeRuntimeTests
         hardware.FailWrites = false;
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        Assert.AreEqual(2, hardware.Calls.Count);
+        Assert.HasCount(2, hardware.Calls);
         Assert.AreEqual(40, vm.AppliedCpuFanPercent);
     }
 
@@ -150,7 +150,7 @@ public class FanModeRuntimeTests
         public List<string> Calls { get; } = new();
         public bool FailWrites { get; set; }
         public int PowerModeReads { get; private set; }
-        public new bool TryGetPowerMode(out byte mode) { PowerModeReads++; mode = 1; return true; }
+        public bool TryGetPowerMode(out byte mode) { PowerModeReads++; mode = 1; return true; }
         public new bool SetFanMode(byte cpuMode, byte gpuMode) { Calls.Add($"mode:{cpuMode}"); return !FailWrites; }
         public new bool SetFanSpeeds(byte cpuPercentage, byte gpuPercentage) { Calls.Add($"curve:{cpuPercentage}/{gpuPercentage}"); return !FailWrites; }
     }

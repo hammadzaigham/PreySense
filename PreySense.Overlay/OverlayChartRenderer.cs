@@ -39,8 +39,8 @@ namespace PreySense.Overlay
             float peak = 10f;
             for (int i = 0; i < historyLength; i++)
             {
-                if (drawCpu && cpuHistory[i] > peak) peak = cpuHistory[i];
-                if (drawGpu && gpuHistory[i] > peak) peak = gpuHistory[i];
+                if (drawCpu && float.IsFinite(cpuHistory[i]) && cpuHistory[i] > peak) peak = cpuHistory[i];
+                if (drawGpu && float.IsFinite(gpuHistory[i]) && gpuHistory[i] > peak) peak = gpuHistory[i];
             }
 
             float stepX = (float)w / (historyLength - 1);
@@ -61,16 +61,38 @@ namespace PreySense.Overlay
             var saved = g.Save();
             g.SetClip(new RectangleF(x, y, w, h));
 
-            if (drawGpu)
+            void DrawSeries(float[] history, PointF[] points, SolidBrush brush, Pen pen)
             {
-                FillArea(g, polyPts, gpuPts, basePts, graphGpuBrush);
-                g.DrawLines(graphGpuPen, gpuPts);
+                using var outline = new GraphicsPath();
+                using var area = new GraphicsPath();
+                int start = -1;
+                for (int i = 0; i <= historyLength; i++)
+                {
+                    bool valid = i < historyLength && float.IsFinite(history[Idx(i)]) && history[Idx(i)] >= 0;
+                    if (valid)
+                    {
+                        if (start < 0) start = i;
+                        continue;
+                    }
+                    if (start >= 0 && i - start >= 2)
+                    {
+                        outline.Reset(); area.Reset();
+                        area.AddLine(basePts[start], points[start]);
+                        for (int j = start + 1; j < i; j++)
+                        {
+                            outline.AddLine(points[j - 1], points[j]);
+                            area.AddLine(points[j - 1], points[j]);
+                        }
+                        area.AddLine(points[i - 1], basePts[i - 1]);
+                        area.CloseFigure();
+                        g.FillPath(brush, area);
+                        g.DrawPath(pen, outline);
+                    }
+                    start = -1;
+                }
             }
-            if (drawCpu)
-            {
-                FillArea(g, polyPts, cpuPts, basePts, graphCpuBrush);
-                g.DrawLines(graphCpuPen, cpuPts);
-            }
+            if (drawGpu) DrawSeries(gpuHistory, gpuPts, graphGpuBrush, graphGpuPen);
+            if (drawCpu) DrawSeries(cpuHistory, cpuPts, graphCpuBrush, graphCpuPen);
 
             g.Restore(saved);
             g.DrawLine(axPen, x, y + h, x + w, y + h);

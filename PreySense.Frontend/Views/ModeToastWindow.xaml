@@ -31,7 +31,7 @@
             <TextBlock x:Name="ModeLabel" Text="Balanced" Margin="9,0,0,0"
                        Foreground="#F5F7FA" TextAlignment="Center"
                        VerticalAlignment="Center" FontFamily="Segoe UI"
-                       FontSize="14" FontWeight="Medium"/>
+                       FontSize="{DynamicResource FontSizeBody}" FontWeight="Medium"/>
         </StackPanel>
     </Border>
 </Window>

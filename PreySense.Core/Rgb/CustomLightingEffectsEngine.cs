@@ -20,11 +20,18 @@ namespace PreySense.Rgb
         MatrixCascade = 13,
         CylonScanner = 14,
         AuroraDrift = 15,
+        // Retired. Values stay so saved mode indexes do not shift.
         OceanTide = 16,
         Heartbeat = 17,
         LightningStorm = 18,
         Starlight = 19,
-        IceCrystal = 20
+        // Retired. Values stay so saved mode indexes do not shift.
+        IceCrystal = 20,
+        NeonPulse = 21,
+        PlasmaOrb = 22,
+        GlitchStorm = 23,
+        BioHazard = 24,
+        SolarFlare = 25
     }
 
     /// <summary>
@@ -41,7 +48,7 @@ namespace PreySense.Rgb
         private CustomEffectMode _currentMode = CustomEffectMode.None;
         private byte _brightness = 100;
         private int _speed = 50;
-        private Color _activeBrushColor = Color.FromArgb(0, 240, 255); // Default Predator Cyan
+        private Color _activeBrushColor = Color.FromArgb(0, 240, 255); // Default Predator
         private readonly Color[] _zoneColors = new Color[4];
         private readonly Random _rng = new();
         private readonly object _lock = new();
@@ -109,7 +116,8 @@ namespace PreySense.Rgb
         {
             Stop();
 
-            if (mode is CustomEffectMode.None or CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge)
+            if (mode is CustomEffectMode.None or CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge
+                or CustomEffectMode.OceanTide or CustomEffectMode.IceCrystal)
                 return;
 
             lock (_lock)
@@ -251,7 +259,8 @@ namespace PreySense.Rgb
             {
                 try
                 {
-                    const int frameIntervalMs = 28; // ~35 FPS smooth animation
+                    // Software-effect loop only (hardware DYN modes do not use this engine).
+                    const int frameIntervalMs = 28; // ~35 FPS for preview + zone color generation
                     double speedStep = 0.03 + (_speed / 100.0) * 0.32;
                     step += speedStep;
                     frameCount++;
@@ -285,10 +294,6 @@ namespace PreySense.Rgb
                             GenerateAuroraDriftFrame(frame, step);
                             break;
 
-                        case CustomEffectMode.OceanTide:
-                            GenerateOceanTideFrame(frame, step);
-                            break;
-
                         case CustomEffectMode.Heartbeat:
                             GenerateHeartbeatFrame(frame, step);
                             break;
@@ -302,8 +307,26 @@ namespace PreySense.Rgb
                             GenerateStarlightFrame(frame, step);
                             break;
 
-                        case CustomEffectMode.IceCrystal:
-                            GenerateIceCrystalFrame(frame, step);
+                        case CustomEffectMode.NeonPulse:
+                            GenerateNeonPulseFrame(frame, step);
+                            break;
+
+                        case CustomEffectMode.PlasmaOrb:
+                            GeneratePlasmaOrbFrame(frame, step);
+                            break;
+
+                        case CustomEffectMode.GlitchStorm:
+                            GenerateGlitchStormFrame(frame, frameCount);
+                            hwThrottleMs = Math.Max(40, 120 - (int)(_speed * 0.8));
+                            break;
+
+                        case CustomEffectMode.BioHazard:
+                            GenerateBioHazardFrame(frame, step);
+                            break;
+
+                        case CustomEffectMode.SolarFlare:
+                            GenerateSolarFlareFrame(frame, frameCount);
+                            hwThrottleMs = Math.Max(55, 160 - (int)(_speed * 1.0));
                             break;
 
                         default:
@@ -359,7 +382,7 @@ namespace PreySense.Rgb
                         }
                     }
 
-                    // 1. Fire UI preview event on every frame (silky smooth visualizer)
+                    // 1. UI / cover-sync preview only when someone is listening
                     FrameUpdated?.Invoke(frame);
 
                     byte brightness;
@@ -477,17 +500,6 @@ namespace PreySense.Rgb
             frame[3] = LerpColor(teal, violet, (float)a4);
         }
 
-        private void GenerateOceanTideFrame(Color[] frame, double step)
-        {
-            Color deep = Color.FromArgb(0, 32, 96);
-            Color foam = Color.FromArgb(0, 220, 255);
-            for (int i = 0; i < 4; i++)
-            {
-                double t = (Math.Sin(step * 0.95 + i * 0.85) + 1.0) / 2.0;
-                frame[i] = LerpColor(deep, foam, (float)t);
-            }
-        }
-
         private void GenerateHeartbeatFrame(Color[] frame, double step)
         {
             Color c = _activeBrushColor.IsEmpty ? Color.FromArgb(255, 24, 64) : _activeBrushColor;
@@ -536,16 +548,190 @@ namespace PreySense.Rgb
             }
         }
 
-        private void GenerateIceCrystalFrame(Color[] frame, double step)
+        /// <summary>
+        /// NeonPulse – User brush color breathing with a sharp attack/slow decay giving a neon sign flicker character.
+        /// All zones throb in sync. At the peak a bright near-white flash fires before decaying slowly.
+        /// Uses <paramref name="step"/> (continuous time).
+        /// </summary>
+        private void GenerateNeonPulseFrame(Color[] frame, double step)
         {
-            Color frost = Color.FromArgb(36, 82, 150);
-            Color ice = Color.FromArgb(190, 235, 255);
+            Color base_ = _activeBrushColor.IsEmpty ? Color.FromArgb(255, 0, 255) : _activeBrushColor;
+
+            // Normalise step to [0,1) cycle. Speed influences cycle length via speedStep accumulation.
+            double t = (step * 0.28) % 1.0;
+
+            // Sharp attack (0→peak in 8% of cycle) then slow exponential decay back to dim.
+            double pulse;
+            if (t < 0.08)
+            {
+                // Fast linear ramp up
+                pulse = t / 0.08;
+            }
+            else
+            {
+                // Slow exponential decay
+                double decay = (t - 0.08) / 0.92;
+                pulse = Math.Exp(-decay * 3.5);
+            }
+            pulse = Math.Clamp(pulse, 0.04, 1.0);
+
+            // At peak, flash toward white (neon over-drive)
+            Color lit;
+            if (pulse > 0.88)
+            {
+                float blend = (float)((pulse - 0.88) / 0.12); // 0→1 as pulse→1
+                Color overdriven = LerpColor(base_, Color.White, blend * 0.65f);
+                lit = ScaleColor(overdriven, (float)pulse);
+            }
+            else
+            {
+                lit = ScaleColor(base_, (float)pulse);
+            }
+
+            for (int i = 0; i < 4; i++)
+                frame[i] = lit;
+        }
+
+        /// <summary>
+        /// PlasmaOrb – Swirling hue-rotation plasma across zones. Each zone has a phase-offset sine wave on
+        /// the HSV hue that oscillates back-and-forth rather than cycling continuously (unlike RainbowCycle).
+        /// Uses <paramref name="step"/> (continuous time).
+        /// </summary>
+        private void GeneratePlasmaOrbFrame(Color[] frame, double step)
+        {
+            // Hue oscillates ±120° around a rotating center so it feels "swirling" not just cycling.
+            double centerHue = (step * 22.0) % 360.0;
             for (int i = 0; i < 4; i++)
             {
-                double shimmer = (Math.Sin(step * 1.05 + i * 1.25) + 1.0) / 2.0;
-                double sparkle = Math.Pow((Math.Sin(step * 3.2 + i * 2.05) + 1.0) / 2.0, 3.0);
-                frame[i] = LerpColor(frost, ice, (float)Math.Clamp(shimmer * 0.72 + sparkle * 0.28, 0.0, 1.0));
+                double phase = i * (Math.PI / 2.0); // 90° apart per zone
+                double swing = Math.Sin(step * 0.6 + phase) * 110.0; // ±110° hue swing
+                float hue = (float)((centerHue + swing + 360.0) % 360.0);
+                // Saturation pulses slightly for extra life
+                float sat = (float)(0.80 + Math.Sin(step * 1.1 + phase) * 0.20);
+                frame[i] = HsvToRgb(hue, Math.Clamp(sat, 0.6f, 1f), 1f);
             }
+        }
+
+        /// <summary>
+        /// GlitchStorm – Cyberpunk RGB corruption. Normally all zones are very dark. Randomly triggers
+        /// glitch bursts on 1–3 zones simultaneously with random saturated colors and very short duration.
+        /// Uses <paramref name="frameCount"/> and <c>_rng</c>.
+        /// </summary>
+        private void GenerateGlitchStormFrame(Color[] frame, int frameCount)
+        {
+            Color dark = Color.FromArgb(4, 4, 8);
+            for (int i = 0; i < 4; i++)
+                frame[i] = dark;
+
+            // Base glitch probability scales with speed.
+            double glitchChance = 0.04 + (_speed / 100.0) * 0.22;
+
+            // Periodic forced burst so it never feels completely dead.
+            int burstPeriod = Math.Max(8, 35 - (int)(_speed * 0.27));
+            bool forcedBurst = (frameCount % burstPeriod) == 0;
+
+            if (!forcedBurst && _rng.NextDouble() > glitchChance)
+                return;
+
+            // Determine how many zones to glitch simultaneously (1–3).
+            int glitchCount = forcedBurst ? _rng.Next(2, 4) : _rng.Next(1, 3);
+            for (int g = 0; g < glitchCount; g++)
+            {
+                int z = _rng.Next(4);
+                // Pick a fully saturated random hue.
+                float hue = (float)(_rng.NextDouble() * 360.0);
+                // Occasionally spike to near-white for a "data corruption" flash.
+                Color glitchColor = _rng.NextDouble() < 0.18
+                    ? Color.FromArgb(240, 240, 255)
+                    : HsvToRgb(hue, 1f, 1f);
+                frame[z] = glitchColor;
+            }
+        }
+
+        /// <summary>
+        /// BioHazard – Toxic green/yellow ripple. A bright lime/yellow-green pulse ripples
+        /// through zones 0→1→2→3→2→1 (ping-pong) with a trailing glow. Uses smooth lerp.
+        /// Uses <paramref name="step"/> (continuous time).
+        /// </summary>
+        private void GenerateBioHazardFrame(Color[] frame, double step)
+        {
+            Color ambient = Color.FromArgb(5, 28, 2);
+            Color midGlow = Color.FromArgb(60, 180, 0);
+            Color peak = Color.FromArgb(180, 255, 0); // Bright yellow-green
+
+            // Ping-pong: position in [0, 6) maps zone 0→1→2→3→2→1 (length 6 steps)
+            double pos = (step * 0.55) % 6.0;
+
+            for (int i = 0; i < 4; i++)
+            {
+                // Mirror index for ping-pong
+                double mirrorPos = pos <= 3.0 ? pos : 6.0 - pos;
+                double dist = Math.Abs(mirrorPos - i);
+                double t;
+                if (dist < 0.5)
+                    t = 1.0 - dist * 1.5; // Peak bright
+                else if (dist < 1.5)
+                    t = Math.Max(0.0, 0.55 - (dist - 0.5) * 0.55); // Trailing glow
+                else
+                    t = 0.0;
+
+                // Blend: low → midGlow → peak
+                Color zoneColor;
+                if (t > 0.6)
+                    zoneColor = LerpColor(midGlow, peak, (float)((t - 0.6) / 0.4));
+                else if (t > 0.0)
+                    zoneColor = LerpColor(ambient, midGlow, (float)(t / 0.6));
+                else
+                    zoneColor = ambient;
+
+                frame[i] = zoneColor;
+            }
+        }
+
+        /// <summary>
+        /// SolarFlare – Coronal heat simulation. Base is deep red/orange. Bright flares of yellow-white
+        /// randomly erupt on individual zones and quickly decay. Similar to LightningStorm but warm.
+        /// Uses <paramref name="frameCount"/> and <c>_rng</c>.
+        /// </summary>
+        private void GenerateSolarFlareFrame(Color[] frame, int frameCount)
+        {
+            // Warm corona base — different brightness per zone for depth.
+            Color[] coronaBase =
+            {
+                Color.FromArgb(100, 20, 0),
+                Color.FromArgb(130, 35, 0),
+                Color.FromArgb(110, 25, 0),
+                Color.FromArgb(90,  18, 0),
+            };
+
+            for (int i = 0; i < 4; i++)
+                frame[i] = coronaBase[i];
+
+            // Eruption chance scales with speed.
+            double eruptChance = 0.05 + (_speed / 100.0) * 0.18;
+            int period = Math.Max(6, 28 - (int)(_speed * 0.22));
+            bool periodic = (frameCount % period) == 0;
+
+            if (!periodic && _rng.NextDouble() > eruptChance)
+                return;
+
+            // Choose eruption zone.
+            int z = _rng.Next(4);
+
+            // Pick eruption color: yellow-white to orange-white spectrum.
+            double flareRoll = _rng.NextDouble();
+            Color flare;
+            if (flareRoll < 0.35)
+                flare = Color.FromArgb(255, 255, 220); // Near-white solar peak
+            else if (flareRoll < 0.65)
+                flare = Color.FromArgb(255, 230, 80);  // Bright yellow
+            else
+                flare = Color.FromArgb(255, 160, 20);  // Orange-yellow
+
+            frame[z] = flare;
+            // Warm halo on adjacent zones (slower decay than lightning).
+            if (z > 0) frame[z - 1] = LerpColor(coronaBase[z - 1], flare, 0.45f);
+            if (z < 3) frame[z + 1] = LerpColor(coronaBase[z + 1], flare, 0.45f);
         }
 
         #endregion

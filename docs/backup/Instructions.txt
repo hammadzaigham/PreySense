@@ -1,3 +1,0 @@
-Run backup_services.ps1 first.
-Uninstall Predator Sense.
-Run restore_services.bat

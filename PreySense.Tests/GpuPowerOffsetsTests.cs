@@ -1,4 +1,4 @@
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 
 namespace PreySense.Tests;
 
@@ -9,34 +9,32 @@ public class GpuPowerOffsetsTests
     [DoNotParallelize]
     public void SavedOffsetsAreReadFreshWhileUnsavedEditsArePreserved()
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\GpuOffsets");
-        string[] names = { "BalancedDelta", "BalancedBoost" };
-        var original = names.ToDictionary(n => n, n => key.GetValue(n));
-        var kinds = names.Where(n => original[n] != null).ToDictionary(n => n, n => key.GetValueKind(n));
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PreySenseOffsets-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        var store = new PreySense.Core.Configuration.ConfigurationService(System.IO.Path.Combine(directory, "preysense.json"));
         try
         {
             var vm = (PreySense.Frontend.ViewModels.MainViewModel)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PreySense.Frontend.ViewModels.MainViewModel));
             var drafts = new Dictionary<int, GpuPowerOffsets>();
             typeof(PreySense.Frontend.ViewModels.MainViewModel).GetField("_gpuOffsets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, drafts);
-            key.SetValue(names[0], 10);
-            key.SetValue(names[1], 15);
-            Assert.AreEqual(new GpuPowerOffsets(10, 15), vm.GpuOffsetsForMode(2, 130));
-            key.SetValue(names[0], 20);
-            Assert.AreEqual(new GpuPowerOffsets(20, 15), vm.GpuOffsetsForMode(2, 130));
-            vm.StoreGpuOffsets(2, new GpuPowerOffsets(30, 5));
-            Assert.AreEqual(new GpuPowerOffsets(30, 5), vm.GpuOffsetsForMode(2, 130));
-            typeof(PreySense.Frontend.ViewModels.MainViewModel).GetMethod("SaveGpuOffsets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(vm, null);
-            Assert.AreEqual(30, key.GetValue(names[0]));
-            Assert.AreEqual(5, key.GetValue(names[1]));
-            Assert.AreEqual(0, drafts.Count);
-            key.SetValue(names[0], 40);
-            Assert.AreEqual(new GpuPowerOffsets(40, 5), vm.GpuOffsetsForMode(2, 130));
+            vm.TuningConfigurationStore = store;
+            store.Update(cfg =>
+            {
+                cfg.Tuning.Balanced.GpuDeltaWatts = 10;
+                cfg.Tuning.Balanced.GpuDynamicBoostWatts = 15;
+                cfg.Tuning.Balanced.PlatformPowerOffsetWatts = 5;
+            });
+            Assert.AreEqual(new GpuPowerOffsets(10, 15, 5), vm.GpuOffsetsForMode(2, 130));
+            store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 20);
+            Assert.AreEqual(new GpuPowerOffsets(20, 15, 5), vm.GpuOffsetsForMode(2, 130));
+            vm.StoreGpuOffsets(2, new GpuPowerOffsets(30, 5, 10));
+            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2, 130));
+            store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 40);
+            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2, 130), "Newly saved values must not overwrite an unsaved editor draft.");
         }
         finally
         {
-            foreach (string name in names)
-                if (original[name] is { } value) key.SetValue(name, value, kinds[name]);
-                else key.DeleteValue(name, throwOnMissingValue: false);
+            System.IO.Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -45,7 +43,7 @@ public class GpuPowerOffsetsTests
     {
         var value = new GpuPowerOffsets(35, 20);
         Assert.IsTrue(value.IsValid);
-        Assert.AreEqual(140, value.NominalReferenceWatts());
+        Assert.AreEqual(140, value.NominalReferenceWatts(85));
 
     }
 
@@ -61,38 +59,22 @@ public class GpuPowerOffsetsTests
     [TestMethod]
     public void LegacyProfilesRetainTheExistingSplit()
     {
-        Assert.AreEqual(new GpuPowerOffsets(0, 0), GpuPowerOffsets.FromLegacyTarget(85));
-        Assert.AreEqual(new GpuPowerOffsets(15, 0), GpuPowerOffsets.FromLegacyTarget(100));
-        Assert.AreEqual(new GpuPowerOffsets(30, 15), GpuPowerOffsets.FromLegacyTarget(130));
-        Assert.IsTrue(GpuPowerOffsets.FromLegacyTarget(999).IsValid);
+        Assert.AreEqual(new GpuPowerOffsets(0, 0), GpuPowerOffsets.FromLegacyTarget(85, 85));
+        Assert.AreEqual(new GpuPowerOffsets(15, 0), GpuPowerOffsets.FromLegacyTarget(100, 85));
+        Assert.AreEqual(new GpuPowerOffsets(30, 15), GpuPowerOffsets.FromLegacyTarget(130, 85));
+        Assert.IsTrue(GpuPowerOffsets.FromLegacyTarget(999, 85).IsValid);
     }
 
     [TestMethod]
-    public void GameOffsetsSurviveSerializationAndBaselineChanges()
-    {
-        var game = new PreySense.Mode.GameProfile { GpuPowerWatts = 150, GpuDeltaWatts = 40, GpuDynamicBoostWatts = 25 };
-        var json = System.Text.Json.JsonSerializer.Serialize(game);
-        var loaded = System.Text.Json.JsonSerializer.Deserialize<PreySense.Mode.GameProfile>(json)!;
-        Assert.AreEqual(new GpuPowerOffsets(40, 25), loaded.ResolveGpuOffsets(85));
-        Assert.AreEqual(new GpuPowerOffsets(40, 25), loaded.ResolveGpuOffsets(115));
-        var legacy = new PreySense.Mode.GameProfile { GpuPowerWatts = 150 };
-        Assert.AreEqual(new GpuPowerOffsets(50, 15), legacy.ResolveGpuOffsets(85));
-        Assert.IsNull(legacy.GpuDeltaWatts);
-        Assert.AreEqual(new GpuPowerOffsets(20, 15), legacy.ResolveGpuOffsets(115));
-    }
-
-    [TestMethod]
-    public void PlatformControlIsRemovedAndSingleTargetWritesUseTheSamePolicy()
+    public void PlatformPowerOffsetControlIsPresentWithGpuOffsets()
     {
         string root = Root();
         string xaml = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml"));
-        Assert.DoesNotContain("RowGpuPlatform", xaml);
-        Assert.DoesNotContain("ModeGpuPlatformValue", xaml);
-        Assert.Contains("RowGpuDelta", xaml);
-        Assert.Contains("RowGpuDynamicBoost", xaml);
-        string client = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Core", "Hardware", "PreySenseWmiDeviceClient.cs"));
-        Assert.DoesNotContain("PlatformOffsetWatts", client);
-        Assert.Contains("return SetGpuPowerOffsets(PreySense.Core.Acpi.GpuPowerOffsets.FromLegacyTarget((int)targetWatts, baseline))", client);
+        Assert.Contains("Platform Power Limit", xaml);
+        Assert.Contains("SliderPlatformPowerOffset", xaml);
+        Assert.Contains("ModePlatformPowerOffsetValue", xaml);
+        Assert.Contains("SliderGpuDelta", xaml);
+        Assert.Contains("SliderGpuDynamicBoost", xaml);
     }
 
     private static string Root()
@@ -103,34 +85,5 @@ public class GpuPowerOffsetsTests
         return directory?.FullName ?? throw new InvalidOperationException("Solution root not found");
     }
 
-    [TestMethod]
-    public void FirmwareContractKeepsOffsetsIndependentAndSupportsEco()
-    {
-        string dsl = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "acpi_staging", "SSDT-PREYDEV.dsl"));
-        Assert.Contains("Case (0x0B) // SetGpuPowerOffsets", dsl);
-        Assert.Contains("Case (0x0C) // GetGpuPowerOffsets", dsl);
-        Assert.Contains("GPOF (DLTW, BSTW)", dsl);
-        Assert.Contains("(Arg0 > 255) || (Arg1 > 255)", dsl);
-        foreach (int mode in new[] { 1, 2, 3, 4, 5 })
-        {
-            Assert.Contains($"M{mode}CT = Arg0", dsl);
-            Assert.Contains($"M{mode}DB = Arg1", dsl);
-            Assert.Contains($"M{mode}CP = 0xFF", dsl);
-        }
-        Assert.Contains("PKG3 [Zero] = (\\_SB.NPCF.ACBT / 0x08)", dsl);
-        Assert.Contains("PKG3 [One] = (\\_SB.NPCF.AMAT / 0x08)", dsl);
-        Assert.Contains("ATPP = 0x07F8", dsl);
-    }
 
-    [TestMethod]
-    public void PackagedAmlMatchesStagingAndHasValidRevisionAndChecksum()
-    {
-        string root = Root();
-        byte[] staging = System.IO.File.ReadAllBytes(System.IO.Path.Combine(root, "acpi_staging", "SSDT-PREYDEV.aml"));
-        byte[] packaged = System.IO.File.ReadAllBytes(System.IO.Path.Combine(root, "tools", "OpenCore_PreyBoost_EFI", "EFI", "OC", "ACPI", "SSDT-PREYDEV.aml"));
-        CollectionAssert.AreEqual(staging, packaged);
-        Assert.AreEqual(0x0201u, BitConverter.ToUInt32(staging, 24));
-        Assert.AreEqual((uint)staging.Length, BitConverter.ToUInt32(staging, 4));
-        Assert.AreEqual(0, staging.Sum(value => (int)value) & 255);
-    }
 }

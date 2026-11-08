@@ -13,13 +13,15 @@
 
   <Style x:Key="AppWindowShellStyle" TargetType="{x:Type Border}">
     <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
-    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Margin" Value="10" />
     <Setter Property="Effect" Value="{DynamicResource WindowShadowEffect}" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
   </Style>
   <Style x:Key="WindowTitleBarStyle" TargetType="{x:Type Grid}">
     <Setter Property="Height" Value="30" />
-    <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
+    <!-- Transparent so the shell CornerRadius is not covered by a square fill. -->
+    <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style x:Key="WarningBannerStyle" TargetType="{x:Type Border}">
     <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
@@ -446,7 +448,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="{x:Type controls:RectangularSwitch}">
-          <Border Name="PART_Outer" Background="{DynamicResource ButtonMainBrush}" BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="1" CornerRadius="14" SnapsToDevicePixels="True" Height="{TemplateBinding Height}" Width="{TemplateBinding Width}">
+          <Border Name="PART_Outer" Background="{DynamicResource ButtonMainBrush}" BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="1" CornerRadius="14" SnapsToDevicePixels="True" ClipToBounds="True" Height="{TemplateBinding Height}" Width="{TemplateBinding Width}" MinWidth="{TemplateBinding MinWidth}" MaxWidth="{TemplateBinding MaxWidth}">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -455,12 +457,12 @@
 
               <!-- Left Segment (Off / ○) -->
               <Border Name="PART_Left" Grid.Column="0" Margin="2" CornerRadius="12" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                <TextBlock Name="PART_LeftText" Text="{TemplateBinding OffText}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="8,0" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Name="PART_LeftText" Text="{TemplateBinding OffText}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="2,0" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
               </Border>
 
               <!-- Right Segment (On / │) -->
               <Border Name="PART_Right" Grid.Column="1" Margin="2" CornerRadius="12" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                <TextBlock Name="PART_RightText" Text="{TemplateBinding OnText}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="8,0" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Name="PART_RightText" Text="{TemplateBinding OnText}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="2,0" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
               </Border>
             </Grid>
           </Border>
@@ -527,12 +529,12 @@
 
                 <!-- Left Segment (Off / ○) -->
                 <Border Name="PART_Left" Grid.Column="0" Width="22" Height="22" Margin="3" CornerRadius="11" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Name="PART_LeftText" Text="○" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                  <TextBlock Name="PART_LeftText" Text="○" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
                 </Border>
 
                 <!-- Right Segment (On / │) -->
                 <Border Name="PART_Right" Grid.Column="1" Width="22" Height="22" Margin="3" CornerRadius="11" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Name="PART_RightText" Text="│" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,3" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                  <TextBlock Name="PART_RightText" Text="│" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,3" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
                 </Border>
               </Grid>
             </Border>
@@ -572,7 +574,7 @@
     <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
     <Setter Property="Width" Value="30" />
     <Setter Property="Height" Value="30" />
     <Setter Property="FrameworkElement.Cursor" Value="Arrow" />
@@ -602,7 +604,7 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="{x:Type Button}">
-          <Border Name="border" Background="{TemplateBinding Control.Background}" CornerRadius="0,7,0,0">
+          <Border Name="border" Background="{TemplateBinding Control.Background}" CornerRadius="0,8,0,0">
             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <ControlTemplate.Triggers>
@@ -622,7 +624,7 @@
     <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeControl}" />
     <Setter Property="Padding" Value="10,6" />
     <Setter Property="MinHeight" Value="30" />
     <Setter Property="HorizontalAlignment" Value="Left" />
@@ -655,7 +657,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource BorderMainBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSizeControl}" />
     <Setter Property="Padding" Value="10,4,8,4" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />

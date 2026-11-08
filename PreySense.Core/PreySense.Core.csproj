@@ -8,18 +8,17 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PreySense.Tests" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Pawn\IntelMSR.bin" LogicalName="PreySense.Core.IntelMSR.bin" />
-    <Reference Include="DtsCntInterop">
-      <HintPath>..\tools\DtsControlProbe\DtsCntInterop.dll</HintPath>
-      <EmbedInteropTypes>false</EmbedInteropTypes>
-      <Private>true</Private>
-    </Reference>
+    <EmbeddedResource Include="Resources\embedded_x64.sys" LogicalName="PreySense.Core.Resources.embedded_x64.sys" />
   </ItemGroup>
 
   <ItemGroup>

@@ -18,6 +18,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="InnerValueBox"
+                     IsEnabled="{Binding IsValueEnabled, ElementName=RootValueRow}"
                      Style="{DynamicResource CompactValueTextBoxStyle}"
                      AutomationProperties.AutomationId="{Binding ValueAutomationId, ElementName=RootValueRow}" />
             <TextBlock Grid.Column="1"

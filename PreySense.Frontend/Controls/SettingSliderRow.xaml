@@ -17,12 +17,10 @@
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ValueText, ElementName=RootSliderRow}" Value="">
                                 <Setter Property="Text" Value="{Binding BadgeText, ElementName=RootSliderRow}" />
-                                <Setter Property="FontSize" Value="9.5" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ValueText, ElementName=RootSliderRow}" Value="{x:Null}">
                                 <Setter Property="Text" Value="{Binding BadgeText, ElementName=RootSliderRow}" />
-                                <Setter Property="FontSize" Value="9.5" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             </DataTrigger>
                         </Style.Triggers>

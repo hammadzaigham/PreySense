@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 
 namespace PreySense.Frontend.ViewModels;
 
@@ -20,9 +20,8 @@ public partial class MainViewModel
             if (baseline.HasValue)
             {
                 GpuBasePowerWatts = baseline.Value;
-                if (_factoryPowerProfile != null) _factoryPowerProfile.Gpu.BasePowerWatts = baseline.Value;
             }
-            else AppLogger.Log("GPU baseline unavailable; no detected baseline was saved. Legacy arithmetic fallback remains in use.");
+            else AppLogger.Log("GPU baseline unavailable; no detected baseline was saved. Nominal GPU wattage remains N/A.");
         }
         catch (Exception ex) { AppLogger.Log($"GPU baseline capture failed: {ex.Message}"); }
     }

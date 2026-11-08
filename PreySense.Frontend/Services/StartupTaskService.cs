@@ -5,8 +5,6 @@ using System.Security;
 using System.Security.Principal;
 using System.Text;
 using System.Xml.Linq;
-using Microsoft.Win32;
-
 namespace PreySense.Frontend.Services
 {
     public static class StartupTaskService
@@ -16,24 +14,11 @@ namespace PreySense.Frontend.Services
 
         public static bool IsStartupEnabled()
         {
-            if (QueryTaskExitCode() == 0)
-                return true;
-
-            try
-            {
-                using var runKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", false);
-                return runKey?.GetValue(TaskName) != null;
-            }
-            catch
-            {
-                return false;
-            }
+            return QueryTaskExitCode() == 0;
         }
 
         public static bool SetStartupEnabled(bool enable)
         {
-            RemoveRunKey();
-
             if (!enable)
             {
                 int deleted = RunSchtasks($"/Delete /F /TN \"{TaskName}\"").ExitCode;
@@ -60,7 +45,8 @@ namespace PreySense.Frontend.Services
             if (xml.Contains("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>", StringComparison.Ordinal)
                 && xml.Contains("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>", StringComparison.Ordinal)
                 && xml.Contains("<StartWhenAvailable>true</StartWhenAvailable>", StringComparison.Ordinal)
-                && xml.Contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", StringComparison.Ordinal))
+                && xml.Contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", StringComparison.Ordinal)
+                && xml.Contains("<WorkingDirectory>", StringComparison.Ordinal))
             {
                 return;
             }
@@ -74,6 +60,7 @@ namespace PreySense.Frontend.Services
         public static string BuildLogonTaskXml(string exePath, string userId)
         {
             string command = SecurityElement.Escape(exePath) ?? exePath;
+            string workingDirectory = SecurityElement.Escape(Path.GetDirectoryName(exePath)) ?? "";
             string user = SecurityElement.Escape(userId) ?? userId;
             return $"""
                 <?xml version="1.0" encoding="UTF-16"?>
@@ -111,6 +98,7 @@ namespace PreySense.Frontend.Services
                     <Exec>
                       <Command>{command}</Command>
                       <Arguments>--minimized</Arguments>
+                      <WorkingDirectory>{workingDirectory}</WorkingDirectory>
                     </Exec>
                   </Actions>
                 </Task>
@@ -137,16 +125,6 @@ namespace PreySense.Frontend.Services
             {
                 try { File.Delete(path); } catch { }
             }
-        }
-
-        private static void RemoveRunKey()
-        {
-            try
-            {
-                using var runKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-                runKey?.DeleteValue(TaskName, false);
-            }
-            catch { }
         }
 
         private static int QueryTaskExitCode()

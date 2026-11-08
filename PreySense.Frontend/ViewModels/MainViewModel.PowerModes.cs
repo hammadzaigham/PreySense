@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 using PreySense.Core.Services;
 using PreySense.Frontend.Views;
 using PreySense.Mode;
@@ -35,7 +35,6 @@ namespace PreySense.Frontend.ViewModels
         public IReadOnlyList<string> SourceProfileNames => ProfileManager.SourceProfileNames;
 
         [ObservableProperty] private int _acPowerModeIndex = ProfileManager.SourceProfileIndex(0x01);
-        [ObservableProperty] private int _usbCPowerModeIndex = ProfileManager.SourceProfileIndex(0x01);
         [ObservableProperty] private int _batteryPowerModeIndex = ProfileManager.SourceProfileIndex(0x06);
         [ObservableProperty] private bool _isBatteryEnergySaverEnabled;
 
@@ -48,7 +47,6 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand(AllowConcurrentExecutions = true)]
         public async Task SetModeAsync(object? modeParam)
         {
-            if (IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
             byte mode = modeParam switch
             {
                 byte b => b,
@@ -65,7 +63,7 @@ namespace PreySense.Frontend.ViewModels
             ActivePowerMode = mode;
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
-            StatusMessage = $"Switching to {GetModeTitle(mode)}...";
+            DiagnosticMessage = $"Switching to {GetModeTitle(mode)}...";
 
             CancellationToken debounceToken;
             lock (_modeSwitchDebounceLock)
@@ -124,23 +122,19 @@ namespace PreySense.Frontend.ViewModels
                 return _pendingHardwareMode != 0xFF ? _pendingHardwareMode : ActivePowerMode;
         }
 
-        internal byte CyclePerformanceMode(byte current)
+        /// <summary>
+        /// Chassis / turbo key order on AC and battery:
+        /// Eco → Quiet → Balanced → Performance → Turbo → Eco.
+        /// </summary>
+        internal byte CyclePerformanceMode(byte current) => current switch
         {
-            if (!IsAcConnected)
-            {
-                return current == 0x06 ? (byte)0x01 : (byte)0x06;
-            }
-
-            return current switch
-            {
-                0x00 => 0x01,
-                0x01 => 0x04,
-                0x04 => 0x05,
-                0x05 => 0x00,
-                0x06 => 0x01,
-                _ => 0x01
-            };
-        }
+            0x06 => 0x00, // Eco → Quiet
+            0x00 => 0x01, // Quiet → Balanced
+            0x01 => 0x04, // Balanced → Performance
+            0x04 => 0x05, // Performance → Turbo
+            0x05 => 0x06, // Turbo → Eco
+            _ => 0x01
+        };
 
         internal async Task ApplyModeSwitchAsync(byte mode, bool applyCustomLimits = true)
         {
@@ -164,112 +158,44 @@ namespace PreySense.Frontend.ViewModels
         private async Task ApplyModeSwitchCoreAsync(byte mode, bool applyCustomLimits = true)
         {
             if (!ProfileManager.IsSupportedMode(mode)) return;
-            if (IsFactoryCalibrationRunning || IsOpenCoreLoaded && !IsFactoryCalibrationComplete) return;
-            if (!applyCustomLimits || !IsAcpiOverrideEnabled || !IsOpenCoreLoaded || !IsFactoryCalibrationComplete)
+            if (applyCustomLimits && IsHardwareTuningEnabled)
+            {
+                IsBusy = true;
+                try
+                {
+                    var result = await Task.Run(() => ApplySavedDriverTuning(mode));
+                    if (!result.Success) throw new InvalidOperationException(result.Status);
+                    DiagnosticMessage = result.Status;
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticMessage = $"Automatic tuning failed: {ex.Message}";
+                    if (_hw.TryGetPowerMode(out byte actual)) ActivePowerMode = actual;
+                    UpdateModeName(ActivePowerMode);
+                    NotifyModeSelectionsChanged();
+                    return;
+                }
+                finally { IsBusy = false; }
+            }
+            else
             {
                 bool changed = await Task.Run(() => _hw.SetPowerMode(mode));
-                if (!changed) { StatusMessage = "The requested Acer mode could not be activated."; return; }
-                ActivePowerMode = mode;
-                if (!ApplyCpuBoostForMode(mode))
-                    StatusMessage = "Mode selected, but CPU boost could not be applied. See debug.log.";
-                UpdateModeName(mode);
-                NotifyModeSelectionsChanged();
-                PersistSessionSettings();
-                return;
+                if (!changed) { DiagnosticMessage = "The requested Acer mode could not be activated."; return; }
             }
             ActivePowerMode = mode;
+            if (!ApplyCpuBoostForMode(mode))
+                DiagnosticMessage = "Mode selected, but CPU boost could not be applied. See debug.log.";
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
-            StatusMessage = $"Switching to {GetModeTitle(mode)}...";
-
-            int modePl1 = LimitPl1ToPlatform(mode switch
-            {
-                0x05 => CustomTurboPl1,
-                0x04 => CustomPerfPl1,
-                0x01 => CustomBalancedPl1,
-                0x06 => CustomEcoPl1,
-                _ => CustomQuietPl1
-            });
-            int modePl2 = LimitPl2(modePl1, mode switch
-            {
-                0x05 => CustomTurboPl2,
-                0x04 => CustomPerfPl2,
-                0x01 => CustomBalancedPl2,
-                0x06 => CustomEcoPl2,
-                _ => CustomQuietPl2
-            });
-            int modeGpu = mode switch
-            {
-                0x05 => CustomTurboGpuWatts,
-                0x04 => CustomPerfGpuWatts,
-                0x01 => CustomBalancedGpuWatts,
-                0x06 => CustomEcoGpuWatts,
-                _ => CustomQuietGpuWatts
-            };
-            int modeTrip = mode switch
-            {
-                0x05 => CustomTurboGpuTripPoint,
-                0x04 => CustomPerfGpuTripPoint,
-                0x01 => CustomBalancedGpuTripPoint,
-                0x06 => CustomEcoGpuTripPoint,
-                _ => CustomQuietGpuTripPoint
-            };
-            Pl1Watts = modePl1;
-            Pl2Watts = modePl2;
-            int modeTau = TauForMode(mode);
-            TauSeconds = modeTau;
-            GpuPowerTargetWatts = modeGpu;
-            GpuThermalTripPointCelsius = modeTrip;
-            ActiveGpuPowerCeiling = $"GPU Power Ceiling: {GpuPowerTargetWatts}W (ACPI Max: {GpuPowerTargetMax}W, Trip: {GpuThermalTripPointCelsius}°C)";
-
-            IsBusy = true;
-            bool cpuApplied = false;
-            string cpuResult = string.Empty;
-            try
-            {
-                await Task.Run(() =>
-                {
-                    if (_hw.CurrentPowerMode != mode)
-                    {
-                        if (!_hw.SetPowerMode(mode))
-                            throw new InvalidOperationException("The requested Acer mode could not be activated.");
-                    }
-                    cpuApplied = PowerLimitController.SetCpuPowerLimits(modePl1, modePl2, true, modeTau);
-                    cpuResult = PowerLimitController.LastCpuPowerLimitStatus;
-                    if (!ApplyGpuModePower(mode, modeGpu))
-                        throw new InvalidOperationException("GPU offsets could not be verified. Update PREYDEV to 0x0201 and reboot.");
-                    if (!PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)modeTrip))
-                        throw new InvalidOperationException("GPU thermal trip point could not be applied.");
-                });
-                bool boostApplied = ApplyCpuBoostForMode(mode);
-                StatusMessage = cpuApplied ? $"{PowerModeName} Mode Activated (MSR + MMIO verified)" : $"{PowerModeName} Mode Activated; CPU limits partial: {cpuResult}";
-                if (!boostApplied) StatusMessage += " | CPU boost failed; see debug.log.";
-                ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Error: {ex.Message}";
-            }
-            finally
-            {
-                IsBusy = false;
-                PersistSessionSettings();
-            }
+            PersistSessionSettings();
         }
 
         internal void ApplyPowerProfileForSource(PowerSourceKind source)
         {
-            if (_suppressPowerProfile || _isRestoringSession || _disposed || IsFactoryCalibrationRunning
-                || IsOpenCoreLoaded && !IsFactoryCalibrationComplete)
+            if (source == PowerSourceKind.Unknown || _suppressPowerProfile || _isRestoringSession || _disposed)
                 return;
 
             byte mode = ProfileManager.SourceProfileMode(ProfileIndexFor(source));
-            if (_appliedGameExe != null)
-            {
-                _modeBeforeGame = mode;
-                return;
-            }
-
             if (PeekPendingOrActiveMode() == mode)
                 return;
 
@@ -279,24 +205,19 @@ namespace PreySense.Frontend.ViewModels
 
         private int ProfileIndexFor(PowerSourceKind source) => source switch
         {
-            PowerSourceKind.UsbC => UsbCPowerModeIndex,
             PowerSourceKind.Battery => BatteryPowerModeIndex,
             _ => AcPowerModeIndex
         };
 
         private void RememberSourceProfile(byte mode)
         {
-            if (_suppressPowerProfile || _appliedGameExe != null)
+            if (_suppressPowerProfile)
                 return;
 
             int index = ProfileManager.SourceProfileIndex(mode);
             _suppressPowerProfile = true;
             switch (_currentPowerSource)
             {
-                case PowerSourceKind.UsbC:
-                    if (UsbCPowerModeIndex != index)
-                        UsbCPowerModeIndex = index;
-                    break;
                 case PowerSourceKind.Battery:
                     if (BatteryPowerModeIndex != index)
                         BatteryPowerModeIndex = index;
@@ -316,18 +237,9 @@ namespace PreySense.Frontend.ViewModels
 
             PersistSessionSettings();
             if (_currentPowerSource == PowerSourceKind.Ac)
-                ApplyPowerProfileForSource(PowerSourceKind.Ac);
+                ApplyPowerProfileForSource(_currentPowerSource);
         }
 
-        partial void OnUsbCPowerModeIndexChanged(int value)
-        {
-            if (_suppressPowerProfile || value < 0)
-                return;
-
-            PersistSessionSettings();
-            if (_currentPowerSource == PowerSourceKind.UsbC)
-                ApplyPowerProfileForSource(PowerSourceKind.UsbC);
-        }
 
         partial void OnBatteryPowerModeIndexChanged(int value)
         {
@@ -348,19 +260,6 @@ namespace PreySense.Frontend.ViewModels
             PowerLimitController.SetEnergySaverOnBattery(value);
         }
 
-        partial void OnIsExtendedCpuBoostEnabledChanged(bool value)
-        {
-            PersistSessionSettings();
-            OnPropertyChanged(nameof(CpuBoostEditorVisibility));
-            OnPropertyChanged(nameof(ExtendedCpuBoostEditorVisibility));
-        }
-
-        public System.Windows.Visibility CpuBoostEditorVisibility =>
-            IsExtendedCpuBoostEnabled ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
-
-        public System.Windows.Visibility ExtendedCpuBoostEditorVisibility =>
-            IsExtendedCpuBoostEnabled ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-
         private void NotifyModeSelectionsChanged()
         {
             OnPropertyChanged(nameof(IsEcoActive));
@@ -376,14 +275,7 @@ namespace PreySense.Frontend.ViewModels
         private void UpdateModeName(byte mode)
         {
             PowerModeName = GetModeTitle(mode);
-            ActiveModeWattageInfo = mode switch
-            {
-                0x00 => "PL1: 45W | PL2: 140W (Quiet AC Profile)",
-                0x01 => "PL1: 65W | PL2: 140W (Balanced AC Profile)",
-                0x04 => "PL1: 75W | PL2: 140W (Performance AC Profile)",
-                0x05 => "PL1: 85W | PL2: 140W (Turbo AC Profile)",
-                _ => "PL1/PL2 Managed by EC Firmware"
-            };
+            ActiveModeWattageInfo = "N/A";
         }
 
         [RelayCommand]
@@ -391,36 +283,28 @@ namespace PreySense.Frontend.ViewModels
         {
             if (!int.TryParse(boostModeStr, out int boostVal))
                 return;
-
-            SetExtendedCpuBoostForModeIndex(ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 }, boostVal);
+            int index = ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 };
+            SetCpuBoostForModeIndex(index, boostVal > 0);
+            ApplyCpuBoostForMode(ActivePowerMode);
         }
 
-        internal static string GetCpuBoostModeName(int boostMode)
-        {
-            return boostMode switch
-            {
-                0 => "Disabled",
-                2 => "Aggressive",
-                3 => "Efficient Enabled",
-                4 => "Efficient Aggressive",
-                5 => "Aggressive at Guaranteed",
-                6 => "Efficient Aggressive at Guaranteed",
-                _ => "Enabled"
-            };
-        }
+        internal static string GetCpuBoostModeName(int boostMode) =>
+            boostMode > 0 ? "Enabled" : "Disabled";
 
         partial void OnCpuBoostModeChanged(int value)
         {
-            int boost = Math.Clamp(value, 0, 6);
+            int boost = value > 0 ? 1 : 0;
             CpuBoostModeName = GetCpuBoostModeName(boost);
             bool applied = PowerLimitController.SetCpuBoost(boost);
             _lastCpuBoostApplySucceeded = applied;
-            StatusMessage = applied ? $"CPU Boost set to: {CpuBoostModeName}"
+            DiagnosticMessage = applied ? $"CPU Boost set to: {CpuBoostModeName}"
                 : "Windows rejected the CPU boost change. See debug.log.";
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
-                key?.SetValue("CpuBoost", boost);
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
+                {
+                    cfg.Tuning.CpuBoostMode = boost;
+                });
             }
             catch { }
         }

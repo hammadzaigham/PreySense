@@ -76,24 +76,11 @@ public partial class HardwareOverlay
                     if (fgPid != _shownPid)
                         ResetFpsDisplayState();
                     _fps.TargetPid = fgPid;
-                    _fgDesktop = _gameOnly && desktopFg;
+                    _fgDesktop = desktopFg;
                 }
             }
 
-            if (_gameOnly && !_gameSessionActive)
-            {
-                // PreySense auto-hide focuses the desktop/shell. Keep the overlay as-is
-                // instead of treating that as leaving a game.
-                if (!ownWindow && !(_keepOverlayAfterUiHide && desktopFg))
-                    UpdateGameVisibility(fgPid, false);
-                _wasOwnWindow = ownWindow;
-                if (_hidden) return;
-            }
-            else
-            {
-                _wasOwnWindow = ownWindow;
-            }
-
-            PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
+            _wasOwnWindow = ownWindow;
+            SyncOverlayTelemetryDemand();
     }
 }

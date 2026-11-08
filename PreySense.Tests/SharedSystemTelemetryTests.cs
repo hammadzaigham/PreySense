@@ -176,7 +176,7 @@ public class SharedSystemTelemetryTests
                         if (mem.HasValue)
                         {
                             Assert.IsTrue(mem.Value.UsedPercent is >= 0 and <= 100);
-                            Assert.IsTrue(mem.Value.UsedMb >= 0);
+                            Assert.IsGreaterThanOrEqualTo(0, mem.Value.UsedMb);
                         }
 
                         Thread.Sleep(2);
@@ -193,6 +193,6 @@ public class SharedSystemTelemetryTests
         foreach (var t in threads) t.Start();
         foreach (var t in threads) t.Join();
 
-        Assert.AreEqual(0, exceptions.Count, "Concurrent sampling failed with: " + string.Join(", ", exceptions.Select(e => e.Message)));
+        Assert.IsEmpty(exceptions, "Concurrent sampling failed with: " + string.Join(", ", exceptions.Select(e => e.Message)));
     }
 }

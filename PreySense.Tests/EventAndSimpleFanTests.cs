@@ -104,7 +104,7 @@ public class EventAndSimpleFanTests
                 var lines = shapes.Where(s => s.Geometry is System.Windows.Media.LineGeometry).ToArray();
                 Assert.AreEqual(11 + FanCurveProfile.PointCount, lines.Count(s => s.Pen.Thickness == 1));
                 Assert.AreEqual(FanCurveProfile.PointCount - 1, lines.Count(s => s.Pen.Thickness == 2));
-                Assert.AreEqual(11 + FanCurveProfile.PointCount * 2 - 1, lines.Length);
+                Assert.HasCount(11 + FanCurveProfile.PointCount * 2 - 1, lines);
                 Assert.IsTrue(lines.All(s => s.Pen.DashStyle.Dashes.Count == 0));
                 Assert.AreEqual(FanCurveProfile.PointCount, shapes.Count(s => s.Geometry is System.Windows.Media.EllipseGeometry));
                 completion.SetResult();

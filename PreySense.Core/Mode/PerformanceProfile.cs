@@ -1,4 +1,4 @@
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 
 namespace PreySense.Mode
 {
@@ -72,7 +72,7 @@ namespace PreySense.Mode
                     CpuBoost = 1,
                     ApplyCpuLimits = false, ApplyGpuLimits = false, ApplyFanCurve = false
                 },
-                _ => new PerformanceProfile
+                0x01 => new PerformanceProfile
                 {
                     PowerMode = mode,
                     Name = "Balanced",
@@ -81,7 +81,8 @@ namespace PreySense.Mode
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
                     ApplyCpuLimits = false, ApplyGpuLimits = false, ApplyFanCurve = false
-                }
+                },
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 
             return profile;

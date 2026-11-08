@@ -7,30 +7,17 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <InternalsVisibleTo Include="PreySense.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Resources\*.png" />
     <Resource Include="appicon.ico" />
-    <EmbeddedResource Include="..\acpi_staging\SSDT-PREYDEV.aml" LogicalName="PreySense.ACPI.SSDT-PREYDEV.aml" />
-    <EmbeddedResource Include="..\acpi_staging\SSDT-PREYDEV.dsl" LogicalName="PreySense.ACPI.SSDT-PREYDEV.dsl" />
-    <EmbeddedResource Include="..\acpi_staging\preysense.mof" LogicalName="PreySense.ACPI.preysense.mof" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\EFI\BOOT\BOOTX64.EFI" LogicalName="PreySense.OpenCore.BOOT.BOOTX64.EFI" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\EFI\OC\config.plist" LogicalName="PreySense.OpenCore.OC.config.plist" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\EFI\OC\OpenCore.efi" LogicalName="PreySense.OpenCore.OC.OpenCore.efi" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\EFI\OC\Drivers\OpenRuntime.efi" LogicalName="PreySense.OpenCore.OC.Drivers.OpenRuntime.efi" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Install-To-ESP.ps1" LogicalName="PreySense.OpenCore.Install-To-ESP.ps1" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Uninstall-From-ESP.ps1" LogicalName="PreySense.OpenCore.Uninstall-From-ESP.ps1" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Reinstall-To-ESP.ps1" LogicalName="PreySense.OpenCore.Reinstall-To-ESP.ps1" />
-    <EmbeddedResource Include="..\tools\OpenCore_PreyBoost_EFI\Repair-PreySenseWmi.ps1" LogicalName="PreySense.OpenCore.Repair-PreySenseWmi.ps1" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>PreySense</AssemblyName>
-    <Version>2.5.0</Version>
-    <AssemblyVersion>2.5.0.0</AssemblyVersion>
-    <FileVersion>2.5.0.0</FileVersion>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

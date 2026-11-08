@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 public readonly record struct CpuTelemetrySnapshot(
     int TotalUsage,
-    int MaxCoreUsage,
+    int? MaxCoreUsage,
     int? PCoreUsage,
     int? ECoreUsage,
     int LogicalProcessorCount);
@@ -50,6 +50,7 @@ public static class CpuUsageMonitor
     private static int? _cachedUsage;
     private static CpuTelemetrySnapshot? _cachedSnapshot;
     private static bool _hasBaseline;
+    private static bool? _perCoreSource;
 
     // Default policy thresholds (in seconds)
     private const double DefaultMinSampleSeconds = 0.500;       // 500 ms: prevents out-of-phase 1s UI timers from splitting samples
@@ -111,6 +112,7 @@ public static class CpuUsageMonitor
                     {
                         _lastSampleTimestamp = CurrentTimestamp();
                         _hasBaseline = true;
+                        _perCoreSource = true;
                     }
                 }
                 else if (_customSystemTimesImpl != null)
@@ -122,12 +124,14 @@ public static class CpuUsageMonitor
                         _lastUserTime = user;
                         _lastSampleTimestamp = CurrentTimestamp();
                         _hasBaseline = true;
+                        _perCoreSource = false;
                     }
                 }
                 else if (TrySampleNativeCores(_lastCoreTimes))
                 {
                     _lastSampleTimestamp = CurrentTimestamp();
                     _hasBaseline = true;
+                        _perCoreSource = true;
                 }
                 else if (TrySampleSystemTimes(out long idle, out long kernel, out long user))
                 {
@@ -136,6 +140,7 @@ public static class CpuUsageMonitor
                     _lastUserTime = user;
                     _lastSampleTimestamp = CurrentTimestamp();
                     _hasBaseline = true;
+                        _perCoreSource = false;
                 }
             }
         }
@@ -158,7 +163,7 @@ public static class CpuUsageMonitor
     /// Returns the full CPU telemetry snapshot including TotalUsage, MaxCoreUsage,
     /// and P-Core vs E-Core cluster utilization.
     /// </summary>
-    public static CpuTelemetrySnapshot? GetSnapshot()
+    public static CpuTelemetrySnapshot? GetSnapshot(bool aggregateOnly = false)
     {
         lock (SyncLock)
         {
@@ -167,14 +172,20 @@ public static class CpuUsageMonitor
             int effectiveCount = EffectiveProcessorCount;
 
             // Check if native per-core performance is available
-            bool hasPerCore = _customProcessorPerformanceImpl != null ||
-                              (_customSystemTimesImpl == null && TrySampleNativeCores(_currentCoreTimes));
+            bool hasPerCore = !aggregateOnly && (_customProcessorPerformanceImpl != null ||
+                              (_customSystemTimesImpl == null && TrySampleNativeCores(_currentCoreTimes)));
+
+            if (_perCoreSource != hasPerCore)
+            {
+                InvalidateSample();
+                _perCoreSource = hasPerCore;
+            }
 
             if (hasPerCore)
             {
                 if (_customProcessorPerformanceImpl != null && !_customProcessorPerformanceImpl(_currentCoreTimes))
                 {
-                    return GetOrExpireCachedSnapshot(now);
+                    return InvalidateSample();
                 }
 
                 if (!_hasBaseline)
@@ -223,7 +234,8 @@ public static class CpuUsageMonitor
                     sumIdleDelta += deltaIdle;
 
                     bool isECore = (eMap != null && i < eMap.Length) && eMap[i];
-                    if (isECore)
+                    if (eMap is null || i >= eMap.Length) { }
+                    else if (isECore)
                     {
                         eCoreSum += corePct;
                         eCoreCount++;
@@ -257,7 +269,7 @@ public static class CpuUsageMonitor
             // Fallback path using aggregate GetSystemTimes()
             if (!TrySampleSystemTimes(out long idle, out long kernel, out long user))
             {
-                return GetOrExpireCachedSnapshot(now);
+                return InvalidateSample();
             }
 
             if (!_hasBaseline)
@@ -303,7 +315,7 @@ public static class CpuUsageMonitor
 
             int aggregateUsage = Math.Clamp((int)Math.Round((1.0 - (double)totalDeltaIdle / totalDelta) * 100.0), 0, 100);
             _cachedUsage = aggregateUsage;
-            _cachedSnapshot = new CpuTelemetrySnapshot(aggregateUsage, aggregateUsage, aggregateUsage, null, ProcessorCount);
+            _cachedSnapshot = new CpuTelemetrySnapshot(aggregateUsage, null, null, null, ProcessorCount);
             _lastValidSampleTimestamp = now;
             return _cachedSnapshot;
         }
@@ -312,7 +324,7 @@ public static class CpuUsageMonitor
     /// <summary>
     /// Returns aggregate total CPU utilization percentage [0..100].
     /// </summary>
-    public static int? GetCpuUsage() => GetSnapshot()?.TotalUsage ?? _cachedUsage;
+    public static int? GetCpuUsage() => GetSnapshot()?.TotalUsage;
 
     /// <summary>
     /// Returns the utilization percentage of the single most heavily loaded logical processor.
@@ -363,6 +375,14 @@ public static class CpuUsageMonitor
         return GetSystemTimes(out idle, out kernel, out user);
     }
 
+    private static CpuTelemetrySnapshot? InvalidateSample()
+    {
+        _cachedSnapshot = null;
+        _cachedUsage = null;
+        _hasBaseline = false;
+        return null;
+    }
+
     private static CpuTelemetrySnapshot? GetOrExpireCachedSnapshot(long now)
     {
         if (_cachedSnapshot.HasValue)
@@ -388,13 +408,13 @@ public static class CpuUsageMonitor
             uint length = 0;
             GetLogicalProcessorInformationEx(RelationProcessorCore, IntPtr.Zero, ref length);
             if (length == 0)
-                return isECore;
+                return Array.Empty<bool>();
 
             IntPtr buffer = Marshal.AllocHGlobal((int)length);
             try
             {
                 if (!GetLogicalProcessorInformationEx(RelationProcessorCore, buffer, ref length))
-                    return isECore;
+                    return Array.Empty<bool>();
 
                 byte minClass = byte.MaxValue;
                 byte maxClass = 0;
@@ -444,7 +464,7 @@ public static class CpuUsageMonitor
         }
         catch
         {
-            // Fallback to homogeneous P-cores if querying fails
+            return Array.Empty<bool>();
         }
 
         return isECore;
@@ -493,6 +513,7 @@ public static class CpuUsageMonitor
     private static void ResetInternal()
     {
         _hasBaseline = false;
+        _perCoreSource = null;
         _cachedUsage = null;
         _cachedSnapshot = null;
         _lastIdleTime = 0;

@@ -76,15 +76,10 @@ public partial class FanCurveWindow : Window
                 if (await EnsureModeActiveAsync(Vm))
                 {
                     await Vm.ApplyFanProfileAsync();
-                    string modeTitle = ProfileManager.ModeToProfileName(_mode);
-                    Vm.StatusMessage = CustomOption.IsChecked == true
-                        ? $"{modeTitle} custom fan curve activated."
-                        : $"{modeTitle} fans set to {(MaxOption.IsChecked == true ? "Max" : "Auto")}.";
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Vm.StatusMessage = $"Fan mode apply failed: {ex.Message}";
             }
             finally
             {
@@ -106,7 +101,7 @@ public partial class FanCurveWindow : Window
     private async void Profile_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_loading || !IsLoaded || Vm == null) return;
-        int index = Array.IndexOf(Vm.GameModeNames, ProfileRow.SelectedItem as string);
+        int index = Array.IndexOf(Vm.FanCurveModeNames, ProfileRow.SelectedItem as string);
         if (index < 0 || Modes[index] == _mode) return;
         SaveDraft();
         _mode = Modes[index];
@@ -174,13 +169,11 @@ public partial class FanCurveWindow : Window
             Curve.InvalidateVisual();
             if (Vm == null || !await EnsureModeActiveAsync(Vm))
             {
-                if (Vm != null) Vm.StatusMessage = $"{ProfileManager.ModeToProfileName(_mode)} fans reset to factory defaults (Auto); mode could not be activated on hardware.";
                 return;
             }
             await Vm.ApplyFanProfileAsync();
-            Vm.StatusMessage = $"{ProfileManager.ModeToProfileName(_mode)} fans reset to factory defaults (Auto).";
         }
-        catch (Exception ex) { if (Vm != null) Vm.StatusMessage = $"Fan reset failed: {ex.Message}"; }
+        catch (Exception) { }
         finally { _applying = false; }
     }
     private void SaveAll()
@@ -192,7 +185,7 @@ public partial class FanCurveWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         try { SaveAll(); }
-        catch (Exception ex) { if (Vm != null) Vm.StatusMessage = $"Fan curve save failed: {ex.Message}"; }
+        catch (Exception) { }
     }
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
@@ -201,10 +194,10 @@ public partial class FanCurveWindow : Window
         try
         {
             SaveAll();
-            if (Vm == null || !await EnsureModeActiveAsync(Vm)) { if (Vm != null) Vm.StatusMessage = "Fan profile mode could not be activated."; return; }
+            if (Vm == null || !await EnsureModeActiveAsync(Vm)) { return; }
             await Vm.ApplyFanProfileAsync();
         }
-        catch (Exception ex) { if (Vm != null) Vm.StatusMessage = $"Fan curve apply failed: {ex.Message}"; }
+        catch (Exception) { }
         finally { _applying = false; }
     }
 }

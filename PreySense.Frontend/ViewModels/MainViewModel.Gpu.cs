@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 using PreySense.Core.Services;
 using PreySense.Frontend.Services;
 using PreySense.Gpu;
@@ -15,37 +15,27 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel
     {
-        private const string GpuModeRegistryPath = @"SOFTWARE\PreySense";
-        private const string GpuModeRegistryValue = "GpuModePreference";
-        private const int DefaultGpuMode = 1;
         private int _gpuProcessRefreshInProgress;
         private int _gpuBatteryTransitionInProgress;
         private int _gpuSwitchInProgress;
         private int _gpuDisplayRevision;
 
-        // GPU Power Target & ACPI Hardware Controls
+        // GPU Power Target & Driver Hardware Controls
         [ObservableProperty] private int _gpuPowerTargetWatts = 130;
         [ObservableProperty] private int _gpuPowerTargetMin = GpuPowerLimitConfiguration.MinimumPowerLimitWatts;
         [ObservableProperty] private int _gpuPowerTargetMax = GpuPowerLimitConfiguration.MaximumPowerLimitWatts;
-        [ObservableProperty] private int _gpuBasePowerWatts = GpuPowerBaseline.ReadWatts() ?? GpuPowerBaseline.LegacyFallbackWatts;
+        [ObservableProperty] private int? _gpuBasePowerWatts = GpuPowerBaseline.ReadWatts();
 
-        partial void OnGpuBasePowerWattsChanged(int value)
+        partial void OnGpuBasePowerWattsChanged(int? value)
         {
-            if (SelectedGameProfile != null) OnSelectedGameProfileChanged(SelectedGameProfile);
         }
         [ObservableProperty] private int _customQuietGpuWatts = 85;
         [ObservableProperty] private int _customEcoGpuWatts = 85;
         [ObservableProperty] private int _customBalancedGpuWatts = 115;
         [ObservableProperty] private int _customPerfGpuWatts = 125;
         [ObservableProperty] private int _customTurboGpuWatts = 130;
-        [ObservableProperty] private int _gpuThermalTripPointCelsius = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius; // 79°C ACPI default (WMG3)
-        [ObservableProperty] private int _customQuietGpuTripPoint = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius; // 79°C
-        [ObservableProperty] private int _customEcoGpuTripPoint = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius;
-        [ObservableProperty] private int _customBalancedGpuTripPoint = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius; // 79°C
-        [ObservableProperty] private int _customPerfGpuTripPoint = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius; // 79°C
-        [ObservableProperty] private int _customTurboGpuTripPoint = GpuPowerLimitConfiguration.FactoryGpuThermalTripPointCelsius; // 79°C
-        [ObservableProperty] private string _gpuStateDescription = "NVIDIA GeForce RTX Mobile";
-        [ObservableProperty] private string _activeGpuPowerCeiling = "Max Power Limit: 130W";
+        [ObservableProperty] private string _gpuStateDescription = "N/A";
+        [ObservableProperty] private string _activeGpuPowerCeiling = "N/A";
         private bool _gpuHardwareInitialized;
 
         public void EnsureGpuHardwareInitialized()
@@ -61,8 +51,13 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                byte[]? liveDsdt = OpenCorePowerLimitManager.GetLiveAcpiTable("DSDT");
-                var config = GpuPowerLimitConfiguration.DetectFromHardware(liveDsdt);
+                int? baseline = GpuPowerBaseline.ReadWatts();
+                if (!baseline.HasValue)
+                {
+                    int? detected = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
+                    if (detected.HasValue)
+                        baseline = GpuPowerBaseline.SaveOnce(detected.Value);
+                }
 
                 if (_disposed)
                     return;
@@ -72,10 +67,8 @@ namespace PreySense.Frontend.ViewModels
                     if (_disposed)
                         return;
 
-                    GpuBasePowerWatts = config.BasePowerWatts;
-                    GpuPowerTargetMin = config.MinPowerWatts;
-                    GpuPowerTargetMax = config.MaxPowerWatts;
-                    ActiveGpuPowerCeiling = $"GPU Power Ceiling: {GpuPowerTargetWatts}W (ACPI Max: {GpuPowerTargetMax}W)";
+                    GpuBasePowerWatts = baseline;
+                    ActiveGpuPowerCeiling = "N/A";
                 });
             }
             catch (Exception ex)
@@ -94,31 +87,36 @@ namespace PreySense.Frontend.ViewModels
         [NotifyPropertyChangedFor(nameof(IsGpuStandardActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuUltimateActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAdvancedOptimusActive))]
-        private int _activeGpuMuxMode = 1; // 0 = Optimus (iGPU), 1 = Automatic (Auto DDS), 2 = NVIDIA GPU Only (dGPU)
-        [ObservableProperty] private string _gpuMuxModeName = "Automatic";
+        private int _activeGpuMuxMode = -1; // 0 = Optimus (iGPU), 1 = Automatic (Auto DDS), 2 = NVIDIA GPU Only (dGPU)
+        [ObservableProperty] private string _gpuMuxModeName = "N/A";
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsGpuEnduranceActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuStandardActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuUltimateActive))]
         [NotifyPropertyChangedFor(nameof(ShowIgpuOnlyTile))]
+        [NotifyPropertyChangedFor(nameof(ShowAdvancedOptimusTile))]
+        [NotifyPropertyChangedFor(nameof(ShowDgpuOnlyTile))]
         [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuNvidiaOnlyActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAdvancedOptimusActive))]
         [NotifyPropertyChangedFor(nameof(ShowDdsGpuTiles))]
-        [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         private bool _isBiosDiscreteGpuActive;
 
         public bool ShowDdsGpuTiles => !IsBiosDiscreteGpuActive;
         public bool ShowIgpuOnlyTile => ShowDdsGpuTiles && !IsGpuNvidiaOnlyActive;
+        public bool ShowAdvancedOptimusTile => ShowDdsGpuTiles && !IsGpuIgpuOnlyActive;
+        public bool ShowDgpuOnlyTile => !IsGpuIgpuOnlyActive;
         public int GpuModeTileColumns
         {
             get
             {
-                int count = 2; // Auto + dGPU Only
-                if (ShowDdsGpuTiles) count += 2; // Hybrid + Advanced Optimus
+                int count = 1; // Auto
                 if (ShowIgpuOnlyTile) count += 1; // iGPU Only
+                if (ShowDdsGpuTiles) count += 1; // Hybrid
+                if (ShowAdvancedOptimusTile) count += 1; // Advanced Optimus
+                if (ShowDgpuOnlyTile) count += 1; // dGPU Only
                 return Math.Max(1, count);
             }
         }
@@ -206,6 +204,8 @@ namespace PreySense.Frontend.ViewModels
         {
             OnPropertyChanged(nameof(ShowDdsGpuTiles));
             OnPropertyChanged(nameof(ShowIgpuOnlyTile));
+            OnPropertyChanged(nameof(ShowAdvancedOptimusTile));
+            OnPropertyChanged(nameof(ShowDgpuOnlyTile));
             OnPropertyChanged(nameof(GpuModeTileColumns));
             OnPropertyChanged(nameof(IsGpuEnduranceActive));
             OnPropertyChanged(nameof(IsGpuStandardActive));
@@ -227,42 +227,30 @@ namespace PreySense.Frontend.ViewModels
                 GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
                 NotifyGpuSelectionsChanged();
             }
+            else if (!IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive)
+            {
+                ActiveGpuMuxMode = -1;
+                GpuMuxModeName = "N/A";
+                NotifyGpuSelectionsChanged();
+            }
         }
 
         private static string GetGpuModeName(int mode) => mode switch
         {
             2 => "NVIDIA GPU Only",
             1 => "Automatic",
-            _ => "Optimus"
+            0 => "Optimus",
+            _ => "N/A"
         };
-
-        private static int LoadGpuModePreference()
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(GpuModeRegistryPath);
-                object? savedValue = key?.GetValue(GpuModeRegistryValue);
-                int mode = savedValue is null
-                    ? DefaultGpuMode
-                    : Math.Clamp(Convert.ToInt32(savedValue), 0, 2);
-
-                if (savedValue is null || savedValue is not int || (int)savedValue != mode)
-                    key?.SetValue(GpuModeRegistryValue, mode, Microsoft.Win32.RegistryValueKind.DWord);
-
-                return mode;
-            }
-            catch
-            {
-                return DefaultGpuMode;
-            }
-        }
 
         private static void SaveGpuModePreference(int mode)
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(GpuModeRegistryPath);
-                key?.SetValue(GpuModeRegistryValue, Math.Clamp(mode, 0, 2), Microsoft.Win32.RegistryValueKind.DWord);
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
+                {
+                    cfg.Session.GpuModePreference = Math.Clamp(mode, 0, 2);
+                });
             }
             catch { }
         }
@@ -270,34 +258,10 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task ApplyGpuClocksAsync()
         {
-            IsBusy = true;
-            StatusMessage = "Applying GPU Power Limits via ACPI...";
-            try
-            {
-                // Apply GPU power limit ceiling dynamically via dedicated ACPI-WMI device
-                var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode), GpuPowerTargetWatts);
-                bool pwrSuccess = await Task.Run(() => PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuPowerOffsets(offsets));
-
-                // Apply GPU thermal trip point dynamically via dedicated ACPI-WMI device
-                bool tripSuccess = await Task.Run(() => PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetGpuThermalTripPoint((uint)GpuThermalTripPointCelsius));
-
-                if (!pwrSuccess || !tripSuccess)
-                {
-                    StatusMessage = "GPU settings failed or ACPI readback differed. Independent offsets require PREYDEV 0x0201 and its WMI schema; update the OpenCore payload and reboot.";
-                    return;
-                }
-                ActiveGpuPowerCeiling = $"ACPI offsets: CT {offsets.DeltaWatts}W / DB {offsets.DynamicBoostWatts}W (verified)";
-                StatusMessage = $"ACPI offsets verified: Delta {offsets.DeltaWatts}W, Dynamic Boost {offsets.DynamicBoostWatts}W. Actual GPU power remains driver controlled.";
-                AppLogger.Log(StatusMessage);
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"GPU Control error: {ex.Message}";
-            }
-            finally
-            {
-                IsBusy = false;
-            }
+            var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode), GpuPowerTargetWatts);
+            if (offsets is null) { DiagnosticMessage = "GPU offsets: N/A. Choose tuning values before applying."; return; }
+            await ApplyTuningProfileAsync(ActivePowerMode, Pl1Watts, Pl2Watts,
+                TauForMode(ActivePowerMode), offsets, persist: false);
         }
 
         [RelayCommand]
@@ -332,12 +296,12 @@ namespace PreySense.Frontend.ViewModels
         {
             if (System.Threading.Interlocked.CompareExchange(ref _gpuSwitchInProgress, 1, 0) != 0)
             {
-                StatusMessage = "A GPU mode change is already in progress.";
+                DiagnosticMessage = "A GPU mode change is already in progress.";
                 return;
             }
             bool leavingIgpuOnly = IsGpuIgpuOnlyActive;
             System.Threading.Interlocked.Increment(ref _gpuDisplayRevision);
-            StatusMessage = $"Switching GPU Mode to {GetGpuModeName(muxVal)}...";
+            DiagnosticMessage = $"Switching GPU Mode to {GetGpuModeName(muxVal)}...";
             IsBusy = true;
             try
             {
@@ -345,9 +309,9 @@ namespace PreySense.Frontend.ViewModels
                 if (leavingIgpuOnly)
                 {
                     bool enabled = await Task.Run(() => _hw.EnableDiscreteGpu());
-                    if (!enabled) { StatusMessage = "GPU switch failed: NVIDIA adapter could not be enabled."; return; }
+                    if (!enabled) { DiagnosticMessage = "GPU switch failed: NVIDIA adapter could not be enabled."; return; }
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
-                    if (IsGpuIgpuOnlyActive) { StatusMessage = "GPU switch failed: Windows still reports the NVIDIA adapter disabled."; return; }
+                    if (IsGpuIgpuOnlyActive) { DiagnosticMessage = "GPU switch failed: Windows still reports the NVIDIA adapter disabled."; return; }
                 }
                 bool available = false;
                 for (int attempt = 0; attempt < (leavingIgpuOnly ? 8 : 1); attempt++)
@@ -358,7 +322,7 @@ namespace PreySense.Frontend.ViewModels
                 }
                 if (!available)
                 {
-                    StatusMessage = "GPU Mode change failed: NVIDIA Advanced Optimus is not available.";
+                    DiagnosticMessage = "GPU Mode change failed: NVIDIA Advanced Optimus is not available.";
                     return;
                 }
                 var targetDdsMode = (DdsDisplayMode)muxVal;
@@ -373,7 +337,7 @@ namespace PreySense.Frontend.ViewModels
                     if (!ok)
                     {
                         ApplyDdsStatus(await Task.Run(() => _hw.GetDdsStatus()));
-                        StatusMessage = $"GPU switch failed: {msg}";
+                        DiagnosticMessage = $"GPU switch failed: {msg}";
                         return;
                     }
                     DdsStatus? confirmed = null;
@@ -387,7 +351,7 @@ namespace PreySense.Frontend.ViewModels
                     if (confirmed?.Matches(targetDdsMode) != true)
                     {
                         bool blocked = await Task.Run(() => _hw.HasDdsBlockers());
-                        StatusMessage = blocked
+                        DiagnosticMessage = blocked
                             ? "GPU switch blocked by an application or display hook. Close it and retry."
                             : "NVIDIA accepted the request but did not confirm the requested display mode.";
                         return;
@@ -399,13 +363,13 @@ namespace PreySense.Frontend.ViewModels
                         SaveGpuModePreference(muxVal);
                         _gpuModeDeferredForBattery = null;
                     }
-                    StatusMessage = $"GPU Mode set to {GetGpuModeName(muxVal)} (confirmed)";
+                    DiagnosticMessage = $"GPU Mode set to {GetGpuModeName(muxVal)} (confirmed)";
                     var display = await Task.Run(() => (_hw.GetSupportedRefreshRates(), _hw.GetDisplayRefreshRate()));
                     ApplyRefreshRateOptions(display.Item1, display.Item2);
                 }
                 finally { System.Windows.Media.RenderOptions.ProcessRenderMode = prevRenderMode; }
             }
-            catch (Exception ex) { StatusMessage = $"GPU Mode error: {ex.Message}"; }
+            catch (Exception ex) { DiagnosticMessage = $"GPU Mode error: {ex.Message}"; }
             finally
             {
                 IsBusy = false;
@@ -439,17 +403,17 @@ namespace PreySense.Frontend.ViewModels
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: true);
                     if (!IsGpuIgpuOnlyActive)
                     {
-                        StatusMessage = "NVIDIA dGPU disable was not confirmed by Windows.";
+                        DiagnosticMessage = "NVIDIA dGPU disable was not confirmed by Windows.";
                         return;
                     }
-                    StatusMessage = "GPU Mode set to iGPU Only";
+                    DiagnosticMessage = "GPU Mode set to iGPU Only";
                 }
                 else
                 {
-                    StatusMessage = "Could not disable the NVIDIA dGPU.";
+                    DiagnosticMessage = "Could not disable the NVIDIA dGPU.";
                 }
             }
-            catch (Exception ex) { StatusMessage = $"GPU Mode error: {ex.Message}"; }
+            catch (Exception ex) { DiagnosticMessage = $"GPU Mode error: {ex.Message}"; }
             finally
             {
                 IsBusy = false;
@@ -501,7 +465,7 @@ namespace PreySense.Frontend.ViewModels
                 if (!IsGpuIgpuOnlyActive)
                     _gpuModeDeferredForBattery = null;
                 else
-                    StatusMessage = "iGPU on Battery: switched to iGPU Only";
+                    DiagnosticMessage = "iGPU on Battery: switched to iGPU Only";
             }
             finally
             {
@@ -519,13 +483,15 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
-                key?.SetValue("GpuBatteryAuto", value ? 1 : 0);
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
+                {
+                    cfg.Battery.GpuBatteryAuto = value;
+                });
             }
             catch { }
 
             PersistSessionSettings();
-            StatusMessage = value
+            DiagnosticMessage = value
                 ? "iGPU on Battery: Enabled (iGPU-only while unplugged)"
                 : "iGPU on Battery: Disabled";
 
@@ -533,6 +499,10 @@ namespace PreySense.Frontend.ViewModels
                 ApplyGpuBatteryAuto(IsAcConnected);
         }
 
+        /// <summary>
+        /// Shows CustomModalDialog when user-facing processes still hold the dGPU,
+        /// used by manual iGPU Only and battery auto-switch paths.
+        /// </summary>
         private bool ConfirmGpuBatterySwitchIfNeeded()
         {
             try
@@ -574,7 +544,7 @@ namespace PreySense.Frontend.ViewModels
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"GPU battery safety confirmation failed: {ex.Message}");
+                AppLogger.Log($"iGPU-only safety confirmation failed: {ex.Message}");
                 return false;
             }
         }
@@ -585,7 +555,7 @@ namespace PreySense.Frontend.ViewModels
             if (System.Threading.Interlocked.CompareExchange(ref _gpuSwitchInProgress, 1, 0) != 0) return;
             System.Threading.Interlocked.Increment(ref _gpuDisplayRevision);
             IsBusy = true;
-            StatusMessage = "Power-cycling and restarting Discrete GPU (reboot-free)...";
+            DiagnosticMessage = "Power-cycling and restarting Discrete GPU (reboot-free)...";
             try
             {
                 bool ok;
@@ -595,7 +565,7 @@ namespace PreySense.Frontend.ViewModels
                     (ok, msg) = await Task.Run(() => _hw.RestartDiscreteGpu());
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
                 }
-                StatusMessage = msg;
+                DiagnosticMessage = msg;
                 var showModal = () =>
                 {
                     var dialog = new Views.CustomModalDialog
@@ -621,7 +591,7 @@ namespace PreySense.Frontend.ViewModels
             }
             catch (Exception ex)
             {
-                StatusMessage = $"dGPU restart error: {ex.Message}";
+                DiagnosticMessage = $"dGPU restart error: {ex.Message}";
             }
             finally
             {
@@ -656,17 +626,17 @@ namespace PreySense.Frontend.ViewModels
                 {
                     IsBiosDiscreteGpuActive = muxMode == PreySense.Helpers.AcerWmi.GpuMux.Discrete;
                     NotifyGpuSelectionsChanged();
-                    StatusMessage = "Restarting to apply the GPU mode...";
+                    DiagnosticMessage = "Restarting to apply the GPU mode...";
                     RestartToApplyGpuMode();
                 }
                 else
                 {
-                    StatusMessage = "Failed to set the GPU mode via Acer ACPI.";
+                    DiagnosticMessage = "Failed to set the GPU mode via Acer driver.";
                 }
             }
             catch (Exception ex)
             {
-                StatusMessage = $"ACPI MUX error: {ex.Message}";
+                DiagnosticMessage = $"GPU MUX error: {ex.Message}";
             }
             finally
             {
@@ -721,32 +691,6 @@ namespace PreySense.Frontend.ViewModels
             });
         }
 
-        public void SaveGpuLimitsToRegistry()
-        {
-            try
-            {
-                SaveGpuOffsets();
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\GpuLimits");
-                if (key != null)
-                {
-                    key.SetValue("QuietGpuWatts", CustomQuietGpuWatts);
-                    key.SetValue("EcoGpuWatts", CustomEcoGpuWatts);
-                    key.SetValue("BalancedGpuWatts", CustomBalancedGpuWatts);
-                    key.SetValue("PerfGpuWatts", CustomPerfGpuWatts);
-                    key.SetValue("TurboGpuWatts", CustomTurboGpuWatts);
-                    key.SetValue("QuietGpuTripPoint", CustomQuietGpuTripPoint);
-                    key.SetValue("EcoGpuTripPoint", CustomEcoGpuTripPoint);
-                    key.SetValue("BalancedGpuTripPoint", CustomBalancedGpuTripPoint);
-                    key.SetValue("PerfGpuTripPoint", CustomPerfGpuTripPoint);
-                    key.SetValue("TurboGpuTripPoint", CustomTurboGpuTripPoint);
-                    AppLogger.Log("[MainViewModel] Saved GPU power & thermal limits to registry.");
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"[MainViewModel] SaveGpuLimitsToRegistry error: {ex.Message}");
-            }
-        }
 
         [RelayCommand]
         public async Task RefreshGpuProcessesAsync()
@@ -781,7 +725,7 @@ namespace PreySense.Frontend.ViewModels
                         existing.ProcessName = process.ProcessName;
                 }
 
-                StatusMessage = ActiveGpuProcesses.Count > 0
+                DiagnosticMessage = ActiveGpuProcesses.Count > 0
                     ? $"{ActiveGpuProcesses.Count} process(es) holding discrete GPU active"
                     : "No background processes keeping discrete GPU awake (0W D3Cold ready)";
             }

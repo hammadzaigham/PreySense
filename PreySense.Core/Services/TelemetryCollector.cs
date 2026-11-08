@@ -2,6 +2,8 @@ namespace PreySense.Core.Services;
 
 using PreySense.Gpu;
 
+public readonly record struct CpuClockSnapshot(int? PerformanceMhz, int? EfficiencyMhz, int? ActiveMhz, int? EffectiveMhz);
+
 public interface ITelemetrySources
 {
     CpuTelemetrySnapshot? ReadCpuUsage();
@@ -9,6 +11,14 @@ public interface ITelemetrySources
     float? ReadCpuVoltage();
     float? ReadCpuPower();
     (int? Performance, int? Efficiency) ReadCpuClocks();
+    (int? ActiveMhz, int? EffectiveMhz) ReadCpuActiveEffectiveClocks() => default;
+    CpuClockSnapshot ReadCpuClockSnapshot(TelemetryMetrics requested)
+    {
+        var clocks = (requested & TelemetryMetrics.CpuClock) != 0 ? ReadCpuClocks() : default;
+        var active = ReadCpuActiveEffectiveClocks();
+        return new(clocks.Performance, clocks.Efficiency, active.ActiveMhz, active.EffectiveMhz);
+    }
+    (int? Pl1Watts, int? Pl2Watts) ReadCpuPowerLimits() => default;
     (int? Percent, int? UsedMb) ReadRamUsage();
     int? ReadRamSpeed();
     (int? Cpu, int? Gpu) ReadFanRpms(bool cpu, bool gpu);
@@ -25,7 +35,9 @@ public static class TelemetryCollector
         var cpuTemp = Wants(TelemetryMetrics.CpuTemperature) ? sources.ReadCpuTemperature() : null;
         var cpuVoltage = Wants(TelemetryMetrics.CpuVoltage) ? sources.ReadCpuVoltage() : null;
         var cpuPower = Wants(TelemetryMetrics.CpuPower) ? sources.ReadCpuPower() : null;
-        var clocks = Wants(TelemetryMetrics.CpuClock) ? sources.ReadCpuClocks() : default;
+        var cpuLimits = Wants(TelemetryMetrics.CpuPowerLimit) ? sources.ReadCpuPowerLimits() : default;
+        var clocks = Wants(TelemetryMetrics.CpuClock | TelemetryMetrics.CpuEffectiveClock)
+            ? sources.ReadCpuClockSnapshot(metrics) : default;
         var ram = Wants(TelemetryMetrics.RamUsage) ? sources.ReadRamUsage() : default;
         var ramSpeed = Wants(TelemetryMetrics.RamSpeed) ? sources.ReadRamSpeed() : null;
         var fans = Wants(TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm)
@@ -40,12 +52,17 @@ public static class TelemetryCollector
             CpuPCoreUsage = cpu?.PCoreUsage, CpuECoreUsage = cpu?.ECoreUsage,
             CpuTemp = cpuTemp, CpuRpm = fans.Cpu, GpuRpm = fans.Gpu,
             CpuVoltage = cpuVoltage, CpuPkgPowerWatts = cpuPower,
-            CpuClockMhz = clocks.Performance, ECoreClockMhz = clocks.Efficiency,
+            CpuPl1Watts = cpuLimits.Pl1Watts, CpuPl2Watts = cpuLimits.Pl2Watts,
+            CpuClockMhz = clocks.PerformanceMhz,
+            ECoreClockMhz = clocks.EfficiencyMhz,
+            CpuActiveFrequencyMhz = clocks.ActiveMhz,
+            CpuEffectiveFrequencyMhz = clocks.EffectiveMhz,
             RamUsage = ram.Percent, RamUsedMb = ram.UsedMb, RamSpeedMhz = ramSpeed,
-            GpuTemp = gpu.Temperature, GpuUsage = gpu.Usage, GpuClockMhz = gpu.ClockMhz,
-            GpuVoltage = gpu.Voltage, GpuPowerWatts = gpu.PowerWatts,
+            GpuTemp = gpu.Temperature, GpuHotspotTemp = gpu.HotspotTemperature, GpuMemoryTemp = gpu.MemoryTemperature, GpuUsage = gpu.Usage, GpuClockMhz = gpu.ClockMhz,
+            GpuActiveClockMhz = gpu.ActiveClockMhz,
+            GpuVoltage = gpu.Voltage, GpuPowerWatts = gpu.PowerWatts, GpuPowerLimitWatts = gpu.PowerLimitWatts,
             VramUsedMb = (int?)gpu.VramUsedMb, VramTotalMb = (int?)gpu.VramTotalMb,
-            VramSpeedMhz = gpu.MemoryClockMhz, GpuInUse = gpu.InUse
+            VramSpeedMhz = gpu.MemoryClockMhz, GpuThrottleReasons = gpu.ThrottleReasons, GpuInUse = gpu.InUse
         };
     }
 }

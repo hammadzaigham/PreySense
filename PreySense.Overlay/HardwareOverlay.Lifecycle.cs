@@ -7,12 +7,11 @@ public partial class HardwareOverlay
 {
     private void EnsureFpsMonitor()
     {
-        bool needFps = _showFps || _gameOnly;
-        if (!needFps)
+        if (!_showFps)
         {
             _fps?.Dispose(); _fps = null; ResetFpsDisplayState(); return;
         }
-        if (_fps != null || !(_gameOnly || AppConfig.IsOverlay())) return;
+        if (_fps != null || !AppConfig.IsOverlay()) return;
         ResetFpsDisplayState();
         var fps = new EtwFpsMonitor();
         _fps = fps;
@@ -56,9 +55,10 @@ public partial class HardwareOverlay
 
     public void StartOverlay()
     {
-        AppConfig.EnsureDefaultOverlayColumns(); LoadDisplayConfiguration();
+        ClearGraphHistory();
+        LoadDisplayConfiguration();
         HardwareControl.ResetMetrics();
-        _active = true; _lastFgPid = 0; _gameOnly = AppConfig.IsOverlayGameOnly(); _hidden = false;
+        _active = true; _lastFgPid = 0; _hidden = false;
         _shownPid = 0; _classifiedPid = 0; _classifiedProcessName = null; _fgDesktop = false;
         _wasOwnWindow = false; _keepOverlayAfterUiHide = false;
         _scalePercent = Math.Clamp(AppConfig.Get("overlay_scale_percent", 100), MinScalePercent, MaxScalePercent);
@@ -66,25 +66,29 @@ public partial class HardwareOverlay
         SystemEvents.PowerModeChanged += OnOverlayPowerModeChanged;
         _fps?.Dispose(); _fps = null; ResetFpsDisplayState(); Size = CalculateOverlaySize(_scalePercent);
         RestorePosition(); base.Show();
-        if (_gameOnly) { _hidden = true; NativeMethods.ShowWindow(Handle, NativeMethods.SW_HIDE); } else Invalidate();
+        Invalidate();
         RestorePosition(); EnsureFpsMonitor();
         StartForegroundEvents();
         PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
         PreySense.Core.Services.TelemetryCoordinator.Heartbeat += Tick;
-        PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(true);
         PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
         PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable += OnTelemetrySnapshot;
+        SyncOverlayTelemetryDemand();
+    }
+
+    private void SyncOverlayTelemetryDemand()
+    {
+        PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(IsShowing);
         PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
     }
 
     private void LoadDisplayConfiguration()
     {
-        for (int i = 1; i <= _columnCpu.Length; i++)
-        {
-            var pair = AppConfig.ParseOverlayColumn(AppConfig.GetString($"overlay_col_{i}", AppConfig.DefaultOverlayColumn(i)));
-            _columnCpu[i - 1] = pair.Cpu; _columnGpu[i - 1] = pair.Gpu;
-            _columnGraphs[i - 1] = AppConfig.Get($"overlay_col_{i}_graph", i == 5 ? 1 : 0) == 1;
-        }
+        var config = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Overlay;
+        var slots = config.Slots;
+        _columnCpu = slots.Select(slot => slot.CpuMetric).ToArray();
+        _columnGpu = slots.Select(slot => slot.GpuMetric).ToArray();
+        _columnGraphs = slots.Select(slot => slot.ShowGraph).ToArray();
         var previousGraphs = _graphMetrics.ToHashSet();
         _graphMetrics.Clear();
         for (int i = 0; i < _columnCpu.Length; i++)
@@ -100,7 +104,7 @@ public partial class HardwareOverlay
             var graph = (metric, gpu);
             if (_graphMetrics.Contains(graph)) return;
             _graphMetrics.Add(graph);
-            if (!previousGraphs.Contains(graph)) Array.Clear(HistoryFor(metric, gpu));
+            if (!previousGraphs.Contains(graph)) Array.Fill(HistoryFor(metric, gpu), float.NaN);
         }
         var metrics = PreySense.Core.Services.TelemetryMetrics.None;
         for (int i = 0; i < _columnCpu.Length; i++)
@@ -118,6 +122,8 @@ public partial class HardwareOverlay
         PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
         PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
         PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
+        PreySense.Core.Services.TelemetryCoordinator.SetOverlayMetrics(PreySense.Core.Services.TelemetryMetrics.None);
+        ClearGraphHistory();
         _dragModeActive = false; _dragging = false; _fps?.Dispose(); _fps = null; ResetFpsDisplayState();
         _font?.Dispose(); _font = null; _rpmFont?.Dispose(); _rpmFont = null; _unitFont?.Dispose(); _unitFont = null;
         _fpsBold?.Dispose(); _fpsBold = null; _totalPen?.Dispose(); _totalPen = null; _axPen?.Dispose(); _axPen = null;

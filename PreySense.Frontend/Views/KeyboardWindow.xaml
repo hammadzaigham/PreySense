@@ -163,7 +163,7 @@
 
                             <TextBlock Text="Lighting Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                            <ComboBox Grid.Column="1" x:Name="ComboLightingMode" SelectedIndex="0" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                            <ComboBox Grid.Column="1" x:Name="ComboLightingMode" SelectedIndex="0" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                       SelectionChanged="ComboLightingMode_SelectionChanged">
                                 <ComboBoxItem Content="Static"/>
                                 <ComboBoxItem Content="Dynamic"/>
@@ -199,8 +199,8 @@
 
                                 <TextBlock Text="Preset Themes" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                                <ComboBox Grid.Column="1" x:Name="ComboPresetStatic" SelectedIndex="0" Width="210" Height="28" MaxDropDownHeight="360"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                                <ComboBox Grid.Column="1" x:Name="ComboPresetStatic" SelectedIndex="1" Width="210" Height="28" MaxDropDownHeight="360"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboPresetStatic_SelectionChanged">
                                     <ComboBoxItem Content="Custom" Tag="Custom"/>
                                     <ComboBoxItem Content="Predator" Tag="Predator"/>
@@ -212,14 +212,15 @@
                                     <ComboBoxItem Content="Ocean" Tag="Ocean"/>
                                     <ComboBoxItem Content="Ember" Tag="Ember"/>
                                     <ComboBoxItem Content="Vaporwave" Tag="Vaporwave"/>
-                                    <ComboBoxItem Content="Royal" Tag="Royal"/>
-                                    <ComboBoxItem Content="Arctic" Tag="Arctic"/>
                                     <ComboBoxItem Content="Sakura" Tag="Sakura"/>
                                     <ComboBoxItem Content="Rainbow" Tag="Rainbow"/>
                                     <ComboBoxItem Content="Toxic" Tag="Toxic"/>
-                                    <ComboBoxItem Content="Lava" Tag="Lava"/>
                                     <ComboBoxItem Content="Midnight" Tag="Midnight"/>
                                     <ComboBoxItem Content="Dracula" Tag="Dracula"/>
+                                    <ComboBoxItem Content="Neon Haze" Tag="NeonHaze"/>
+                                    <ComboBoxItem Content="Deep Space" Tag="DeepSpace"/>
+                                    <ComboBoxItem Content="Inferno" Tag="Inferno"/>
+                                    <ComboBoxItem Content="Cyber Storm" Tag="CyberStorm"/>
                                 </ComboBox>
                             </Grid>
 
@@ -291,7 +292,7 @@
                                 <TextBlock Text="Dynamic Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="1" x:Name="ComboDynamicSelect" Width="210" Height="28" MaxDropDownHeight="360"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboDynamicSelect_SelectionChanged">
                                     <ComboBoxItem Content="Breathing" Tag="HW:1"/>
                                     <ComboBoxItem Content="Neon Wave" Tag="HW:2"/>
@@ -334,7 +335,7 @@
                                 <TextBlock Text="Software Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="1" x:Name="ComboSoftwareSelect" Width="210" Height="28" MaxDropDownHeight="360"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboSoftwareSelect_SelectionChanged">
                                     <ComboBoxItem Content="Rainbow Cycle" Tag="DYN:RainbowCycle"/>
                                     <ComboBoxItem Content="Police Strobe" Tag="DYN:PoliceStrobe"/>
@@ -342,11 +343,14 @@
                                     <ComboBoxItem Content="Matrix Cascade" Tag="DYN:MatrixCascade"/>
                                     <ComboBoxItem Content="Cylon Scanner" Tag="DYN:CylonScanner"/>
                                     <ComboBoxItem Content="Aurora Drift" Tag="DYN:AuroraDrift"/>
-                                    <ComboBoxItem Content="Ocean Tide" Tag="DYN:OceanTide"/>
                                     <ComboBoxItem Content="Heartbeat" Tag="DYN:Heartbeat"/>
                                     <ComboBoxItem Content="Lightning Storm" Tag="DYN:LightningStorm"/>
                                     <ComboBoxItem Content="Starlight" Tag="DYN:Starlight"/>
-                                    <ComboBoxItem Content="Ice Crystal" Tag="DYN:IceCrystal"/>
+                                    <ComboBoxItem Content="Neon Pulse" Tag="DYN:NeonPulse"/>
+                                    <ComboBoxItem Content="Plasma Orb" Tag="DYN:PlasmaOrb"/>
+                                    <ComboBoxItem Content="Glitch Storm" Tag="DYN:GlitchStorm"/>
+                                    <ComboBoxItem Content="Bio Hazard" Tag="DYN:BioHazard"/>
+                                    <ComboBoxItem Content="Solar Flare" Tag="DYN:SolarFlare"/>
                                 </ComboBox>
                             </Grid>
 
@@ -414,7 +418,7 @@
 
                             <TextBlock Text="Effect Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                            <ComboBox Grid.Column="1" x:Name="ComboCoverMode" Width="154" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                            <ComboBox Grid.Column="1" x:Name="ComboCoverMode" Width="154" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                       SelectionChanged="ComboCoverMode_SelectionChanged">
                                 <ComboBoxItem Content="Static" Tag="1"/>
                                 <ComboBoxItem Content="Breathing" Tag="2"/>
@@ -459,10 +463,10 @@
                                 <TextBlock Text="Preset Themes" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="1" x:Name="ComboCoverPresets" Width="210" Height="28" MaxDropDownHeight="360"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboCoverPresets_SelectionChanged">
                                     <ComboBoxItem Content="Custom" Tag="Custom"/>
-                                    <ComboBoxItem Content="Predator Cyan" Tag="Predator"/>
+                                    <ComboBoxItem Content="Predator" Tag="Predator"/>
                                     <ComboBoxItem Content="Hellfire Red" Tag="Fire"/>
                                     <ComboBoxItem Content="Tactical Amber" Tag="Amber"/>
                                     <ComboBoxItem Content="Cyber Neon" Tag="Neon"/>

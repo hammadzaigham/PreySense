@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Threading;
-using PreySense.Core.Acpi;
 using PreySense.Frontend.Views;
 
 namespace PreySense.Tests;
@@ -8,17 +7,6 @@ namespace PreySense.Tests;
 [TestClass]
 public class RequiredCalibrationTests
 {
-    [TestMethod]
-    public void IncompleteReadbacksCannotBecomeImmutableDefaults()
-    {
-        var complete = new FactoryPowerProfileSnapshot(new CpuPowerLimitConfiguration(),
-            new GpuPowerLimitConfiguration(), 1, true, true, true, true);
-        Assert.IsTrue(complete.HasCompleteFirmwareReadback);
-        Assert.IsFalse((complete with { CpuReadFromFirmware = false }).HasCompleteFirmwareReadback);
-        Assert.IsFalse((complete with { GpuPowerReadFromFirmware = false }).HasCompleteFirmwareReadback);
-        Assert.IsFalse((complete with { GpuTripReadFromFirmware = false }).HasCompleteFirmwareReadback);
-        Assert.IsFalse((complete with { TauReadFromFirmware = false }).HasCompleteFirmwareReadback);
-    }
 
     private static bool WouldCancelClose(CustomModalDialog dialog)
     {
@@ -42,7 +30,7 @@ public class RequiredCalibrationTests
                 var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
                 typeof(CustomModalDialog).GetMethod("CancelButton_Click", flags)!
                     .Invoke(dialog, new object[] { dialog, new System.Windows.RoutedEventArgs() });
-                Assert.AreEqual(false, typeof(CustomModalDialog).GetField("_result", flags)!.GetValue(dialog));
+                Assert.IsFalse((bool?)typeof(CustomModalDialog).GetField("_result", flags)!.GetValue(dialog));
                 typeof(CustomModalDialog).GetMethod("CloseButton_Click", flags)!
                     .Invoke(dialog, new object[] { dialog, new System.Windows.RoutedEventArgs() });
                 Assert.IsNull(typeof(CustomModalDialog).GetField("_result", flags)!.GetValue(dialog));

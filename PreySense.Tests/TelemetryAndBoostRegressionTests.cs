@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
-using Microsoft.Win32;
+using PreySense.Core.Configuration;
 using PreySense.Core.Services;
 using PreySense.Frontend.ViewModels;
 using PreySense.Mode;
@@ -65,35 +65,35 @@ public class TelemetryAndBoostRegressionTests
     }
 
     [TestMethod]
-    public void ExtendedBoostSurvivesReloadAndSimpleBoostProfileSaves()
+    public void OnOffBoostPersistsThroughProfileManager()
     {
-        const string path = @"SOFTWARE\PreySense\Profiles\Turbo";
-        using var key = Registry.CurrentUser.CreateSubKey(path);
-        var original = key.GetValueNames().ToDictionary(n => n, n => (Value: key.GetValue(n)!, Kind: key.GetValueKind(n)));
+        string directory = Path.Combine(Path.GetTempPath(), "PreySenseBoost-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var previousStore = ProfileManager.ConfigurationStore;
         try
         {
+            var store = new ConfigurationService(Path.Combine(directory, ConfigurationService.ConfigFileName));
+            ProfileManager.ConfigurationStore = store;
+
             var vm = Create(new RecordingHardware());
-            Set(vm, "_isExtendedCpuBoostEnabled", true);
-            Set(vm, "_activePowerMode", (byte)1); // Editing Turbo must not touch real powercfg.
-            for (int boost = 0; boost <= 6; boost++)
-            {
-                vm.SetExtendedCpuBoostForModeIndex(4, boost);
-                var profile = ProfileManager.LoadProfile(5);
-                Assert.AreEqual(boost, profile.CpuBoost);
-                Assert.AreEqual(boost, profile.ExtendedCpuBoost);
-                // The simple editor can save an on/off choice independently.
-                profile.CpuBoost = 1;
-                Assert.IsTrue(ProfileManager.SaveProfile(profile));
-                var reloaded = Create(new RecordingHardware());
-                Set(reloaded, "_isExtendedCpuBoostEnabled", true);
-                Assert.AreEqual(boost, reloaded.CpuBoostModeForModeIndex(4));
-            }
+            Set(vm, "_activePowerMode", (byte)1);
+            vm.SetCpuBoostForModeIndex(4, true);
+            Assert.AreEqual(1, vm.CpuBoostModeForModeIndex(4));
+
+            var profile = ProfileManager.LoadProfile(5);
+            profile.CpuBoost = 1;
+            profile.ExtendedCpuBoost = 1;
+            Assert.IsTrue(ProfileManager.SaveProfile(profile));
+            Assert.AreEqual(1, store.GetCurrent().Tuning.Turbo.CpuBoostMode);
+            Assert.IsTrue(store.GetCurrent().Tuning.Turbo.CpuBoost);
+
+            vm.SetCpuBoostForModeIndex(4, false);
+            Assert.AreEqual(0, vm.CpuBoostModeForModeIndex(4));
         }
         finally
         {
-            foreach (string name in key.GetValueNames())
-                if (!original.ContainsKey(name)) key.DeleteValue(name);
-            foreach (var (name, stored) in original) key.SetValue(name, stored.Value, stored.Kind);
+            ProfileManager.ConfigurationStore = previousStore;
+            try { Directory.Delete(directory, true); } catch { }
         }
     }
 
@@ -144,8 +144,8 @@ public class TelemetryAndBoostRegressionTests
 
         await vm.RefreshDisplayAndDdsStateAsync();
 
-        Assert.IsTrue(hardware.DdsReads >= 1, "RefreshDisplayAndDdsStateAsync must query DDS status.");
-        Assert.IsTrue(hardware.RefreshRateReads >= 1, "RefreshDisplayAndDdsStateAsync must query display refresh rate.");
+        Assert.IsGreaterThanOrEqualTo(1, hardware.DdsReads, "RefreshDisplayAndDdsStateAsync must query DDS status.");
+        Assert.IsGreaterThanOrEqualTo(1, hardware.RefreshRateReads, "RefreshDisplayAndDdsStateAsync must query display refresh rate.");
     }
 
     private sealed class RecordingHardware : MockHardwareService, IHardwareService

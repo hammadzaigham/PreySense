@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
         mc:Ignorable="d"
-        Title="PreySense • Mode"
+        Title="PreySense &#x2022; Tuning"
         Width="500"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
@@ -20,7 +20,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Row 0: Custom Title Bar -->
-                <RowDefinition Height="Auto"/> <!-- Row 1: ACPI Override Disabled Warning Banner -->
+                <RowDefinition Height="Auto"/> <!-- Row 1: Tuning toggle -->
                 <RowDefinition Height="Auto"/> <!-- Row 2: Tuning Controls & Action Buttons -->
             </Grid.RowDefinitions>
 
@@ -30,28 +30,39 @@
             <controls:WindowTitleBar Grid.Row="0" Title="Tuning"/>
 
             <!-- ============================================== -->
-            <!-- 1. ACPI HARDWARE OVERRIDE DISABLED BANNER      -->
+            <!-- 1. TUNING STATUS      -->
             <!-- ============================================== -->
-            <Border Grid.Row="1" Visibility="{Binding AcpiOverrideDisabledBannerVisibility}"
-                    Style="{DynamicResource WarningBannerStyle}" Margin="14,8,14,2">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="⚠" Foreground="{DynamicResource IconForegroundBrush}" FontSize="{DynamicResource FontSizeSectionTitle}" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="{Binding AcpiOverrideDisabledBannerText}"
-                               Foreground="{DynamicResource WarningTextBrush}" FontSize="{DynamicResource FontSizeBody}" TextWrapping="Wrap" LineHeight="14" VerticalAlignment="Center"/>
-                </Grid>
+            <Border Grid.Row="1" Style="{StaticResource OriginalSectionPanelStyle}" Margin="14,8,14,0">
+                <StackPanel>
+                    <controls:SettingSwitchRow Title="Enable Tuning"
+                        IsChecked="{Binding IsHardwareTuningEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Grid IsEnabled="{Binding IsHardwareTuningEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:SettingValueRow x:Name="RowProchotOffset"
+                            Title="CPU PROCHOT Offset" AllowEmpty="True" Minimum="0" Maximum="63" Unit="&#xB0;C"
+                            IsValueEnabled="{Binding CanEditProchotOffset}"
+                            ValueAutomationId="GlobalProchotOffsetValue" LostFocus="RowProchotOffset_LostFocus"/>
+                        <controls:RectangularSwitch Grid.Column="1" Width="56" Height="28" Margin="12,4,0,4"
+                            VerticalAlignment="Center" IsEnabled="{Binding CanToggleProchotOffset}"
+                            IsChecked="{Binding IsProchotOffsetEnabled, Mode=TwoWay}"
+                            AutomationProperties.AutomationId="EnableGlobalProchotOffset"
+                            AutomationProperties.Name="Include PROCHOT offset"/>
+                    </Grid>
+                    <Separator/>
+                </StackPanel>
             </Border>
 
             <!-- ============================================== -->
-            <!-- 2. TUNING CONTROLS CONTAINER (Locked when ACPI Override OFF or OpenCore not loaded) -->
+            <!-- 2. TUNING CONTROLS CONTAINER -->
             <!-- ============================================== -->
-            <Grid Grid.Row="2" IsEnabled="{Binding IsAcpiOverrideEnabled}">
+            <Grid Grid.Row="2" IsEnabled="{Binding IsHardwareTuningEnabled}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/> <!-- Performance Profile Selector -->
                     <RowDefinition Height="Auto"/> <!-- Scrollable Content Area -->
+                    <RowDefinition Height="Auto"/> <!-- Driver readback confirmation -->
                     <RowDefinition Height="Auto"/> <!-- Pinned Footer Action Buttons -->
                 </Grid.RowDefinitions>
 
@@ -64,9 +75,9 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
-                                <TextBlock Text="Profile Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Performance Mode" Style="{StaticResource SettingLabelStyle}"/>
                             </StackPanel>
-                            <ComboBox Grid.Column="1" x:Name="ComboModeSelect" Height="28" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeBody}" SelectionChanged="ComboModeSelect_SelectionChanged">
+                            <ComboBox Grid.Column="1" x:Name="ComboModeSelect" Height="28" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}" SelectionChanged="ComboModeSelect_SelectionChanged">
                                 <ComboBoxItem Content="Eco"/>
                                 <ComboBoxItem Content="Quiet"/>
                                 <ComboBoxItem Content="Balanced"/>
@@ -92,32 +103,32 @@
                                 </Grid>
 
                                 <controls:SettingSwitchRow x:Name="SwitchCpuBoost" Title="CPU Boost"/>
-                                <controls:SettingDropdownRow x:Name="DropdownCpuBoost"
-                                                             Title="CPU Boost"
-                                                             ItemsSource="{Binding CpuBoostModes}"
-                                                             DropdownWidth="240"
-                                                             Visibility="Collapsed"/>
 
                                 <controls:SettingValueRow x:Name="RowPl1"
                                                           Title="Sustained Long Power [PL1]"
-                                                          Value="55"
+                                                          AllowEmpty="True"
+                                                          Minimum="5"
+                                                          Maximum="300"
                                                           Unit="W"
                                                           ValueAutomationId="ModePl1Value"
                                                           LostFocus="RowPl1_LostFocus"/>
 
                                 <controls:SettingValueRow x:Name="RowPl2"
                                                           Title="Burst Peak Power [PL2]"
-                                                          Value="140"
+                                                          AllowEmpty="True"
+                                                          Minimum="5"
+                                                          Maximum="300"
                                                           Unit="W"
                                                           ValueAutomationId="ModePl2Value"
                                                           LostFocus="RowPl2_LostFocus"/>
+
 
                                 <!-- Tau Duration Slider -->
                                 <Grid Margin="{StaticResource StandardRowMargin}">
                                     <StackPanel Margin="0,5,0,0">
                                         <Grid>
-                                            <TextBlock Text="Burst Window [Tau]" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="LabelTau" Text="56 s" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="Turbo Time Limit [Tau]" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                            <TextBlock x:Name="LabelTau" Text="" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                         </Grid>
                                         <Slider x:Name="SliderTau" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="SliderTau_ValueChanged"/>
                                     </StackPanel>
@@ -137,31 +148,49 @@
 
                                 <!-- GPU Power Limit Target Value Box (No maximum clamp) -->
                                 <controls:SettingValueRow x:Name="RowGpuPower"
-                                                          Title="Baseline + Delta + Boost"
+                                                          Title="Power Limit" UnavailableText="N/A"
                                                           IsEnabled="False"
-                                                          Value="140"
+                                                          AllowEmpty="True"
                                                           Unit="W"
                                                           Minimum="1"
                                                           ValueAutomationId="ModeGpuPowerValue"
                                                           LostFocus="RowGpuPower_LostFocus"/>
 
-                                <controls:SettingValueRow x:Name="RowGpuDelta" Title="Delta"
-                                                          Unit="W" Minimum="0" Maximum="255"
-                                                          ValueAutomationId="ModeGpuDeltaValue" ValueCommitted="GpuOffsets_Committed"/>
-                                <controls:SettingValueRow x:Name="RowGpuDynamicBoost" Title="Dynamic Boost"
-                                                          Unit="W" Minimum="0" Maximum="255"
-                                                          ValueAutomationId="ModeGpuDynamicBoostValue" ValueCommitted="GpuOffsets_Committed"/>
+                                <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                    <Grid>
+                                        <TextBlock Text="Delta" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="LabelGpuDelta" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Slider x:Name="SliderGpuDelta" Minimum="0" Maximum="50" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDeltaValue" AutomationProperties.Name="GPU Delta" ValueChanged="GpuOffsets_ValueChanged"/>
+                                </StackPanel>
+                                <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                    <Grid>
+                                        <TextBlock Text="Dynamic Boost" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="LabelGpuDynamicBoost" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Slider x:Name="SliderGpuDynamicBoost" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" Ticks="0,10,15,20,25" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDynamicBoostValue" AutomationProperties.Name="GPU Dynamic Boost" ValueChanged="GpuOffsets_ValueChanged"/>
+                                </StackPanel>
 
-                                <!-- GPU Thermal Trip Point (WMG3 Dynamic Boost Choke) (70°C to 89°C, 1°C steps) -->
-                                <Grid Margin="{StaticResource StandardRowMargin}">
-                                    <StackPanel Margin="0,6,0,0">
-                                        <Grid>
-                                            <TextBlock Text="GPU Thermal Trip Point" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                            <TextBlock Text="{Binding GpuThermalTripPointCelsius, StringFormat='{}{0} °C'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                        </Grid>
-                                        <Slider x:Name="SliderGpuTripPoint" Minimum="70" Maximum="89" Value="{Binding GpuThermalTripPointCelsius, Mode=TwoWay}" SmallChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="SliderGpuTripPoint_ValueChanged"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- PLATFORM POWER LIMIT -->
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,8,0,0">
+                            <StackPanel>
+                                <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-processor-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Platform Power Limit" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                    <Grid>
+                                        <TextBlock Text="Platform Power Limit Offset" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="LabelPlatformPowerOffset" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Slider x:Name="SliderPlatformPowerOffset" Minimum="0" Maximum="100" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModePlatformPowerOffsetValue" AutomationProperties.Name="Platform Power Limit Offset" ValueChanged="GpuOffsets_ValueChanged"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -169,7 +198,8 @@
                 </ScrollViewer>
 
                 <!-- PINNED FOOTER ACTION BUTTONS -->
-                <UniformGrid Grid.Row="2" Columns="3" Rows="1" Style="{StaticResource WindowFooterPanelStyle}" Margin="14,8,14,14">
+                <TextBlock Grid.Row="2" x:Name="TuningVerificationText" TextAlignment="Center" TextWrapping="Wrap" Margin="14,0,14,0" FontSize="{DynamicResource FontSizeBody}" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed"/>
+                <UniformGrid Grid.Row="3" Columns="3" Rows="1" Style="{StaticResource WindowFooterPanelStyle}" Margin="14,8,14,14">
                     <Button x:Name="BtnReset" Content="Reset" Style="{StaticResource WindowFooterButtonStyle}" Click="ResetButton_Click"/>
                     <Button x:Name="BtnApply" Content="Apply" Style="{StaticResource WindowFooterButtonStyle}" Click="ApplyButton_Click"/>
                     <Button x:Name="BtnSave" Content="Save" Style="{StaticResource WindowFooterButtonStyle}" Click="SaveButton_Click"/>

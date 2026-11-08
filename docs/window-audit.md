@@ -12,12 +12,7 @@ every Acer model.
 | Fan editor | Reviewed profile loading, tabs, curve editing, response delay, mode toggles, save/apply/reset and close. Removed live markers and all telemetry subscriptions. The graph contains a static grid, curve and editable points. Mode activation/confirmation shares one helper; saved drafts are cleared. |
 | Metrics | Reviewed initial settings, all column/graph controls, FPS, scale, opacity, position, enable/disable and subscription cleanup. Selection feeds the request mask. Removed redundant registry wrappers and duplicate saves caused by slider snapping. |
 | Keyboard | Reviewed load/bind/unbind, tabs, modes, animation, zones, presets, color wheels and hex inputs. VM-to-UI preset synchronization no longer executes the preset hardware command again. Existing color-input recursion guards and close cleanup remain. |
-| Advanced settings | Reviewed language initialization and audio navigation. Existing equality guard avoids rewriting an unchanged language. Shared localization now refreshes each VM once, even when several windows share it. |
-| Advanced/ACPI | Reviewed visible-window status refresh and navigation. Status refresh is needed for the displayed OpenCore state; no polling timer was found. Explicit maintenance operations remain explicit. |
-| Games | Reviewed construction and bindings to the game/profile commands. No duplicate window polling or startup work was found. Foreground game tracking remains event driven. |
-| DTS audio | Reviewed load/refresh, selected-endpoint customization, equalizer and factory reset. Enumeration occurs on opening/explicit refresh; it is not part of telemetry. |
-| Custom audio | Reviewed construction, VM ownership and close callback. No metric polling or duplicate window work was found. |
-| DTS equalizer | Reviewed construction, VM ownership and close callback. No metric polling or duplicate window work was found. |
+| Settings and tuning | General settings, driver tuning, first-enable calibration, and explicit Apply/Save/Reset. Factory defaults are stored separately in JSON. |
 | Confirmation/progress dialog | Reviewed modal result handling, allow-close guard, text/button properties and all result buttons. The handlers represent distinct user choices; no polling or duplicate work was found. |
 | Mode toast | Reviewed display, fade/timeout, monitor positioning, close and shutdown. Its UI hide timer is unrelated to hardware telemetry and remains necessary. |
 | Hardware overlay | Reviewed start/stop, settings reload, sampling subscription, FPS/visibility housekeeping, scalar rendering and graphs. Uses selected sources and the shared timer. Foreground notifications update visibility/FPS targets, including once on resume. Removed duplicate scalar copies and paint-hash suppression; records only selected graph series. RPM-only graphs do not require GPU activity reads. |
@@ -41,8 +36,7 @@ latency or every model's GPU power behavior.
 
 Idle keyboard lighting now waits for key/settings events. HID readers use
 cancelable asynchronous I/O completion instead of periodic completion checks and
-dedicated reader threads. Foreground game tracking coalesces events and skips
-process queries when there are no enabled profiles. Startup RGB application is
+dedicated reader threads. Startup RGB application is
 scheduled once after application readiness. Time-based animation, fades, sensor
 sampling and bounded hardware readiness checks remain where required.
 

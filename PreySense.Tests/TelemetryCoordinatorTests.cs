@@ -88,8 +88,8 @@ namespace PreySense.Tests
                 Assert.AreEqual(1, hardwareReadCount, "Single polling producer should eliminate duplicate reads for multiple subscribers");
 
                 // Both subscribers received identical snapshot
-                Assert.AreEqual(1, subscriber1Snapshots.Count, "Subscriber 1 received snapshot");
-                Assert.AreEqual(1, subscriber2Snapshots.Count, "Subscriber 2 received snapshot");
+                Assert.HasCount(1, subscriber1Snapshots, "Subscriber 1 received snapshot");
+                Assert.HasCount(1, subscriber2Snapshots, "Subscriber 2 received snapshot");
 
                 Assert.AreEqual(expectedSnapshot.CpuUsage, subscriber1Snapshots[0].CpuUsage);
                 Assert.AreEqual(expectedSnapshot.CpuMaxCoreUsage, subscriber1Snapshots[0].CpuMaxCoreUsage);
@@ -379,7 +379,7 @@ namespace PreySense.Tests
 
             bool signaled = resetEvent.Wait(2000);
             Assert.IsTrue(signaled, "Prompt sample on demand resume executed immediately on thread pool without waiting for timer interval");
-            Assert.IsTrue(polls >= 1, "Hardware sample completed promptly");
+            Assert.IsGreaterThanOrEqualTo(1, polls, "Hardware sample completed promptly");
         }
 
         [TestMethod]
@@ -471,7 +471,7 @@ namespace PreySense.Tests
 
                 Assert.AreEqual(0, ecThermalCount, "The control window has no telemetry demand.");
                 Assert.AreEqual(0, gpuNvmlCount, "The control window must not read GPU metrics.");
-                Assert.AreEqual(0, mwSnapshots.Count, "No snapshots are produced without overlay or Custom fan demand.");
+                Assert.IsEmpty(mwSnapshots, "No snapshots are produced without overlay or Custom fan demand.");
 
                 // Reset counters
                 ecThermalCount = gpuNvmlCount = cpuCount = ramCount = 0;
@@ -487,7 +487,7 @@ namespace PreySense.Tests
 
                 Assert.AreEqual(5, ecThermalCount, "Condition 2 (Overlay only): exactly 5 EC reads for 5 ticks");
                 Assert.AreEqual(5, gpuNvmlCount, "Condition 2 (Overlay only): exactly 5 GPU reads for 5 ticks");
-                Assert.AreEqual(5, ovSnapshots.Count, "Condition 2 (Overlay only): Overlay received 5 snapshots");
+                Assert.HasCount(5, ovSnapshots, "Condition 2 (Overlay only): Overlay received 5 snapshots");
 
                 // Reset counters
                 ecThermalCount = gpuNvmlCount = cpuCount = ramCount = 0;
@@ -505,8 +505,8 @@ namespace PreySense.Tests
 
                 Assert.AreEqual(5, ecThermalCount, "Condition 3 (Both visible): exactly 5 EC reads (NOT 10 duplicate reads)");
                 Assert.AreEqual(5, gpuNvmlCount, "Condition 3 (Both visible): exactly 5 GPU reads (NOT 10 duplicate reads)");
-                Assert.AreEqual(5, mwSnapshots.Count, "Condition 3 (Both visible): MainWindow received all 5 snapshots");
-                Assert.AreEqual(5, ovSnapshots.Count, "Condition 3 (Both visible): Overlay received all 5 snapshots");
+                Assert.HasCount(5, mwSnapshots, "Condition 3 (Both visible): MainWindow received all 5 snapshots");
+                Assert.HasCount(5, ovSnapshots, "Condition 3 (Both visible): Overlay received all 5 snapshots");
                 Assert.AreEqual(5, TelemetryInstrumentation.TotalSnapshotsProduced, "Coordinator produced 5 snapshots");
                 Assert.AreEqual(10, TelemetryInstrumentation.TotalSnapshotsDelivered, "Coordinator delivered 10 snapshots (5 to MW, 5 to Overlay)");
 
@@ -1082,8 +1082,8 @@ namespace PreySense.Tests
 
                 // Initial poll produces first snapshot (Temp = 52)
                 TelemetryCoordinator.Poll();
-                Assert.AreEqual(1, rawSnapshots.Count, "Raw hardware snapshot produced for fan safety");
-                Assert.AreEqual(1, displaySnapshots.Count, "Initial display tick primes UI display");
+                Assert.HasCount(1, rawSnapshots, "Raw hardware snapshot produced for fan safety");
+                Assert.HasCount(1, displaySnapshots, "Initial display tick primes UI display");
                 Assert.AreEqual(52, displaySnapshots[0].CpuTemp);
 
                 // 4 rapid hardware samples arrive within 400ms (at 100ms intervals)
@@ -1094,22 +1094,22 @@ namespace PreySense.Tests
                 }
 
                 // Fan safety received all 5 hardware readings immediately
-                Assert.AreEqual(1, rawSnapshots.Count, "Fan curves cannot receive separate rapid hardware samples.");
+                Assert.HasCount(1, rawSnapshots, "Fan curves cannot receive separate rapid hardware samples.");
                 Assert.AreEqual(52, rawSnapshots.Last().CpuTemp, "Latest raw temperature updated in cache");
 
                 // BUT visual display clock MUST NOT have fired on any of the rapid hardware samples!
-                Assert.AreEqual(1, displaySnapshots.Count, "Display clock decoupled: visual metrics did NOT flicker during rapid hardware reads");
+                Assert.HasCount(1, displaySnapshots, "Display clock decoupled: visual metrics did NOT flicker during rapid hardware reads");
 
                 // Advance clock by remaining time to reach a full 1,000 ms display tick
                 mockTicks += (long)(Stopwatch.Frequency * 0.6); // Total 1.0s elapsed
                 TelemetryCoordinator.Poll();
 
-                Assert.AreEqual(2, displaySnapshots.Count, "1 Hz display clock delivered next synchronized visual update");
+                Assert.HasCount(2, displaySnapshots, "1 Hz display clock delivered next synchronized visual update");
                 Assert.AreEqual(54, displaySnapshots[1].CpuTemp, "Visual update consumed the latest cached hardware snapshot");
 
                 // Explicitly check the time between visible metric updates
                 double secondsBetweenUpdates = (double)(displayTimestamps[1] - displayTimestamps[0]) / Stopwatch.Frequency;
-                Assert.IsTrue(secondsBetweenUpdates >= 1.0, $"Visible metric updates must be separated by at least 1.0s (was {secondsBetweenUpdates:F3}s)");
+                Assert.IsGreaterThanOrEqualTo(1.0, secondsBetweenUpdates, $"Visible metric updates must be separated by at least 1.0s (was {secondsBetweenUpdates:F3}s)");
             }
             finally
             {
@@ -1157,7 +1157,7 @@ namespace PreySense.Tests
 
                 // Initial poll on startup/show primes graph with 1st point (Temp = 41)
                 TelemetryCoordinator.Poll();
-                Assert.AreEqual(1, graphHistory.Count, "Initial display tick records initial graph sample");
+                Assert.HasCount(1, graphHistory, "Initial display tick records initial graph sample");
                 Assert.AreEqual(41f, graphHistory[0]);
 
                 // Over the next 3 seconds, multiple rapid hardware polls occur (e.g. 3 polls per second = 9 polls)
@@ -1175,12 +1175,12 @@ namespace PreySense.Tests
                     TelemetryCoordinator.Poll();
 
                     // Graph must have added exactly ONE sample for this second
-                    Assert.AreEqual(second + 1, graphHistory.Count, $"Graph history must have exactly {second + 1} samples after second {second}");
+                    Assert.HasCount(second + 1, graphHistory, $"Graph history must have exactly {second + 1} samples after second {second}");
                 }
 
                 // Total hardware polls: 1 initial + 9 periodic = 10 polls.
                 // Graph history must contain strictly 4 samples (initial + 3 display ticks), not 10.
-                Assert.AreEqual(4, graphHistory.Count, "Historical graphs must receive exactly one sample per display tick regardless of hardware poll bursts");
+                Assert.HasCount(4, graphHistory, "Historical graphs must receive exactly one sample per display tick regardless of hardware poll bursts");
                 // The recorded temperatures must reflect the latest hardware state at each tick
                 Assert.AreEqual(41f, graphHistory[0]);
                 Assert.AreEqual(42f, graphHistory[1]);

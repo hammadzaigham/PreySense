@@ -4,10 +4,10 @@ WPF shell (`assembly name PreySense`). Hardware logic belongs in `PreySense.Core
 
 ## Where changes belong
 
-- `Views/`: window composition and event forwarding. Main, Lighting (`KeyboardWindow`), Games, Overlay (`MetricsWindow`), Mode limits (`ModeSettingsWindow`), Platform Settings (`AdvancedSettingsWindow`).
+- `Views/`: window composition and event forwarding. Main, Lighting (`KeyboardWindow`), Overlay (`MetricsWindow`), Mode limits (`ModeSettingsWindow`), Platform Settings (`SettingsWindow`).
 - `Controls/`: reusable rows and cards. Add a control when the same interaction appears twice.
-- `ViewModels/MainViewModel.*.cs`: state and commands, split by feature (`PowerModes`, `Fans`, `Gpu`, `Lighting`, `Games`, `Acpi`, `Display`, `Session`, `Services`, `Theme`).
-- `Services/`: UI-facing adapters (`ProductionHardwareService`, tray, overlay bridge, startup task, keyboard hook, game launch watcher).
+- `ViewModels/MainViewModel.*.cs`: state and commands, split by feature (`PowerModes`, `Fans`, `Gpu`, `Lighting`, `Display`, `Session`, `Services`, `Theme`, `Tuning`).
+- `Services/`: UI-facing adapters (`ProductionHardwareService`, tray, overlay bridge, startup task, keyboard hook).
 - `Styles/Colors.xaml`: semantic color tokens. Views must not introduce theme colors directly.
 - `Styles/Typography.xaml`, `Cards.xaml`, `Controls.xaml`, `Spacing.xaml`: reusable presentation.
 
@@ -18,7 +18,7 @@ WPF shell (`assembly name PreySense`). Hardware logic belongs in `PreySense.Core
 3. Use `UiDebouncer` for slider or text-input hardware writes. Do not add one-off `DispatcherTimer` debounce implementations.
 4. Keep hardware calls out of rendering and property getters.
 5. Any timer, hook, event subscription, or native-backed service must have an explicit shutdown path.
-6. Mode, Games, and lighting commits must not re-apply unrelated subsystems (no RGB rewrite on mode switch).
+6. Mode and lighting commits must not re-apply unrelated subsystems (no RGB rewrite on mode switch).
 
 ## Validation
 
@@ -27,4 +27,4 @@ dotnet test PreySense.Tests\PreySense.Tests.csproj -c Release
 .\test_tools\Run.ps1 -SmokeTest
 ```
 
-Publish the running binary from the repo root with `.github\publish.ps1` (see `CURSOR.md`).
+Publish the running binary from the repo root with `.github\publish.ps1`

@@ -34,7 +34,7 @@ namespace PreySense.Tests
         {
             Assert.AreEqual("Quiet", ProfileManager.ModeToProfileName(0x00));
             string source = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Core", "Mode", "PerformanceProfile.cs"));
-            Assert.IsFalse(source.Contains("WindowsPowerMode"));
+            Assert.DoesNotContain("WindowsPowerMode", source);
         }
 
         [TestMethod]
@@ -66,19 +66,19 @@ namespace PreySense.Tests
         {
             string root = GetSolutionRoot();
             string xaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml"));
-            Assert.IsFalse(xaml.Contains("ComboCpuBoost"));
-            Assert.IsFalse(xaml.Contains("CPU Turbo Boost"));
-            Assert.IsFalse(xaml.Contains("Windows Power"));
-            Assert.IsFalse(xaml.Contains("ApplyOverlayScheme"));
-            Assert.IsFalse(xaml.Contains("GpuCoreOffset"));
-            Assert.IsFalse(xaml.Contains("GpuMemoryOffset"));
+            Assert.DoesNotContain("ComboCpuBoost", xaml);
+            Assert.DoesNotContain("CPU Turbo Boost", xaml);
+            Assert.DoesNotContain("Windows Power", xaml);
+            Assert.DoesNotContain("ApplyOverlayScheme", xaml);
+            Assert.DoesNotContain("GpuCoreOffset", xaml);
+            Assert.DoesNotContain("GpuMemoryOffset", xaml);
         }
 
         [TestMethod]
-        public void AdvancedSettingsWindow_RemovesIgpuOnBatteryAndCpuBoost()
+        public void SettingsWindow_RemovesIgpuOnBatteryAndCpuBoost()
         {
             string root = GetSolutionRoot();
-            string xaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "AdvancedSettingsWindow.xaml"));
+            string xaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "SettingsWindow.xaml"));
             Assert.DoesNotContain("iGPU on Battery", xaml);
             Assert.DoesNotContain("CPU Boost", xaml);
             Assert.DoesNotContain("IsGpuBatteryAutoEnabled", xaml);
@@ -86,6 +86,8 @@ namespace PreySense.Tests
             Assert.DoesNotContain("ResetAdvancedSettingsCommand", xaml);
             Assert.DoesNotContain("ApplyAdvancedSettingsCommand", xaml);
             Assert.DoesNotContain("SaveAdvancedSettingsCommand", xaml);
+            Assert.DoesNotContain("Factory Defaults", xaml);
+            Assert.DoesNotContain("ViewFactoryDefaultsCommand", xaml);
         }
 
         [TestMethod]
@@ -93,8 +95,8 @@ namespace PreySense.Tests
         {
             string root = GetSolutionRoot();
             string source = File.ReadAllText(Path.Combine(root, "PreySense.Core", "Display", "DisplayManager.cs"));
-            Assert.IsFalse(source.Contains("class DisplayColorProfile"));
-            Assert.IsFalse(source.Contains("LoadProfile(int hz)"));
+            Assert.DoesNotContain("class DisplayColorProfile", source);
+            Assert.DoesNotContain("LoadProfile(int hz)", source);
         }
 
         [TestMethod]
@@ -116,62 +118,14 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void SourceProfiles_MapUsbCAndBatteryModes()
+        public void PowerEvents_NormalizeExternalPowerToAc()
         {
-            Assert.AreEqual(0x01, ProfileManager.SourceProfileMode(1));
-            Assert.AreEqual(0x06, ProfileManager.SourceProfileMode(4));
-            Assert.AreEqual(1, ProfileManager.SourceProfileIndex(0x01));
-            Assert.AreEqual(4, ProfileManager.SourceProfileIndex(0x06));
-            Assert.AreEqual("Eco", ProfileManager.SourceProfileNames[4]);
-
-            string xaml = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Frontend", "Views", "AdvancedWindow.xaml"));
-            Assert.Contains("Power Profile", xaml);
-            Assert.Contains("Title=\"On AC\"", xaml);
-            Assert.Contains("Title=\"On USB-C\"", xaml);
-            Assert.Contains("Title=\"On Battery\"", xaml);
-            Assert.Contains("Energy Saver on Battery", xaml);
-            Assert.Contains("AcPowerModeIndex", xaml);
-            Assert.Contains("UsbCPowerModeIndex", xaml);
-            Assert.Contains("BatteryPowerModeIndex", xaml);
-            Assert.DoesNotContain("IsPowerProfileSwitchEnabled", xaml);
-
-            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 0 }, out PowerSourceKind battery));
+            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 0 }, out var battery));
             Assert.AreEqual(PowerSourceKind.Battery, battery);
-            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 1 }, out PowerSourceKind ac));
+            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 1 }, out var ac));
             Assert.AreEqual(PowerSourceKind.Ac, ac);
-            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 4 }, out PowerSourceKind usbC));
-            Assert.AreEqual(PowerSourceKind.UsbC, usbC);
-            Assert.IsFalse(WmiController.TryParseAcerPowerEvent(new byte[] { 1, 1 }, out _));
-            Assert.AreEqual(100, PowerLimitController.EnergySaverBatteryThreshold(true));
-            Assert.AreEqual(0, PowerLimitController.EnergySaverBatteryThreshold(false));
-        }
-
-        [TestMethod]
-        public void GameProfileAndPowerSource_SerializedThroughModeSwitchGate_AndReappliedOnExit()
-        {
-            string root = GetSolutionRoot();
-            string powerModesCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.PowerModes.cs"));
-            string gamesCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "ViewModels", "MainViewModel.Games.cs"));
-
-            Assert.Contains("await _modeSwitchGate.WaitAsync()", powerModesCs);
-            Assert.Contains("ApplyModeSwitchCoreAsync", powerModesCs);
-            Assert.Contains("CancelPendingModeSwitch()", powerModesCs);
-            Assert.Contains("ApplyModeSwitchAsync", powerModesCs);
-
-            // Game profiles serialize under gate
-            Assert.Contains("CancelPendingModeSwitch()", gamesCs);
-            Assert.Contains("await _modeSwitchGate.WaitAsync()", gamesCs);
-            Assert.Contains("ApplyModeSwitchCoreAsync", gamesCs);
-            Assert.Contains("PowerLimitController.SetCpuPowerLimits", gamesCs);
-
-            // Game profile exit reapplies settings through ApplyModeSwitchAsync even when mode is unchanged
-            Assert.Contains("await ApplyModeSwitchAsync(restore)", gamesCs);
-            Assert.DoesNotContain("await SetModeAsync(restore)", gamesCs);
-
-            // Power source change updates _modeBeforeGame when game is active and cancels pending debounce otherwise
-            Assert.Contains("if (_appliedGameExe != null)", powerModesCs);
-            Assert.Contains("_modeBeforeGame = mode", powerModesCs);
-            Assert.Contains("CancelPendingModeSwitch()", powerModesCs);
+            Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 4 }, out var external));
+            Assert.AreEqual(PowerSourceKind.Ac, external);
         }
 
         [TestMethod]
@@ -187,7 +141,7 @@ namespace PreySense.Tests
             Assert.Contains("x:Name=\"CurveEditor\"", fanWindowXaml);
             int fanTabsIndex = fanWindowXaml.IndexOf("x:Name=\"FanTabs\"", StringComparison.Ordinal);
             int curveEditorIndex = fanWindowXaml.IndexOf("x:Name=\"CurveEditor\"", StringComparison.Ordinal);
-            Assert.IsTrue(fanTabsIndex < curveEditorIndex, "FanTabs should be positioned outside and above CurveEditor");
+            Assert.IsLessThan(curveEditorIndex, fanTabsIndex, "FanTabs should be positioned outside and above CurveEditor");
 
             // Editor is kept visible and disabled with dimming opacity; footer buttons only show in Custom mode
             Assert.Contains("CurveEditor.IsEnabled = isCustom;", fanWindowCs);
@@ -230,17 +184,14 @@ namespace PreySense.Tests
             // ApplyModeSwitchAsync cancels pending debounce timer immediately
             Assert.Contains("CancelPendingModeSwitch();\n            await _modeSwitchGate.WaitAsync();", powerModesCs.Replace("\r\n", "\n"));
 
-            // Running game does not overwrite persistent source profiles
-            Assert.Contains("_appliedGameExe != null", powerModesCs);
-
             // Fan mode toggle synchronizes draft profile immediately
             Assert.Contains("SaveDraft();\n        UpdateEditor();", fanWindowCs.Replace("\r\n", "\n"));
 
             // Fan window Apply and Reset switch hardware mode immediately when not active
             Assert.Contains("await vm.ApplyModeSwitchAsync(_mode);", fanWindowCs);
 
-            // Mode settings window Apply switches hardware mode immediately when not confirmed active
-            Assert.Contains("await vm.ApplyModeSwitchAsync(selectedMode);", modeSettingsCs);
+            // Mode settings window applies tuning profile via driver transaction backend
+            Assert.Contains("await vm.ApplyTuningProfileAsync", modeSettingsCs);
         }
 
         private static string GetSolutionRoot()

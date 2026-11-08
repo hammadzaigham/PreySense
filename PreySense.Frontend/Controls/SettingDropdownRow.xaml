@@ -21,7 +21,7 @@
         <ComboBox x:Name="InnerComboBox" Grid.Column="1" VerticalAlignment="Center"
                   Width="{Binding DropdownWidth, ElementName=RootDropdownRow}"
                   MinWidth="{Binding DropdownMinWidth, ElementName=RootDropdownRow}"
-                  Height="28" FontSize="{DynamicResource FontSizeBody}"
+                  Height="28" FontSize="{DynamicResource FontSizeControl}"
                   VerticalContentAlignment="Center"
                   ItemsSource="{Binding ItemsSource, ElementName=RootDropdownRow}"
                   SelectedItem="{Binding SelectedItem, ElementName=RootDropdownRow, Mode=TwoWay}"

@@ -2,14 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
-using Microsoft.Win32;
+using PreySense.Core.Configuration;
 
 namespace PreySense.Frontend.Services;
 
 public static class ThemeManager
 {
     public static bool IsLightTheme { get; private set; }
-    private const string SettingsKey = @"SOFTWARE\PreySense\AdvancedSettings";
 
     private static readonly IReadOnlyDictionary<string, (Color Dark, Color Light)> Palette =
         new Dictionary<string, (Color, Color)>
@@ -51,8 +50,7 @@ public static class ThemeManager
         var isLight = false;
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(SettingsKey);
-            isLight = key?.GetValue("LightTheme") is int value && value == 1;
+            isLight = ConfigurationService.Instance.GetCurrent().General.LightTheme;
         }
         catch { }
 
@@ -86,8 +84,7 @@ public static class ThemeManager
 
         try
         {
-            using var key = Registry.CurrentUser.CreateSubKey(SettingsKey);
-            key?.SetValue("LightTheme", isLight ? 1 : 0, RegistryValueKind.DWord);
+            ConfigurationService.Instance.Update(cfg => cfg.General.LightTheme = isLight);
         }
         catch { }
     }

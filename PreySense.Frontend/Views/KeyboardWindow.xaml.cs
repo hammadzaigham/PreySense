@@ -75,6 +75,7 @@ namespace PreySense.Frontend.Views
                     _isUpdatingCoverColorWheel = false;
                 }
 
+                SyncCoverPresetSelection(vm);
                 RestoreLightingModeUi(vm);
                 _isLoaded = true;
             }
@@ -141,7 +142,7 @@ namespace PreySense.Frontend.Views
         {
             if (ComboPresetStatic == null) return;
 
-            int targetIndex = 0; // Default to "Custom" (index 0)
+            int targetIndex = 1; // Default to "Predator" (index 1 after Custom)
             string preset = vm.SelectedZonePreset;
             if (!string.IsNullOrWhiteSpace(preset) &&
                 !string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
@@ -231,6 +232,52 @@ namespace PreySense.Frontend.Views
                     UpdateCoverModePanels(mode);
                 }
             }
+        }
+
+        private void SyncCoverPresetSelection(MainViewModel vm)
+        {
+            if (ComboCoverPresets == null) return;
+
+            // Default logo theme is Predator (index 1 after Custom).
+            int targetIndex = 1;
+            string hex = (vm.CoverHexColor ?? string.Empty).Trim();
+            for (int i = 1; i < ComboCoverPresets.Items.Count; i++)
+            {
+                if (ComboCoverPresets.Items[i] is not ComboBoxItem { Tag: string tag } ||
+                    string.Equals(tag, "Custom", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string presetHex = tag switch
+                {
+                    "Predator" => "#00E5FF",
+                    "Fire" => "#FF0033",
+                    "Amber" => "#F59E0B",
+                    "Neon" => "#FF007F",
+                    "Matrix" => "#00FF66",
+                    "White" => "#FFFFFF",
+                    "Purple" => "#8B00FF",
+                    "Sunset" => "#FF6B00",
+                    "Ocean" => "#0077B6",
+                    "Sakura" => "#FF8FAB",
+                    "Toxic" => "#39FF14",
+                    "Lava" => "#FF4500",
+                    "Midnight" => "#3A0CA3",
+                    "Ice" => "#48CAE4",
+                    "Vapor" => "#FF71CE",
+                    _ => string.Empty
+                };
+                if (!string.IsNullOrEmpty(presetHex) &&
+                    string.Equals(hex, presetHex, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetIndex = i;
+                    break;
+                }
+                if (i == 1 && string.IsNullOrEmpty(hex))
+                    targetIndex = 1;
+            }
+
+            if (ComboCoverPresets.SelectedIndex != targetIndex)
+                ComboCoverPresets.SelectedIndex = targetIndex;
         }
 
         private void ComboCoverPresets_SelectionChanged(object sender, SelectionChangedEventArgs e)

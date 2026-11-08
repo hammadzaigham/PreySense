@@ -9,6 +9,8 @@ namespace PreySense.Frontend.Controls
     public partial class SettingValueRow : UserControl
     {
         private bool _syncingText;
+        public bool AllowEmpty { get; set; }
+        public string UnavailableText { get; set; } = string.Empty;
 
         public SettingValueRow()
         {
@@ -17,6 +19,16 @@ namespace PreySense.Frontend.Controls
             InnerValueBox.KeyDown += OnValueKeyDown;
             InnerValueBox.TextChanged += OnTextChanged;
             Loaded += (_, _) => SyncTextFromValue();
+        }
+
+        public static readonly DependencyProperty IsValueEnabledProperty =
+            DependencyProperty.Register(nameof(IsValueEnabled), typeof(bool), typeof(SettingValueRow),
+                new PropertyMetadata(true));
+
+        public bool IsValueEnabled
+        {
+            get => (bool)GetValue(IsValueEnabledProperty);
+            set => SetValue(IsValueEnabledProperty, value);
         }
 
         public event EventHandler? ValueCommitted;
@@ -168,8 +180,18 @@ namespace PreySense.Frontend.Controls
 
         public void CommitText(bool notify = true)
         {
+            if (AllowEmpty && string.IsNullOrWhiteSpace(InnerValueBox.Text))
+            {
+                SetCurrentValue(ValueProperty, double.NaN);
+                if (notify) ValueCommitted?.Invoke(this, EventArgs.Empty);
+                return;
+            }
             if (!TryParse(InnerValueBox.Text, out double parsed))
-                parsed = double.IsFinite(Minimum) ? Minimum : 0;
+            {
+                if (AllowEmpty) SetCurrentValue(ValueProperty, double.NaN);
+                SyncTextFromValue();
+                return;
+            }
             SetCurrentValue(ValueProperty, Clamp(parsed));
             SyncTextFromValue();
             if (notify)
@@ -180,7 +202,7 @@ namespace PreySense.Frontend.Controls
         {
             if (InnerValueBox == null)
                 return;
-            string formatted = Format(Value);
+            string formatted = double.IsFinite(Value) ? Format(Value) : UnavailableText;
             if (InnerValueBox.Text == formatted)
                 return;
             _syncingText = true;
@@ -199,6 +221,7 @@ namespace PreySense.Frontend.Controls
 
         private double Clamp(double value)
         {
+            if (AllowEmpty && double.IsNaN(value)) return value;
             if (double.IsNaN(value) || double.IsInfinity(value))
                 value = double.IsFinite(Minimum) ? Minimum : 0;
             if (double.IsFinite(Minimum))
@@ -216,6 +239,7 @@ namespace PreySense.Frontend.Controls
 
         private string Format(double value)
         {
+            if (AllowEmpty && double.IsNaN(value)) return string.Empty;
             int places = Math.Clamp(DecimalPlaces, 0, 6);
             if (places == 0)
             {

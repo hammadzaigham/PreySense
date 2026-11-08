@@ -48,7 +48,7 @@
             <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
                 <TextBlock x:Name="MessageText"
                            TextWrapping="Wrap"
-                           FontSize="{DynamicResource FontSizeTitle}"
+                           FontSize="{DynamicResource FontSizeBody}"
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            Margin="0,2,0,0"/>

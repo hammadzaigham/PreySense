@@ -12,7 +12,6 @@ namespace PreySense.Gpu
         (long usedMb, long totalMb)? GetVramInfo();
         float? GetGpuPower();
         void KillGPUApps();
-        int? GetGpuClock();
         int? GetGpuMemoryClock();
         float? GetGpuVoltage();
     }

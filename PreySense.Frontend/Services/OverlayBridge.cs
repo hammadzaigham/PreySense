@@ -1,5 +1,5 @@
 using System;
-using Microsoft.Win32;
+using PreySense.Core.Configuration;
 using PreySense.Helpers;
 using PreySense.Overlay;
 
@@ -14,14 +14,7 @@ internal static class OverlayBridge
 
     public static void Configure(Func<WmiController?> wmiProvider) => _wmiProvider = wmiProvider;
 
-    public static bool IsEnabled
-    {
-        get
-        {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense");
-            return key?.GetValue("overlay") is int value && value == 1;
-        }
-    }
+    public static bool IsEnabled => ConfigurationService.Instance.GetCurrent().Overlay.Enabled;
 
     public static bool ShouldRun => AppConfig.ShouldRunOverlay();
     public static bool IsShowing => HardwareOverlayManager.IsShowing;
@@ -34,21 +27,9 @@ internal static class OverlayBridge
 
     public static void StartIfNeeded()
     {
-        AppConfig.MigrateGameOnlySetting();
+
         EnsureInitialized();
         HardwareOverlayManager.SyncRunningState();
-    }
-
-    public static void GameStarted()
-    {
-        EnsureInitialized();
-        HardwareOverlayManager.StartForConfiguredGame();
-    }
-
-    public static void GameExited()
-    {
-        EnsureInitialized();
-        HardwareOverlayManager.StopForConfiguredGame();
     }
 
     public static void Toggle()

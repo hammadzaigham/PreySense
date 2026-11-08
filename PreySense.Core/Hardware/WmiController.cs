@@ -19,9 +19,8 @@ namespace PreySense.Helpers
         private ManagementObject? _cachedBatteryObj;
         private ManagementEventWatcher? _powerSourceWatcher;
         private readonly object _lock = new();
-        private int _pluggedSource = -1;
 
-        public event EventHandler? PowerSourceChanged;
+        public event EventHandler<PowerSourceKind>? PowerSourceChanged;
 
         [DllImport("powrprof.dll")]
         private static extern uint PowerSetActiveOverlayScheme(Guid scheme);
@@ -176,7 +175,6 @@ namespace PreySense.Helpers
 
         public EnekRgbClient EnekRgb => EnekRgbClient;
         public AcerCoverLogoHidClient CoverLogoHidClient => CoverLogoHid;
-        public CustomLightingEffectsEngine CustomEffects => Effects;
 
         public WmiController()
         {
@@ -204,21 +202,20 @@ namespace PreySense.Helpers
 
         public bool TryGetPowerStatus(out bool onAc, out float batteryPercent)
         {
-            if (GetSystemPowerStatus(out var status))
+            if (GetSystemPowerStatus(out var status) && status.ACLineStatus is 0 or 1)
             {
                 onAc = status.ACLineStatus == 1;
-                batteryPercent = status.BatteryLifePercent == 255 ? 80f : status.BatteryLifePercent;
+                batteryPercent = status.BatteryLifePercent <= 100 ? status.BatteryLifePercent : float.NaN;
                 return true;
             }
-            onAc = true;
-            batteryPercent = 80f;
+            onAc = false;
+            batteryPercent = float.NaN;
             return false;
         }
 
         public PowerSourceKind ReadPowerSource()
         {
-            TryGetPowerStatus(out bool onAc, out _);
-            return ReadPowerSource(onAc);
+            return TryGetPowerStatus(out bool onAc, out _) ? ReadPowerSource(onAc) : PowerSourceKind.Unknown;
         }
 
         public PowerSourceKind ReadPowerSource(bool onAc)
@@ -226,18 +223,9 @@ namespace PreySense.Helpers
             if (!onAc)
                 return PowerSourceKind.Battery;
 
-            return Volatile.Read(ref _pluggedSource) == (int)PowerSourceKind.UsbC
-                ? PowerSourceKind.UsbC
-                : PowerSourceKind.Ac;
+            return PowerSourceKind.Ac;
         }
 
-        public void NotePluggedSource(PowerSourceKind kind)
-        {
-            if (kind is not (PowerSourceKind.Ac or PowerSourceKind.UsbC))
-                return;
-
-            Interlocked.CompareExchange(ref _pluggedSource, (int)kind, -1);
-        }
 
         public void SetRgbMode(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction)
         {
@@ -357,14 +345,8 @@ namespace PreySense.Helpers
         {
             byte scaledBrightness = (byte)Math.Clamp((int)_brightness, 0, 100);
 
-            if (EnekRgbClient.IsAvailable)
-            {
-                if (EnekRgbClient.SetZoneColors(_zoneColors, scaledBrightness))
-                {
-                    AppLogger.Log($"Keyboard zone colors set via ENEK5130 Direct HID: Zone0=#{_zoneColors[0].R:X2}{_zoneColors[0].G:X2}{_zoneColors[0].B:X2}, Zone1=#{_zoneColors[1].R:X2}{_zoneColors[1].G:X2}{_zoneColors[1].B:X2}, Zone2=#{_zoneColors[2].R:X2}{_zoneColors[2].G:X2}{_zoneColors[2].B:X2}, Zone3=#{_zoneColors[3].R:X2}{_zoneColors[3].G:X2}{_zoneColors[3].B:X2} (brightness={_brightness})");
-                    return;
-                }
-            }
+            if (EnekRgbClient.IsAvailable && EnekRgbClient.SetZoneColors(_zoneColors, scaledBrightness))
+                return;
 
             AppLogger.Log("ApplyZoneLighting: no supported RGB transport is available.");
         }
@@ -569,14 +551,14 @@ namespace PreySense.Helpers
             AppLogger.Log($"SyncWindowsPowerMode: mode 0x{acerMode:X2} -> overlay {overlayIndex}");
         }
 
-        private ulong SendApgeCommand(string method, ulong input)
+        private ulong? SendApgeCommand(string method, ulong input)
         {
             lock (_lock)
             {
                 try
                 {
                     var obj = GetApgeObject();
-                    if (obj == null) return 0;
+                    if (obj == null) return null;
                     using var inParams = obj.GetMethodParameters(method);
                     string paramName = "uiInput";
                     foreach (var prop in inParams.Properties.Cast<PropertyData>())
@@ -600,7 +582,7 @@ namespace PreySense.Helpers
                 catch
                 {
                     InvalidateCache();
-                    return 0;
+                    return null;
                 }
             }
         }
@@ -609,7 +591,8 @@ namespace PreySense.Helpers
 
         public bool GetLedTimeout()
         {
-            ulong status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x88401ul);
+            ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x88401ul);
+            if (!status.HasValue) throw new InvalidOperationException("Keyboard timeout: N/A.");
             return status != 0x80000ul && status != 0;
         }
 
@@ -621,14 +604,15 @@ namespace PreySense.Helpers
         public void SetLedTimeoutSeconds(int seconds)
         {
             ulong val = seconds > 0 ? (((ulong)seconds << 40) | 0x088402ul) : 0x88402ul;
-            SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val);
+            if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val).HasValue)
+                throw new InvalidOperationException("Acer firmware setting could not be applied.");
             AppLogger.Log($"Keyboard LED backlight timeout: {(seconds > 0 ? $"{seconds}s" : "Always On (Disabled)")}");
         }
 
         public bool GetBootSound()
         {
             var (success, result) = SendCommand(AcerWmi.GamingMethods.GetMiscSetting, 0x06ul);
-            if (!success) return false;
+            if (!success) throw new InvalidOperationException("Boot sound: N/A.");
             return result == 0x100ul;
         }
 
@@ -641,13 +625,13 @@ namespace PreySense.Helpers
 
         public int GetUsbChargingLevel()
         {
-            ulong status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x04ul);
+            ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x04ul);
             return status switch
             {
                 659200ul => 10,
                 1314560ul => 20,
                 1969920ul => 30,
-                _ => 0
+                _ => -1
             };
         }
 
@@ -660,7 +644,8 @@ namespace PreySense.Helpers
                 30 => 1969924ul, // 0x1E0F04
                 _ => 663300ul   // 0xA1F04 (off)
             };
-            SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val);
+            if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val).HasValue)
+                throw new InvalidOperationException("Acer firmware setting could not be applied.");
             AppLogger.Log($"USB power-off charging level: {percent}%");
         }
 
@@ -671,7 +656,7 @@ namespace PreySense.Helpers
                 try
                 {
                     var obj = GetBatteryObject();
-                    if (obj == null) return 0;
+                    if (obj == null) return -1;
                     using var inParams = obj.GetMethodParameters(AcerWmi.BatteryMethods.GetHealthControlStatus);
                     inParams["uBatteryNo"] = (byte)1;
                     inParams["uFunctionQuery"] = (byte)1;
@@ -706,7 +691,7 @@ namespace PreySense.Helpers
                     System.Diagnostics.Debug.WriteLine($"Failed to get battery mode: {ex.Message}");
                     InvalidateCache();
                 }
-                return 0;
+                return -1;
             }
         }
 

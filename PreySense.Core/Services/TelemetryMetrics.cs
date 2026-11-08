@@ -20,21 +20,33 @@ public enum TelemetryMetrics
     GpuPower = 1 << 13,
     GpuMemory = 1 << 14,
     GpuMemoryClock = 1 << 15,
+    GpuHotspot = 1 << 16,
+    GpuThrottleReasons = 1 << 17,
+    GpuPowerLimit = 1 << 18,
+    CpuEffectiveClock = 1 << 19,
+    CpuPowerLimit = 1 << 20,
+    GpuMemoryTemperature = 1 << 21,
+    GpuActiveClock = 1 << 22,
     Temperatures = CpuTemperature | GpuTemperature,
-    Gpu = GpuTemperature | GpuUsage | GpuClock | GpuVoltage | GpuPower | GpuMemory | GpuMemoryClock,
-    All = 0xFFFF
+    Gpu = GpuTemperature | GpuUsage | GpuActiveClock | GpuVoltage | GpuPower | GpuMemory | GpuMemoryClock | GpuHotspot | GpuThrottleReasons | GpuPowerLimit | GpuMemoryTemperature,
+    All = 0x7FFFFF
 }
 
 public static class TelemetrySelection
 {
+    public static string NormalizeCpu(string? metric) => Cpu(metric ?? "None") != TelemetryMetrics.None ? metric! : "None";
+    public static string NormalizeGpu(string? metric) => metric == "Active Clock" ? "Clock" : Gpu(metric ?? "None") != TelemetryMetrics.None ? metric! : "None";
+
     public static TelemetryMetrics Cpu(string metric) => metric switch
     {
         "Temperature" => TelemetryMetrics.CpuTemperature,
         "Fan Speed" => TelemetryMetrics.CpuFanRpm,
-        "Usage" or "Max Core" or "Max Core Usage" or "P-Core Usage" or "E-Core Usage" => TelemetryMetrics.CpuUsage,
-        "P-Core" or "E-Core" or "Clock" => TelemetryMetrics.CpuClock,
-        "Voltage" => TelemetryMetrics.CpuVoltage,
+        "Usage" => TelemetryMetrics.CpuUsage,
+        "Active Clock" => TelemetryMetrics.CpuClock,
+        "Effective Clock" => TelemetryMetrics.CpuEffectiveClock,
+        "Voltage" or "VID" or "CPU VID" => TelemetryMetrics.CpuVoltage,
         "Power" => TelemetryMetrics.CpuPower,
+        "Power Limit" or "PL1" or "PL2" => TelemetryMetrics.CpuPowerLimit,
         "Memory" => TelemetryMetrics.RamUsage,
         "Memory Speed" => TelemetryMetrics.RamSpeed,
         _ => TelemetryMetrics.None
@@ -43,11 +55,15 @@ public static class TelemetrySelection
     public static TelemetryMetrics Gpu(string metric) => metric switch
     {
         "Temperature" => TelemetryMetrics.GpuTemperature,
+        "Hotspot" or "Hotspot Temperature" => TelemetryMetrics.GpuHotspot,
+        "Memory Temperature" => TelemetryMetrics.GpuMemoryTemperature,
         "Fan Speed" => TelemetryMetrics.GpuFanRpm,
         "Usage" => TelemetryMetrics.GpuUsage,
-        "Clock" => TelemetryMetrics.GpuClock,
+        "Clock" or "Active Clock" => TelemetryMetrics.GpuActiveClock,
         "Voltage" => TelemetryMetrics.GpuVoltage,
         "Power" => TelemetryMetrics.GpuPower,
+        "Power Limit" => TelemetryMetrics.GpuPowerLimit,
+        "PerfCap Reason" => TelemetryMetrics.GpuThrottleReasons,
         "Memory" => TelemetryMetrics.GpuMemory,
         "Memory Speed" => TelemetryMetrics.GpuMemoryClock,
         _ => TelemetryMetrics.None

@@ -15,10 +15,8 @@ namespace PreySense.Core.Services
         public byte CurrentPowerMode => _powerMode;
 
         public event EventHandler<byte>? PowerModeChanged;
-        public event EventHandler? PowerSourceChanged { add { } remove { } }
 
         public PowerSourceKind GetPowerSource() => PowerSourceKind.Ac;
-        public void NotePluggedSource(PowerSourceKind kind) { }
 
         public HardwareTelemetry GetCurrentTelemetry()
         {
@@ -110,7 +108,7 @@ namespace PreySense.Core.Services
 
         public void SetCoverLogoLighting(int mode, Color color, byte brightness, byte speed, bool enabled = true) => SetCoverLogoLightingCount++;
 
-        // Mock ACPI / WMI System Controls
+        // Mock WMI / platform system controls
         private bool _mockLcdOverdrive = true;
         private bool _mockBootSound = false;
         private bool _mockKbdTimeout = false;

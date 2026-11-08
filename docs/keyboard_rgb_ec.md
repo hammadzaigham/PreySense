@@ -61,7 +61,7 @@ The EC does not expose live per-zone color while Wave, Ripple, Zoom, Snake, or D
 
 ## Software animations
 
-`CustomLightingEffectsEngine` (~35 fps) paints four `Color`s and calls `SetZoneColors`. Effects include Rainbow Cycle, CPU Heatmap, Battery Fuel Gauge, Police Strobe, Fire Ember, Matrix, Cylon, Aurora, Ocean, Heartbeat, Lightning, Starlight, Ice Crystal.
+`CustomLightingEffectsEngine` (~35 fps) paints four `Color`s and calls `SetZoneColors`. Live effects: Rainbow Cycle, Police Strobe, Fire Ember, Matrix Cascade, Cylon Scanner, Aurora Drift, Heartbeat, Lightning Storm, Starlight, Neon Pulse, Plasma Orb, Glitch Storm, Bio Hazard, Solar Flare. Retired enum slots (CPU Heatmap, Battery Fuel Gauge, Ocean Tide, Ice Crystal) remain for stable indexes but are not offered in the UI.
 
 Idle timeout: if keyboard backlight timeout is > 0, the engine stops HID writes after that many seconds without input so the EC idle timer can actually expire (continuous HID frames would keep the backlight awake).
 

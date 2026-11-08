@@ -19,11 +19,6 @@ namespace PreySense.Core.Services
 
     public static class AcerServiceDebloater
     {
-        public const string RegistrySubKey = @"SOFTWARE\PreySense\AdvancedSettings";
-        public const string SessionRegistrySubKey = @"SOFTWARE\PreySense\Session";
-        public const string RegistryValueName = "AcerServicesDisabled";
-        public const string RegistryEnabledValueName = "AcerServicesEnabled";
-
         public static readonly string[] ManagedServices = new[]
         {
             "AASSvc",
@@ -196,7 +191,7 @@ namespace PreySense.Core.Services
             KillRunningAcerProcesses();
             if (!RemoveAcerScheduledTasks())
                 allSucceeded = false;
-            SaveRegistryState(isDebloated: true);
+            SaveState(isDebloated: true);
             return allSucceeded;
         }
 
@@ -362,50 +357,37 @@ namespace PreySense.Core.Services
                 }
             }
 
-            SaveRegistryState(isDebloated: false);
+            SaveState(isDebloated: false);
             return allSucceeded;
         }
 
-        public static void SaveRegistryState(bool isDebloated)
+        public static void SaveState(bool isDebloated)
         {
             try
             {
-                using var advKey = Registry.CurrentUser.CreateSubKey(RegistrySubKey);
-                advKey?.SetValue(RegistryValueName, isDebloated ? 1 : 0, RegistryValueKind.DWord);
-                advKey?.SetValue(RegistryEnabledValueName, isDebloated ? 0 : 1, RegistryValueKind.DWord);
-
-                using var sessionKey = Registry.CurrentUser.CreateSubKey(SessionRegistrySubKey);
-                sessionKey?.SetValue(RegistryValueName, isDebloated ? 1 : 0, RegistryValueKind.DWord);
-                sessionKey?.SetValue(RegistryEnabledValueName, isDebloated ? 0 : 1, RegistryValueKind.DWord);
+                Configuration.ConfigurationService.Instance.Update(cfg =>
+                {
+                    cfg.General.AcerServicesDebloated = isDebloated;
+                });
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"AcerServiceDebloater: Failed to write registry state: {ex.Message}");
+                AppLogger.Log($"AcerServiceDebloater: Failed to write configuration state: {ex.Message}");
             }
         }
 
-        public static bool? GetRegistryState()
+        /// <summary>Reads the JSON preference. Returns false if config cannot be loaded.</summary>
+        public static bool GetSavedState()
         {
             try
             {
-                using var advKey = Registry.CurrentUser.OpenSubKey(RegistrySubKey);
-                if (advKey?.GetValue(RegistryValueName) is int disabledVal)
-                    return disabledVal == 1;
-                if (advKey?.GetValue(RegistryEnabledValueName) is int enabledVal)
-                    return enabledVal == 0;
-
-                using var sessionKey = Registry.CurrentUser.OpenSubKey(SessionRegistrySubKey);
-                if (sessionKey?.GetValue(RegistryValueName) is int sessionVal)
-                    return sessionVal == 1;
-                if (sessionKey?.GetValue(RegistryEnabledValueName) is int sessionEnabledVal)
-                    return sessionEnabledVal == 0;
+                return Configuration.ConfigurationService.Instance.GetCurrent().General.AcerServicesDebloated;
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"AcerServiceDebloater: Failed to read registry state: {ex.Message}");
+                AppLogger.Log($"AcerServiceDebloater: Failed to read configuration state: {ex.Message}");
+                return false;
             }
-
-            return null;
         }
 
         private static void SetServiceStartMode(string serviceName, string mode)

@@ -16,7 +16,8 @@ namespace PreySense.Mode
             {
                 0x00 or 0x06 => OverlayEfficiency,
                 0x04 or 0x05 => OverlayPerformance,
-                _ => OverlayBalanced
+                0x01 => OverlayBalanced,
+                _ => throw new ArgumentOutOfRangeException(nameof(acerMode))
             };
         }
     }

@@ -101,8 +101,13 @@ namespace PreySense.Gpu
 
         public int? ReadCurrentTemperature(bool log = false)
         {
-            if (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)
+            if (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1) return null;
+            if (GetGpuState(out var perfState) != GpuState.Active) return null;
+            if (IsIdlePerformanceState(perfState) && !HasUserGpuClient())
+            {
+                NvmlHelper.Shutdown();
                 return null;
+            }
             return ReadAwakeTemperature(log);
         }
 
@@ -233,16 +238,29 @@ namespace PreySense.Gpu
 
         public readonly record struct Metrics(bool InUse, int? Temperature, int? Usage,
             int? ClockMhz, int? MemoryClockMhz, float? Voltage, float? PowerWatts,
-            long? VramUsedMb, long? VramTotalMb);
+            long? VramUsedMb, long? VramTotalMb, float? HotspotTemperature = null,
+            ulong? ThrottleReasons = null, float? PowerLimitWatts = null, float? MemoryTemperature = null,
+            int? ActiveClockMhz = null);
 
         /// <summary>One power-state decision for the entire shared GPU sampling batch.</summary>
         public Metrics ReadMetrics(TelemetryMetrics requested)
         {
             bool Wants(TelemetryMetrics metric) => (requested & metric) != 0;
             if (!Wants(TelemetryMetrics.Gpu)) return default;
-            if (!Wants(TelemetryMetrics.GpuPower | TelemetryMetrics.GpuClock | TelemetryMetrics.GpuMemory | TelemetryMetrics.GpuMemoryClock))
+            if (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1)
+            {
+                NvmlHelper.Shutdown();
+                return default;
+            }
+            if (!Wants(TelemetryMetrics.GpuPower | TelemetryMetrics.GpuMemory | TelemetryMetrics.GpuMemoryClock | TelemetryMetrics.GpuHotspot | TelemetryMetrics.GpuThrottleReasons | TelemetryMetrics.GpuPowerLimit))
                 NvmlHelper.Shutdown();
             if (GetGpuState(out var performanceState) != GpuState.Active)
+            {
+                NvmlHelper.Shutdown();
+                return default;
+            }
+            // Idle P-state with no other client: skip all sensor reads and release NVML so RTD3 can sleep.
+            if (IsIdlePerformanceState(performanceState) && !HasUserGpuClient())
             {
                 NvmlHelper.Shutdown();
                 return default;
@@ -250,19 +268,55 @@ namespace PreySense.Gpu
             var temperature = Wants(TelemetryMetrics.GpuTemperature) ? ReadAwakeTemperature() : null;
             if ((requested & ~TelemetryMetrics.GpuTemperature) == 0)
                 return new Metrics(true, temperature, null, null, null, null, null, null, null);
-            if (IsIdlePerformanceState(performanceState) && !HasUserGpuClient())
-            {
-                NvmlHelper.Shutdown();
-                return new Metrics(false, temperature, null, null, null, null, null, null, null);
-            }
+            var activeClock = Wants(TelemetryMetrics.GpuActiveClock) ? GetGpuActiveClock(true) : null;
             var usage = Wants(TelemetryMetrics.GpuUsage) ? GetGpuUse(true) : null;
-            var clock = Wants(TelemetryMetrics.GpuClock) ? GetGpuClock(true) : null;
             var memoryClock = Wants(TelemetryMetrics.GpuMemoryClock) ? GetGpuMemoryClock(true) : null;
             var voltage = Wants(TelemetryMetrics.GpuVoltage) ? GetGpuVoltage(true) : null;
             var power = Wants(TelemetryMetrics.GpuPower) ? GetGpuPower(true) : null;
             var memory = Wants(TelemetryMetrics.GpuMemory) ? GetVramInfo(true) : null;
-            return new Metrics(true, temperature, usage, clock, memoryClock, voltage, power,
-                memory?.usedMb, memory?.totalMb);
+            var thermal = Wants(TelemetryMetrics.GpuHotspot | TelemetryMetrics.GpuMemoryTemperature)
+                ? NvapiThermal.ReadTemperatures(_internalGpu?.Handle.MemoryAddress, Wants(TelemetryMetrics.GpuHotspot), Wants(TelemetryMetrics.GpuMemoryTemperature))
+                : ((float? HotspotC, float? MemoryC))(null, null);
+            var throttleReasons = Wants(TelemetryMetrics.GpuThrottleReasons) ? GetThrottleReasons(true) : null;
+            var powerLimit = Wants(TelemetryMetrics.GpuPowerLimit) ? GetGpuPowerLimit(true) : null;
+            return new Metrics(true, temperature, usage, null, memoryClock, voltage, power,
+                memory?.usedMb, memory?.totalMb, thermal.HotspotC, throttleReasons, powerLimit, thermal.MemoryC, activeClock);
+        }
+
+        public float? GetGpuHotspot() => GetGpuHotspot(false);
+
+        private float? GetGpuHotspot(bool stateChecked)
+        {
+            if (!IsValid) return null;
+            if (!stateChecked && (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)) return null;
+            return NvapiThermal.GetHotspot(_internalGpu?.Handle.MemoryAddress);
+        }
+
+        public float? GetGpuMemoryTemperature() => GetGpuMemoryTemperature(false);
+
+        private float? GetGpuMemoryTemperature(bool stateChecked)
+        {
+            if (!IsValid) return null;
+            if (!stateChecked && (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)) return null;
+            return NvapiThermal.GetMemoryTemperature(_internalGpu?.Handle.MemoryAddress);
+        }
+
+        public ulong? GetThrottleReasons() => GetThrottleReasons(false);
+
+        private ulong? GetThrottleReasons(bool stateChecked)
+        {
+            if (!IsValid) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
+            return NvmlHelper.GetThrottleReasons();
+        }
+
+        public float? GetGpuPowerLimit() => GetGpuPowerLimit(false);
+
+        private float? GetGpuPowerLimit(bool stateChecked)
+        {
+            if (!IsValid) return null;
+            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
+            return NvmlHelper.GetGpuPowerLimitWatts();
         }
 
         public int? GetGpuUse() => GetGpuUse(false);
@@ -308,13 +362,23 @@ namespace PreySense.Gpu
             return NvmlHelper.GetMemoryInfo();
         }
 
-        public int? GetGpuClock() => GetGpuClock(false);
 
-        private int? GetGpuClock(bool stateChecked)
+        /// <summary>NVAPI current graphics clock in kHz, rounded like mVolt's RTSS display.</summary>
+        private int? GetGpuActiveClock(bool stateChecked)
         {
-            if (!IsValid) return null;
-            if (!stateChecked && GetGpuState() != GpuState.Active) return null;
-            return NvmlHelper.GetGpuClock();
+            if (!IsValid || !stateChecked && GetGpuState() != GpuState.Active) return null;
+            try
+            {
+                // Verified mVolt call: 0x14022786C, NV_GPU_CLOCK_FREQUENCIES_V2 (0x20108), type 0.
+                var clock = GPUApi.GetAllClockFrequencies(_internalGpu!.Handle,
+                    new ClockFrequenciesV2(ClockType.CurrentClock)).GraphicsClock;
+                return GpuClockReading.FromKilohertz(clock.IsPresent, clock.Frequency);
+            }
+            catch (Exception ex)
+            {
+                if (verboseLog) AppLogger.Log($"GPU active clock unavailable: {ex.Message}");
+                return null;
+            }
         }
 
         public int? GetGpuMemoryClock() => GetGpuMemoryClock(false);
@@ -336,9 +400,7 @@ namespace PreySense.Gpu
             {
                 var status = GPUApi.GetCurrentVoltage(_internalGpu!.Handle);
                 if (status.ValueInMicroVolt > 0)
-                {
                     return (float)(status.ValueInMicroVolt / 1000000.0);
-                }
             }
             catch { }
             return null;
@@ -347,12 +409,46 @@ namespace PreySense.Gpu
         public System.Collections.Generic.List<GpuProcessInfo> GetGpuProcesses()
         {
             var list = new System.Collections.Generic.List<GpuProcessInfo>();
-            var pids = NvmlHelper.GetRunningProcessIds();
-            foreach (var pid in pids)
+            int currentPid = Process.GetCurrentProcess().Id;
+
+            // Prefer NvAPI — same source KillGPUApps / HasUserGpuClient use. NVML's
+            // unversioned process APIs often return empty on current drivers, which
+            // silently skipped the iGPU-only confirmation modal.
+            if (IsValid && _internalGpu is not null)
             {
                 try
                 {
+                    Process[] processes = _internalGpu.GetActiveApplications();
+                    foreach (Process process in processes)
+                    {
+                        try
+                        {
+                            if (process.Id == currentPid) continue;
+                            if (process.SessionId == 0) continue;
+                            if (_systemProcessNames.Contains(process.ProcessName)) continue;
+                            list.Add(new GpuProcessInfo
+                            {
+                                ProcessId = (uint)process.Id,
+                                ProcessName = process.ProcessName
+                            });
+                        }
+                        catch { }
+                        finally { process.Dispose(); }
+                    }
+                    if (list.Count > 0)
+                        return list;
+                }
+                catch { }
+            }
+
+            foreach (uint pid in NvmlHelper.GetRunningProcessIds())
+            {
+                if (pid == 0 || pid == (uint)currentPid) continue;
+                try
+                {
                     using var proc = Process.GetProcessById((int)pid);
+                    if (proc.SessionId == 0) continue;
+                    if (_systemProcessNames.Contains(proc.ProcessName)) continue;
                     list.Add(new GpuProcessInfo { ProcessId = pid, ProcessName = proc.ProcessName });
                 }
                 catch

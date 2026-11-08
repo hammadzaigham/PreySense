@@ -133,7 +133,14 @@ namespace PreySense.Frontend
 
             _ = Services.UpdateCheckService.CheckForUpdatesAsync();
 
-            if (!startMinimized)
+            if (startMinimized)
+            {
+                // Ensure HWND/tray exist without a taskbar button; stay tray-only until opened.
+                mainWindow.ShowInTaskbar = false;
+                mainWindow.WindowState = WindowState.Normal;
+                mainWindow.Hide();
+            }
+            else
             {
                 mainWindow.ShowAndRestore();
             }

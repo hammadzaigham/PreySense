@@ -6,7 +6,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PreySense;
 using PreySense.Frontend.Services;
-using PreySense.Helpers;
 using PreySense.Rgb;
 
 namespace PreySense.Frontend.ViewModels
@@ -16,7 +15,7 @@ namespace PreySense.Frontend.ViewModels
         // RGB Lighting
         [ObservableProperty] private int _selectedRgbZone = 1;
         [ObservableProperty] private string _selectedHexColor = "#00E5FF";
-        private readonly string[] _zoneHexColors = { "#00E5FF", "#00E5FF", "#00E5FF", "#00E5FF" };
+        private readonly string[] _zoneHexColors = { "#00E5FF", "#00E5FF", "#00E5FF", "#FFFFFF" };
         private bool _isSyncingZoneColor;
         public string Zone1HexColor => _zoneHexColors[0];
         public string Zone2HexColor => _zoneHexColors[1];
@@ -28,7 +27,7 @@ namespace PreySense.Frontend.ViewModels
         public string Zone4Foreground => ContrastForegroundHex(_zoneHexColors[3]);
         [ObservableProperty] private int _rgbBrightness = 100;
         [ObservableProperty] private int _rgbSpeed = 50;
-        [ObservableProperty] private string _activeEffectName = "Static";
+        [ObservableProperty] private string _activeEffectName = "Predator Preset";
         [ObservableProperty] private bool _isRgbSyncZonesEnabled = false;
 
         // Lighting Target Tabs (0 = Keyboard, 1 = Cover)
@@ -71,7 +70,7 @@ namespace PreySense.Frontend.ViewModels
         private bool _pendingKeyboardLighting;
         private bool _pendingCoverLighting;
         private Color[]? _pendingZonePreset;
-        private string _selectedZonePreset = "Custom";
+        private string _selectedZonePreset = "Predator";
         public string SelectedZonePreset
         {
             get => _selectedZonePreset;
@@ -272,34 +271,10 @@ namespace PreySense.Frontend.ViewModels
                     if (prod.LightingEngine.IsRunning)
                         prod.LightingEngine.SetBrightness((byte)next);
                 }
-                SaveRgbSettings();
-                StatusMessage = $"Keyboard Brightness: {next}%";
+                SaveLightingSettings();
+                DiagnosticMessage = $"Keyboard Brightness: {next}%";
                 AppLogger.Log($"TurboKey: Fn brightness {next}% saved");
             });
-        }
-
-        public void SetRgbBrightnessLevel(object? param)
-        {
-            int b = param switch
-            {
-                int i => i,
-                double d => (int)Math.Round(d),
-                string s when int.TryParse(s, out int parsed) => parsed,
-                _ => 100
-            };
-            RgbBrightness = SnapBrightness(b);
-            if (_hw is ProductionHardwareService prod)
-                prod.LightingEngine.SetBrightness((byte)RgbBrightness);
-            StatusMessage = $"Keyboard Brightness: {RgbBrightness}%";
-        }
-
-        private void SetStatusMessageSafe(string message)
-        {
-            if (_disposed) return;
-            if (_dispatcher.CheckAccess())
-                StatusMessage = message;
-            else
-                _dispatcher.BeginInvoke(() => { if (!_disposed) StatusMessage = message; });
         }
 
         [RelayCommand]
@@ -316,7 +291,6 @@ namespace PreySense.Frontend.ViewModels
                 ActiveEffectName = mode >= 0 && mode < hwNames.Length ? hwNames[mode] : $"Hardware ({mode})";
                 var c = ColorTranslator.FromHtml(SelectedHexColor);
                 _hw.SetRgbHardwareEffect(mode, c.R, c.G, c.B, (byte)RgbBrightness, ToHidKeyboardSpeed(RgbSpeed), 1);
-                SetStatusMessageSafe($"Hardware Lighting Effect: {ActiveEffectName}");
             }
         }
 
@@ -325,7 +299,8 @@ namespace PreySense.Frontend.ViewModels
         {
             if (!Enum.TryParse<CustomEffectMode>(effectModeStr, out var effect) || effect == CustomEffectMode.None)
                 return;
-            if (effect is CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge)
+            if (effect is CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge
+                or CustomEffectMode.OceanTide or CustomEffectMode.IceCrystal)
                 return;
 
             var c = ColorTranslator.FromHtml(SelectedHexColor);
@@ -340,11 +315,14 @@ namespace PreySense.Frontend.ViewModels
                 CustomEffectMode.MatrixCascade => "Matrix Cascade",
                 CustomEffectMode.CylonScanner => "Cylon Scanner",
                 CustomEffectMode.AuroraDrift => "Aurora Drift",
-                CustomEffectMode.OceanTide => "Ocean Tide",
                 CustomEffectMode.Heartbeat => "Heartbeat",
                 CustomEffectMode.LightningStorm => "Lightning Storm",
                 CustomEffectMode.Starlight => "Starlight",
-                CustomEffectMode.IceCrystal => "Ice Crystal",
+                CustomEffectMode.NeonPulse => "Neon Pulse",
+                CustomEffectMode.PlasmaOrb => "Plasma Orb",
+                CustomEffectMode.GlitchStorm => "Glitch Storm",
+                CustomEffectMode.BioHazard => "Bio Hazard",
+                CustomEffectMode.SolarFlare => "Solar Flare",
                 _ => effect.ToString()
             };
 
@@ -362,8 +340,6 @@ namespace PreySense.Frontend.ViewModels
                     prod.LightingEngine.StartEffect(effect, scaledBrightness, speed);
                 }
             }
-
-            SetStatusMessageSafe($"Software Effect: {ActiveEffectName}");
         }
 
         public static bool TryGetZonePresetColors(string? presetName, out Color[] colors, out string displayName)
@@ -376,7 +352,7 @@ namespace PreySense.Frontend.ViewModels
                     z2 = ColorTranslator.FromHtml("#00E5FF");
                     z3 = ColorTranslator.FromHtml("#00E5FF");
                     z4 = ColorTranslator.FromHtml("#FFFFFF");
-                    displayName = "Predator Cyan Preset";
+                    displayName = "Predator Preset";
                     break;
                 case "cyberpunk":
                     z1 = ColorTranslator.FromHtml("#FFDF00");
@@ -431,20 +407,6 @@ namespace PreySense.Frontend.ViewModels
                     z4 = ColorTranslator.FromHtml("#05FFA1");
                     displayName = "Vaporwave Preset";
                     break;
-                case "royal":
-                    z1 = ColorTranslator.FromHtml("#3C096C");
-                    z2 = ColorTranslator.FromHtml("#5A189A");
-                    z3 = ColorTranslator.FromHtml("#FFD60A");
-                    z4 = ColorTranslator.FromHtml("#FFFFFF");
-                    displayName = "Royal Preset";
-                    break;
-                case "arctic":
-                    z1 = ColorTranslator.FromHtml("#ADE8F4");
-                    z2 = ColorTranslator.FromHtml("#FFFFFF");
-                    z3 = ColorTranslator.FromHtml("#48CAE4");
-                    z4 = ColorTranslator.FromHtml("#0077B6");
-                    displayName = "Arctic Preset";
-                    break;
                 case "sakura":
                     z1 = ColorTranslator.FromHtml("#FF8FAB");
                     z2 = ColorTranslator.FromHtml("#FFB3C6");
@@ -466,13 +428,6 @@ namespace PreySense.Frontend.ViewModels
                     z4 = ColorTranslator.FromHtml("#0B6E4F");
                     displayName = "Toxic Preset";
                     break;
-                case "lava":
-                    z1 = ColorTranslator.FromHtml("#8B0000");
-                    z2 = ColorTranslator.FromHtml("#FF0000");
-                    z3 = ColorTranslator.FromHtml("#FF4500");
-                    z4 = ColorTranslator.FromHtml("#FF6B00");
-                    displayName = "Lava Preset";
-                    break;
                 case "midnight":
                     z1 = ColorTranslator.FromHtml("#10002B");
                     z2 = ColorTranslator.FromHtml("#3A0CA3");
@@ -486,6 +441,34 @@ namespace PreySense.Frontend.ViewModels
                     z3 = ColorTranslator.FromHtml("#8BE9FD");
                     z4 = ColorTranslator.FromHtml("#50FA7B");
                     displayName = "Dracula Preset";
+                    break;
+                case "neonhaze":
+                    z1 = ColorTranslator.FromHtml("#FF00FF");
+                    z2 = ColorTranslator.FromHtml("#7700FF");
+                    z3 = ColorTranslator.FromHtml("#00FFFF");
+                    z4 = ColorTranslator.FromHtml("#FF00AA");
+                    displayName = "Neon Haze Preset";
+                    break;
+                case "deepspace":
+                    z1 = ColorTranslator.FromHtml("#000033");
+                    z2 = ColorTranslator.FromHtml("#001166");
+                    z3 = ColorTranslator.FromHtml("#4400AA");
+                    z4 = ColorTranslator.FromHtml("#AAAAFF");
+                    displayName = "Deep Space Preset";
+                    break;
+                case "inferno":
+                    z1 = ColorTranslator.FromHtml("#FF0000");
+                    z2 = ColorTranslator.FromHtml("#FF4400");
+                    z3 = ColorTranslator.FromHtml("#FF8800");
+                    z4 = ColorTranslator.FromHtml("#FFFF00");
+                    displayName = "Inferno Preset";
+                    break;
+                case "cyberstorm":
+                    z1 = ColorTranslator.FromHtml("#00FF88");
+                    z2 = ColorTranslator.FromHtml("#00CCFF");
+                    z3 = ColorTranslator.FromHtml("#FF00FF");
+                    z4 = ColorTranslator.FromHtml("#FFFF00");
+                    displayName = "Cyber Storm Preset";
                     break;
                 default:
                     colors = Array.Empty<Color>();
@@ -553,15 +536,16 @@ namespace PreySense.Frontend.ViewModels
             bool cover = _pendingCoverLighting;
             _pendingKeyboardLighting = false;
             _pendingCoverLighting = false;
+            if (!keyboard && !cover)
+                return;
+
             if (keyboard)
-                ApplyKeyboardLightingNow();
-            if (cover)
-                ApplyCoverLighting(saveSettings: true);
+                ApplyKeyboardLightingNow(saveSettings: false);
+            else
+                ApplyCoverLighting(saveSettings: false);
+
+            SaveLightingSettings();
         }
-
-        public void CommitKeyboardLighting() => ApplyKeyboardLightingNow();
-
-        public void CommitCoverLighting() => ApplyCoverLighting(saveSettings: true);
 
         private int _startupLightingRan;
 
@@ -575,30 +559,45 @@ namespace PreySense.Frontend.ViewModels
 
             return Task.Run(async () =>
             {
-                AppLogger.Log("ApplyStartupLighting: Starting startup lighting application sequence.");
+                AppLogger.Log("ApplyStartupLighting: applying lighting from JSON once.");
 
-                // Poll for the RGB hardware client to become available (up to 15 seconds)
-                const int maxAttempts = 30; // 30 * 500ms = 15 seconds max
-                const int pollIntervalMs = 500;
                 bool clientConnected = false;
-
-                for (int attempt = 1; attempt <= maxAttempts && !_disposed; attempt++)
+                try
                 {
-                    try
+                    if (_hw.IsRgbAvailable)
                     {
-                        if (_hw.IsRgbAvailable)
+                        clientConnected = true;
+                    }
+                    else
+                    {
+                        // Prefer WM_DEVICECHANGE; pulse every 2s only until first open or timeout
+                        // (covers late CreateFile without re-enumerating SetupDi at 2 Hz).
+                        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15));
+                        while (!_disposed && !cts.IsCancellationRequested)
                         {
-                            clientConnected = true;
-                            AppLogger.Log($"ApplyStartupLighting: RGB client connected on attempt {attempt} (elapsed ~{(attempt - 1) * pollIntervalMs}ms).");
-                            break;
+                            var arrival = PreySense.Core.Hardware.HidArrivalHub.WaitAsync(cts.Token);
+                            var pulse = Task.Delay(2000, cts.Token);
+                            try
+                            {
+                                await Task.WhenAny(arrival, pulse).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+
+                            if (_disposed) return;
+                            if (_hw.IsRgbAvailable)
+                            {
+                                clientConnected = true;
+                                break;
+                            }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Log($"ApplyStartupLighting: Check connection error on attempt {attempt}: {ex.Message}");
-                    }
-
-                    await Task.Delay(pollIntervalMs).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"ApplyStartupLighting: RGB wait failed: {ex.Message}");
                 }
 
                 if (_disposed)
@@ -606,48 +605,30 @@ namespace PreySense.Frontend.ViewModels
 
                 if (!clientConnected)
                 {
-                    AppLogger.Log("ApplyStartupLighting: RGB client not detected within timeout window; attempting blind apply.");
+                    AppLogger.Log("ApplyStartupLighting: RGB unavailable; skipping apply.");
+                    return;
                 }
 
-                // Pass 1: Immediate application upon connection
                 try
                 {
                     ApplySavedLighting();
-                    AppLogger.Log("ApplyStartupLighting: Pass 1 applied.");
+                    AppLogger.Log("ApplyStartupLighting: applied once from JSON.");
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"ApplyStartupLighting Pass 1 error: {ex.Message}");
+                    AppLogger.Log($"ApplyStartupLighting error: {ex.Message}");
                 }
-
-                // Pass 2: Delayed reinforcement after 2.5 seconds to override any OEM firmware POST reset
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(2500).ConfigureAwait(false);
-                        if (!_disposed)
-                        {
-                            ApplySavedLighting();
-                            AppLogger.Log("ApplyStartupLighting: Pass 2 (reinforcement) applied.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Log($"ApplyStartupLighting Pass 2 error: {ex.Message}");
-                    }
-                });
             });
         }
 
         private void ApplySavedLighting()
         {
-            ApplyKeyboardLightingNow();
+            ApplyKeyboardLightingNow(saveSettings: false);
             if (!IsCoverSyncWithKeyboard)
                 ApplyCoverLighting(saveSettings: false);
         }
 
-        private void ApplyKeyboardLightingNow()
+        private void ApplyKeyboardLightingNow(bool saveSettings = true)
         {
             bool isDynamic = _lightingEffectTag.StartsWith("DYN:", StringComparison.Ordinal);
             if (_hw is ProductionHardwareService prod && !isDynamic)
@@ -663,9 +644,10 @@ namespace PreySense.Frontend.ViewModels
 
             UpdateCoverSyncFrameHook();
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
-            SaveRgbSettings();
             if (IsCoverSyncWithKeyboard)
-                ApplyCoverLighting(saveSettings: true);
+                ApplyCoverLighting(saveSettings: false);
+            if (saveSettings)
+                SaveLightingSettings();
         }
 
         private int CoverModeFromKeyboardEffect()
@@ -791,14 +773,6 @@ namespace PreySense.Frontend.ViewModels
         }
 
         [RelayCommand]
-        public void SelectLightingTab(string tab)
-        {
-            SelectedLightingTab = (tab == "1" || tab.Equals("Cover", StringComparison.OrdinalIgnoreCase)) ? 1 : 0;
-            OnPropertyChanged(nameof(IsKeyboardTabSelected));
-            OnPropertyChanged(nameof(IsCoverTabSelected));
-        }
-
-        [RelayCommand]
         public void SetCoverColor(string hexColor)
         {
             CoverHexColor = hexColor;
@@ -811,38 +785,6 @@ namespace PreySense.Frontend.ViewModels
             {
                 CoverLightingMode = Math.Clamp(m, 1, 3);
             }
-        }
-
-        [RelayCommand]
-        public void SetCoverBrightnessLevel(object? param)
-        {
-            int b = param switch
-            {
-                int i => i,
-                double d => (int)Math.Round(d),
-                string s when int.TryParse(s, out int parsed) => parsed,
-                _ => 100
-            };
-            CoverBrightness = SnapBrightness(b);
-        }
-
-        [RelayCommand]
-        public void SetCoverSpeedLevel(object? param)
-        {
-            int speedVal = param switch
-            {
-                int i => i,
-                double d => (int)Math.Round(d),
-                string str when int.TryParse(str, out int parsed) => parsed,
-                _ => 50
-            };
-            CoverSpeed = SnapBrightness(speedVal);
-        }
-
-        [RelayCommand]
-        public void ToggleCoverPower()
-        {
-            IsCoverLightingEnabled = !IsCoverLightingEnabled;
         }
 
         [RelayCommand]
@@ -870,17 +812,6 @@ namespace PreySense.Frontend.ViewModels
             SetCoverColor(hex);
         }
 
-        public void ApplyLightingSettings()
-        {
-            if (IsCoverTabSelected)
-            {
-                ApplyCoverLighting(saveSettings: false);
-                return;
-            }
-
-            ApplyKeyboardLightingSettings();
-        }
-
         public void ApplyKeyboardLightingSettings()
         {
             var keyboardColor = ColorTranslator.FromHtml(SelectedHexColor);
@@ -903,15 +834,12 @@ namespace PreySense.Frontend.ViewModels
 
             _hw.SetRgbBrightness((byte)Math.Clamp(RgbBrightness, 0, 100));
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
-            SaveRgbSettings();
-            SetStatusMessageSafe("Lighting settings applied.");
         }
 
         public void SaveLightingSettings()
         {
             SaveRgbSettings();
             SaveCoverLightingSettings();
-            SetStatusMessageSafe("Lighting settings saved.");
         }
 
         public void ApplyCoverLighting(bool saveSettings = true)
@@ -932,20 +860,9 @@ namespace PreySense.Frontend.ViewModels
                 int mode = !IsCoverLightingEnabled ? 0 : (sync ? CoverModeFromKeyboardEffect() : CoverLightingMode);
                 _hw.SetCoverLogoLighting(mode, color, b, s, IsCoverLightingEnabled);
 
-                string modeDesc = (sync ? CoverModeFromKeyboardEffect() : CoverLightingMode) switch
-                {
-                    2 => "Breathing",
-                    3 => "Neon Wave",
-                    _ => "Static"
-                };
-                SetStatusMessageSafe(IsCoverLightingEnabled
-                    ? $"Cover Backlight: {modeDesc} ({hex}, {CoverBrightness}%)"
-                    : "Cover Backlight: Disabled (Off)");
 
                 if (saveSettings)
-                {
-                    SaveCoverLightingSettings();
-                }
+                    SaveLightingSettings();
             }
             catch (Exception ex)
             {
@@ -962,24 +879,24 @@ namespace PreySense.Frontend.ViewModels
             _isLoadingLighting = true;
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\Lighting\Cover");
-                if (key != null)
+                var cover = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Lighting.Cover;
+                IsCoverLightingEnabled = cover.Enabled;
+                CoverLightingMode = cover.Mode;
+                CoverHexColor = NormalizeHex(cover.ColorHex);
+                CoverBrightness = SnapBrightness(cover.Brightness);
+                CoverSpeed = SnapBrightness(cover.Speed);
+                IsCoverSyncWithKeyboard = cover.SyncWithKeyboard;
+                CoverModeName = CoverLightingMode switch
                 {
-                    IsCoverLightingEnabled = (key.GetValue("Enabled") as int? ?? 1) == 1;
-                    CoverLightingMode = key.GetValue("Mode") as int? ?? 1;
-                    CoverHexColor = key.GetValue("Color") as string ?? "#00E5FF";
-                    CoverBrightness = SnapBrightness(MigrateSavedBrightness(key.GetValue("Brightness") as int? ?? 100));
-                    CoverSpeed = SnapBrightness(MigrateSavedSpeed(key.GetValue("Speed") as int? ?? 50));
-                    IsCoverSyncWithKeyboard = (key.GetValue("SyncWithKeyboard") as int? ?? 0) == 1;
-                    CoverModeName = CoverLightingMode switch
-                    {
-                        2 => "Breathing",
-                        3 => "Neon Wave",
-                        _ => "Static"
-                    };
-                }
+                    2 => "Breathing",
+                    3 => "Neon Wave",
+                    _ => "Static"
+                };
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LoadCoverLightingSettings: {ex.Message}");
+            }
             finally
             {
                 _isLoadingLighting = false;
@@ -990,16 +907,15 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\Lighting\Cover");
-                if (key != null)
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
                 {
-                    key.SetValue("Enabled", IsCoverLightingEnabled ? 1 : 0);
-                    key.SetValue("Mode", CoverLightingMode);
-                    key.SetValue("Color", CoverHexColor);
-                    key.SetValue("Brightness", CoverBrightness);
-                    key.SetValue("Speed", CoverSpeed);
-                    key.SetValue("SyncWithKeyboard", IsCoverSyncWithKeyboard ? 1 : 0);
-                }
+                    cfg.Lighting.Cover.Enabled = IsCoverLightingEnabled;
+                    cfg.Lighting.Cover.Mode = CoverLightingMode;
+                    cfg.Lighting.Cover.ColorHex = CoverHexColor;
+                    cfg.Lighting.Cover.Brightness = CoverBrightness;
+                    cfg.Lighting.Cover.Speed = CoverSpeed;
+                    cfg.Lighting.Cover.SyncWithKeyboard = IsCoverSyncWithKeyboard;
+                });
             }
             catch { }
         }
@@ -1009,53 +925,33 @@ namespace PreySense.Frontend.ViewModels
             _isLoadingLighting = true;
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\Lighting\Keyboard");
-                if (key != null)
-                {
-                    _isSyncingRgbBrightness = true;
-                    RgbBrightness = SnapBrightness(MigrateSavedBrightness(ReadRegistryInt(key.GetValue("Brightness"), 100)));
-                    _isSyncingRgbBrightness = false;
-                    RgbSpeed = SnapBrightness(MigrateSavedSpeed(ReadRegistryInt(key.GetValue("Speed"), 50)));
-                    KbdTimeoutSeconds = Math.Clamp(ReadRegistryInt(key.GetValue("BacklightTimeoutSeconds"), 30), 0, 120);
-                    SelectedHexColor = key.GetValue("SelectedColor") as string ?? "#00E5FF";
-                    SelectedRgbZone = Math.Clamp(ReadRegistryInt(key.GetValue("SelectedZone"), 1), 1, 4);
-                    IsRgbSyncZonesEnabled = ReadRegistryInt(key.GetValue("SyncZones"), 0) == 1;
-                    string fallbackHex = NormalizeHex(SelectedHexColor);
-                    _zoneHexColors[0] = NormalizeHex(key.GetValue("Zone1Color") as string ?? fallbackHex);
-                    _zoneHexColors[1] = NormalizeHex(key.GetValue("Zone2Color") as string ?? fallbackHex);
-                    _zoneHexColors[2] = NormalizeHex(key.GetValue("Zone3Color") as string ?? fallbackHex);
-                    _zoneHexColors[3] = NormalizeHex(key.GetValue("Zone4Color") as string ?? fallbackHex);
-                    NotifyZoneColorProperties();
-                    SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
-                    string effectTag = key.GetValue("EffectTag") as string ?? "HW:0";
-                    _lightingEffectTag = IsValidLightingEffectTag(effectTag) ? effectTag : "HW:0";
-                    string preset = key.GetValue("PresetTheme") as string ?? "Custom";
-                    if (string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
-                        preset = "Custom";
-
-                    if (TryGetZonePresetColors(preset, out var presetColors, out var presetDisplayName))
-                    {
-                        SelectedZonePreset = preset;
-                        _pendingZonePreset = presetColors;
-                        IsRgbSyncZonesEnabled = false;
-                        _zoneHexColors[0] = ToRgbHex(presetColors[0]);
-                        _zoneHexColors[1] = ToRgbHex(presetColors[1]);
-                        _zoneHexColors[2] = ToRgbHex(presetColors[2]);
-                        _zoneHexColors[3] = ToRgbHex(presetColors[3]);
-                        NotifyZoneColorProperties();
-                        SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
-                        ActiveEffectName = presetDisplayName;
-                    }
-                    else
-                    {
-                        SelectedZonePreset = "Custom";
-                        _pendingZonePreset = null;
-                        ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, _selectedZonePreset);
-                    }
-                    OnPropertyChanged(nameof(LightingEffectTag));
-                }
+                var kbd = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Lighting.Keyboard;
+                _isSyncingRgbBrightness = true;
+                RgbBrightness = SnapBrightness(kbd.Brightness);
+                _isSyncingRgbBrightness = false;
+                RgbSpeed = SnapBrightness(kbd.Speed);
+                KbdTimeoutSeconds = Math.Clamp(kbd.BacklightTimeoutSeconds, 0, 120);
+                SelectedRgbZone = Math.Clamp(kbd.SelectedZone, 1, 4);
+                IsRgbSyncZonesEnabled = kbd.SyncZones;
+                _zoneHexColors[0] = NormalizeHex(kbd.Zone1ColorHex);
+                _zoneHexColors[1] = NormalizeHex(kbd.Zone2ColorHex);
+                _zoneHexColors[2] = NormalizeHex(kbd.Zone3ColorHex);
+                _zoneHexColors[3] = NormalizeHex(kbd.Zone4ColorHex);
+                NotifyZoneColorProperties();
+                SelectedHexColor = _zoneHexColors[Math.Clamp(SelectedRgbZone - 1, 0, 3)];
+                _lightingEffectTag = string.IsNullOrWhiteSpace(kbd.EffectTag) ? "HW:0" : kbd.EffectTag;
+                string preset = string.IsNullOrWhiteSpace(kbd.PresetTheme) ? "Predator" : kbd.PresetTheme;
+                if (string.Equals(preset, "None", StringComparison.OrdinalIgnoreCase))
+                    preset = "Custom";
+                SelectedZonePreset = IsValidZonePreset(preset) ? preset : "Predator";
+                _pendingZonePreset = null;
+                ActiveEffectName = GetEffectDisplayName(_lightingEffectTag, _selectedZonePreset);
+                OnPropertyChanged(nameof(LightingEffectTag));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LoadRgbSettings: {ex.Message}");
+            }
             finally
             {
                 _isLoadingLighting = false;
@@ -1066,22 +962,21 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"SOFTWARE\PreySense\Lighting\Keyboard");
-                if (key != null)
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
                 {
-                    key.SetValue("Brightness", RgbBrightness, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("Speed", RgbSpeed, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("BacklightTimeoutSeconds", KbdTimeoutSeconds, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("SelectedColor", SelectedHexColor);
-                    key.SetValue("Zone1Color", _zoneHexColors[0]);
-                    key.SetValue("Zone2Color", _zoneHexColors[1]);
-                    key.SetValue("Zone3Color", _zoneHexColors[2]);
-                    key.SetValue("Zone4Color", _zoneHexColors[3]);
-                    key.SetValue("SelectedZone", SelectedRgbZone, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("SyncZones", IsRgbSyncZonesEnabled ? 1 : 0, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("EffectTag", _lightingEffectTag);
-                    key.SetValue("PresetTheme", _selectedZonePreset);
-                }
+                    cfg.Lighting.Keyboard.Brightness = RgbBrightness;
+                    cfg.Lighting.Keyboard.Speed = RgbSpeed;
+                    cfg.Lighting.Keyboard.BacklightTimeoutSeconds = KbdTimeoutSeconds;
+                    cfg.Lighting.Keyboard.SelectedColorHex = SelectedHexColor;
+                    cfg.Lighting.Keyboard.Zone1ColorHex = _zoneHexColors[0];
+                    cfg.Lighting.Keyboard.Zone2ColorHex = _zoneHexColors[1];
+                    cfg.Lighting.Keyboard.Zone3ColorHex = _zoneHexColors[2];
+                    cfg.Lighting.Keyboard.Zone4ColorHex = _zoneHexColors[3];
+                    cfg.Lighting.Keyboard.SelectedZone = SelectedRgbZone;
+                    cfg.Lighting.Keyboard.SyncZones = IsRgbSyncZonesEnabled;
+                    cfg.Lighting.Keyboard.EffectTag = _lightingEffectTag;
+                    cfg.Lighting.Keyboard.PresetTheme = _selectedZonePreset;
+                });
             }
             catch { }
         }
@@ -1173,48 +1068,11 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        private static int ReadRegistryInt(object? value, int fallback)
-        {
-            return value switch
-            {
-                int i => i,
-                long l => (int)l,
-                string s when int.TryParse(s, out int parsed) => parsed,
-                _ => fallback
-            };
-        }
-
-        private static int MigrateSavedBrightness(int saved)
-        {
-            if (saved <= 5)
-                return Math.Clamp(saved * 25, 0, 100);
-            return SnapBrightness(saved);
-        }
-
-        private static int MigrateSavedSpeed(int saved)
-        {
-            if (saved <= 9)
-                return saved <= 0 ? 0 : SnapBrightness(Math.Max(25, (int)Math.Round(saved * 100.0 / 9.0)));
-            return SnapBrightness(saved);
-        }
-
-        private static bool IsValidLightingEffectTag(string tag)
-        {
-            if (string.Equals(tag, "HW:0", StringComparison.Ordinal))
-                return true;
-            if (tag.StartsWith("HW:", StringComparison.Ordinal) &&
-                int.TryParse(tag.AsSpan(3), out int mode) &&
-                mode is >= 1 and <= 7)
-                return true;
-            return tag.StartsWith("DYN:", StringComparison.Ordinal) &&
-                   Enum.TryParse<CustomEffectMode>(tag.AsSpan(4), out var effect) &&
-                   effect is not (CustomEffectMode.None or CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge);
-        }
-
         private static bool IsValidZonePreset(string preset) => preset is
             "Custom" or "None" or "Predator" or "Cyberpunk" or "FireIce" or "Matrix" or "Stealth" or
-            "Sunset" or "Ocean" or "Ember" or "Vaporwave" or "Royal" or "Arctic" or
-            "Sakura" or "Rainbow" or "Toxic" or "Lava" or "Midnight" or "Dracula";
+            "Sunset" or "Ocean" or "Ember" or "Vaporwave" or
+            "Sakura" or "Rainbow" or "Toxic" or "Midnight" or "Dracula" or
+            "NeonHaze" or "DeepSpace" or "Inferno" or "CyberStorm";
 
         private static string GetEffectDisplayName(string effectTag, string preset)
         {
@@ -1229,11 +1087,14 @@ namespace PreySense.Frontend.ViewModels
                     CustomEffectMode.MatrixCascade => "Matrix Cascade",
                     CustomEffectMode.CylonScanner => "Cylon Scanner",
                     CustomEffectMode.AuroraDrift => "Aurora Drift",
-                    CustomEffectMode.OceanTide => "Ocean Tide",
                     CustomEffectMode.Heartbeat => "Heartbeat",
                     CustomEffectMode.LightningStorm => "Lightning Storm",
                     CustomEffectMode.Starlight => "Starlight",
-                    CustomEffectMode.IceCrystal => "Ice Crystal",
+                    CustomEffectMode.NeonPulse => "Neon Pulse",
+                    CustomEffectMode.PlasmaOrb => "Plasma Orb",
+                    CustomEffectMode.GlitchStorm => "Glitch Storm",
+                    CustomEffectMode.BioHazard => "Bio Hazard",
+                    CustomEffectMode.SolarFlare => "Solar Flare",
                     _ => effect.ToString()
                 };
             }
@@ -1256,33 +1117,5 @@ namespace PreySense.Frontend.ViewModels
             return "Static";
         }
 
-        [RelayCommand]
-        public async Task ToggleKbdTimeoutAsync()
-        {
-            IsKbdBacklightTimeoutEnabled = !IsKbdBacklightTimeoutEnabled;
-            int seconds = IsKbdBacklightTimeoutEnabled ? (KbdTimeoutSeconds > 0 ? KbdTimeoutSeconds : 30) : 0;
-            KbdTimeoutSeconds = seconds;
-            OnPropertyChanged(nameof(KbdTimeoutDisplay));
-            await Task.Run(() => _hw.SetKbdBacklightTimeoutSeconds(seconds));
-            StatusMessage = seconds > 0 ? $"Keyboard Backlight Sleep: {seconds}s" : "Keyboard Backlight: Always On (No Sleep)";
-        }
-
-        [RelayCommand]
-        public async Task SetKbdTimeoutSecondsAsync(object? param)
-        {
-            int sec = param switch
-            {
-                int i => i,
-                double d => (int)Math.Round(d),
-                string s when int.TryParse(s, out int parsed) => parsed,
-                _ => 30
-            };
-
-            KbdTimeoutSeconds = sec;
-            IsKbdBacklightTimeoutEnabled = sec > 0;
-            OnPropertyChanged(nameof(KbdTimeoutDisplay));
-            await Task.Run(() => _hw.SetKbdBacklightTimeoutSeconds(sec));
-            StatusMessage = sec > 0 ? $"Keyboard Backlight Sleep: {sec}s" : "Keyboard Backlight: Always On (No Sleep)";
-        }
     }
 }

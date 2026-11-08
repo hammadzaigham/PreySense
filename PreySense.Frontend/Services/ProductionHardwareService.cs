@@ -13,13 +13,10 @@ namespace PreySense.Frontend.Services
     {
         private readonly WmiController _wmi;
         private readonly Lazy<CustomLightingEffectsEngine> _lightingEngine;
-        private readonly Lazy<PdhCpuPowerMonitor> _powerMonitor;
-        private readonly Lazy<PdhCpuFrequencyMonitor> _frequencyMonitor;
         private readonly Lazy<int?> _memorySpeed = new(ReadMemorySpeed);
         private int _kbdTimeoutSeconds;
 
         public event EventHandler<byte>? PowerModeChanged;
-        public event EventHandler? PowerSourceChanged;
 
         public byte CurrentPowerMode
         {
@@ -27,7 +24,7 @@ namespace PreySense.Frontend.Services
             {
                 if (_wmi.TryGetPowerProfile(out byte mode))
                     return mode;
-                return 0x01; // Balanced fallback
+                return byte.MaxValue; // Unavailable, never claim a hardware mode.
             }
         }
 
@@ -45,29 +42,21 @@ namespace PreySense.Frontend.Services
                 engine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
                 return engine;
             }, true);
-            _powerMonitor = new Lazy<PdhCpuPowerMonitor>(() => new PdhCpuPowerMonitor(), true);
-            _frequencyMonitor = new Lazy<PdhCpuFrequencyMonitor>(() => new PdhCpuFrequencyMonitor(), true);
-            _wmi.PowerSourceChanged += (_, _) =>
-            {
-                PowerSourceChanged?.Invoke(this, EventArgs.Empty);
-            };
-            // Power source events are unified and listened to via TurboKeyWatcher on APGeEvent
-            // to prevent WMI quota violations from duplicate event subscriptions.
-            TelemetryCoordinator.ConfigureSampler(SampleTelemetrySnapshot);
+            TelemetryCoordinator.ConfigureSampler(SampleTelemetrySnapshot, SampleFanOnlyTelemetrySnapshot);
         }
 
         public PowerSourceKind GetPowerSource() => _wmi.ReadPowerSource();
 
-        public void NotePluggedSource(PowerSourceKind kind) => _wmi.NotePluggedSource(kind);
-
-
         private TelemetrySnapshot SampleTelemetrySnapshot() =>
             TelemetryCollector.Read(TelemetryCoordinator.RequestedMetrics, this, !TelemetryCoordinator.HasUiDemand);
 
-        CpuTelemetrySnapshot? ITelemetrySources.ReadCpuUsage() => CpuUsageMonitor.GetSnapshot();
-        int? ITelemetrySources.ReadCpuTemperature() => PawnCpuPowerControl.ReadPackageTemperature();
-        float? ITelemetrySources.ReadCpuVoltage() => PawnCpuPowerControl.ReadCoreVid();
-        float? ITelemetrySources.ReadCpuPower() => _powerMonitor.Value.GetPackagePowerWatts();
+        private TelemetrySnapshot SampleFanOnlyTelemetrySnapshot() =>
+            TelemetryCollector.Read(TelemetryMetrics.Temperatures, this, fanOnly: true);
+
+        CpuTelemetrySnapshot? ITelemetrySources.ReadCpuUsage() => CpuUsageMonitor.GetSnapshot(aggregateOnly: true);
+        int? ITelemetrySources.ReadCpuTemperature() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadPackageTemperature();
+        float? ITelemetrySources.ReadCpuVoltage() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadCoreVoltageVid();
+        float? ITelemetrySources.ReadCpuPower() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadPackagePowerWatts();
         int? ITelemetrySources.ReadRamSpeed() => _memorySpeed.Value;
         NvidiaGpuControl.Metrics ITelemetrySources.ReadGpu(TelemetryMetrics metrics)
         {
@@ -81,10 +70,39 @@ namespace PreySense.Frontend.Services
             return Gpu.ReadMetrics(metrics);
         }
 
+        CpuClockSnapshot ITelemetrySources.ReadCpuClockSnapshot(TelemetryMetrics requested) => ReadDriverClocks();
+
+        private static CpuClockSnapshot ReadDriverClocks()
+        {
+            var sample = PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.SampleTopologyClocks();
+            if (sample is not { } clocks) return default;
+            static int? Max(int? a, int? b) => a.HasValue && b.HasValue ? Math.Max(a.Value, b.Value) : a ?? b;
+            return new(clocks.PCoreActiveMhz, clocks.ECoreActiveMhz,
+                Max(clocks.PCoreActiveMhz, clocks.ECoreActiveMhz),
+                Max(clocks.PCoreEffectiveMhz, clocks.ECoreEffectiveMhz));
+        }
+
         (int? Performance, int? Efficiency) ITelemetrySources.ReadCpuClocks()
         {
-            return _frequencyMonitor.Value.TrySampleFrequencies(out int performance, out _, out _, out int efficiency)
-                ? (performance > 0 ? performance : null, efficiency > 0 ? efficiency : null) : default;
+            var clocks = ReadDriverClocks();
+            return (clocks.PerformanceMhz, clocks.EfficiencyMhz);
+        }
+
+        (int? ActiveMhz, int? EffectiveMhz) ITelemetrySources.ReadCpuActiveEffectiveClocks()
+        {
+            var clocks = ReadDriverClocks();
+            return (clocks.ActiveMhz, clocks.EffectiveMhz);
+        }
+
+        (int? Pl1Watts, int? Pl2Watts) ITelemetrySources.ReadCpuPowerLimits()
+        {
+            var snap = PreySense.Core.Hardware.CpuDriverRuntime.PowerLimits?.ReadMsrPowerLimits();
+            if (snap is { Success: true } s)
+            {
+                return (s.Pl1Watts > 0 ? s.Pl1Watts : null, s.Pl2Watts > 0 ? s.Pl2Watts : null);
+            }
+
+            return default;
         }
 
         (int? Percent, int? UsedMb) ITelemetrySources.ReadRamUsage()
@@ -264,13 +282,12 @@ namespace PreySense.Frontend.Services
             _wmi.SetLogoLighting(mode, color.R, color.G, color.B, brightness, speed, enabled);
         }
 
-        // ACPI / WMI Native System Controls
+        // WMI / platform system controls
         public bool GetLcdOverdrive()
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
-                return key?.GetValue("LcdOverdrive") is int value && value == 1;
+                return PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Display.LcdOverdrive;
             }
             catch
             {
@@ -333,10 +350,6 @@ namespace PreySense.Frontend.Services
         {
             if (_lightingEngine.IsValueCreated)
                 _lightingEngine.Value.Dispose();
-            if (_powerMonitor.IsValueCreated)
-                _powerMonitor.Value.Dispose();
-            if (_frequencyMonitor.IsValueCreated)
-                _frequencyMonitor.Value.Dispose();
             _wmi.Dispose();
             TelemetryCoordinator.Reset();
             GC.SuppressFinalize(this);

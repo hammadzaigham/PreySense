@@ -7,7 +7,7 @@ namespace PreySense.Mode
 {
     /// <summary>
     /// Governs CPU Boost and hardware power limits.
-    /// Uses PawnIO for static/MSR limits, ACPI for dynamic/MMIO limits, and powercfg for boost.
+    /// Uses the bundled CPU driver for MSR/MMIO limits and powercfg for boost.
     /// </summary>
     public class PowerLimitController
     {
@@ -15,35 +15,37 @@ namespace PreySense.Mode
         private static readonly object PowerCfgGate = new();
         public static string LastCpuPowerLimitStatus { get; private set; } = "CPU limits have not been applied.";
         /// <summary>
-        /// Applies matching limits to ACPI/MMIO and PawnIO/MSR 0x610.
+        /// Applies matching limits through the bundled driver's verified MSR/MMIO transaction.
         /// A partial result returns false and is described by LastCpuPowerLimitStatus.
         /// </summary>
         public static bool SetCpuPowerLimits(
             int pl1Watts,
             int pl2Watts,
             bool pl2Enable = true,
-            int tauSeconds = PreySense.Core.Acpi.CpuPowerLimitConfiguration.FactoryTauSeconds)
+            int tauSeconds = PreySense.Core.Driver.CpuPowerLimitConfiguration.FactoryTauSeconds)
         {
             lock (CpuLimitGate)
             {
-            pl1Watts = Math.Clamp(pl1Watts, 5, PreySense.Core.Acpi.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
-            pl2Watts = Math.Clamp(pl2Watts, 5, PreySense.Core.Acpi.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
-            uint pl1Mw = (uint)(pl1Watts * 1000);
-            uint pl2Mw = (uint)(Math.Max(5, pl2Watts) * 1000);
-
-            byte tauTimeWindow = PreySense.Core.Acpi.CpuPowerLimitConfiguration.EncodeTauSelection(tauSeconds);
-            bool success = PreySense.Core.Hardware.PreySenseWmiDeviceClient.SetCpuPowerLimits(pl1Mw, pl2Mw, tauTimeWindow);
-            if (success)
+            pl1Watts = Math.Clamp(pl1Watts, 5, PreySense.Core.Driver.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
+            pl2Watts = Math.Clamp(pl2Watts, 5, PreySense.Core.Driver.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
+            var driverController = PreySense.Core.Hardware.CpuDriverRuntime.PowerLimits;
+            var backend = PreySense.Core.Hardware.CpuDriverRuntime.Backend;
+            if (driverController == null || backend == null)
             {
-                var read = PreySense.Core.Hardware.PreySenseWmiDeviceClient.GetCpuPowerLimitsWithTau();
-                success = read.success && read.pl1Milliwatts == pl1Mw && read.pl2Milliwatts == pl2Mw && read.tauEncoded == tauTimeWindow;
+                LastCpuPowerLimitStatus = PreySense.Core.Hardware.CpuDriverRuntime.Status;
+                AppLogger.Log(LastCpuPowerLimitStatus);
+                return false;
             }
-            bool staticSuccess = PawnCpuPowerControl.TrySetLimits(pl1Watts, pl2Watts, pl2Enable, tauSeconds, out string staticStatus);
-            LastCpuPowerLimitStatus = $"{staticStatus}; Dynamic/MMIO {(success ? "verified" : "failed/readback differed")}.";
-            string tauDisplay = PreySense.Core.Acpi.CpuPowerLimitConfiguration.FormatTauSelection(tauSeconds);
-            AppLogger.Log($"[CPU Power Limits] SetCpuPowerLimits(PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauDisplay}/0x{tauTimeWindow:X2}) via ACPI-WMI -> {(success ? "Success" : "Failed/NotDiscovered")}");
+
+            if (!backend.TryReadMchbar(out ulong mchbar))
+            {
+                LastCpuPowerLimitStatus = "Cannot discover the supported CPU MCHBAR; nothing was written.";
+                return false;
+            }
+            var result = driverController.ExecuteCombinedTransaction(mchbar, pl1Watts, pl2Watts, pl2Enable, tauSeconds);
+            LastCpuPowerLimitStatus = result.Status;
             AppLogger.Log(LastCpuPowerLimitStatus);
-            return success && staticSuccess;
+            return result.Success;
             }
         }
 

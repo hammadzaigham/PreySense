@@ -7,6 +7,8 @@ namespace PreySense.Frontend.ViewModels;
 
 public partial class MainViewModel
 {
+    public string[] FanCurveModeNames { get; } = { "Eco", "Quiet", "Balanced", "Performance", "Turbo" };
+
     private readonly object _fanControlGate = new();
     private readonly FanCurveFollower _cpuFanFollower = new();
     private readonly FanCurveFollower _gpuFanFollower = new();
@@ -83,7 +85,7 @@ public partial class MainViewModel
         UpdateFanDemand();
         if (_runningFanProfileMode == mode && _runningFanProfile?.ControlMode != FanControlMode.Custom)
             ProcessFanCurves(default);
-        StatusMessage = $"{ProfileManager.ModeToProfileName(mode)} fan settings saved.";
+        DiagnosticMessage = $"{ProfileManager.ModeToProfileName(mode)} fan settings saved.";
     }
     private void ResetFanFollower()
     {
@@ -98,10 +100,10 @@ public partial class MainViewModel
     }
     private void ProcessFanCurves(HardwareTelemetry telemetry)
     {
-        if (_disposed || IsFactoryCalibrationRunning) return;
+        if (_disposed) return;
         lock (_fanControlGate)
         {
-            if (_disposed || IsFactoryCalibrationRunning || _fanWriteFailed) return;
+            if (_disposed || _fanWriteFailed) return;
             // Mode changes already invalidate this profile through the mode event/apply paths.
             // Avoid another ACPI query on every telemetry sample.
             byte mode = _runningFanProfileMode;
@@ -165,7 +167,7 @@ public partial class MainViewModel
         UpdateFanDemand();
         _sentCpuFan = _sentGpuFan = null;
         _sentMaxFanMode = false;
-        _dispatcher.InvokeAsync(() => StatusMessage = "Fan update failed; automatic writes paused. Apply fan settings again to resume.");
+        _dispatcher.InvokeAsync(() => DiagnosticMessage = "Fan update failed; automatic writes paused. Apply fan settings again to resume.");
     }
     private void RestoreFanMode()
     {
@@ -209,6 +211,6 @@ public partial class MainViewModel
             if (_runningFanProfile == null || _fanWriteFailed)
                 throw new InvalidOperationException("Fan settings could not be applied.");
         }
-        StatusMessage = "Fan settings saved; following the selected mode.";
+        DiagnosticMessage = "Fan settings saved; following the selected mode.";
     }
 }

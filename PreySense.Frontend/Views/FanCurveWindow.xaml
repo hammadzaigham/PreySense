@@ -11,7 +11,7 @@
             <controls:WindowTitleBar Title="Fans"/>
             <StackPanel Margin="{StaticResource WindowContentMargin}">
                 <controls:SettingDropdownRow x:Name="ProfileRow" Title="Profile Mode"
-                    ItemsSource="{Binding GameModeNames}" DropdownWidth="140" Margin="0,0,0,12"/>
+                    ItemsSource="{Binding FanCurveModeNames}" DropdownWidth="140" Margin="0,0,0,12"/>
                 <UniformGrid Columns="3" Margin="{StaticResource StandardSectionMargin}">
                     <RadioButton x:Name="AutoOption" Content="Auto" GroupName="FanControl" Style="{StaticResource SegmentedTabRadioStyle}" Checked="FanMode_Changed"/>
                     <RadioButton x:Name="MaxOption" Content="Max" GroupName="FanControl" Style="{StaticResource SegmentedTabRadioStyle}" Checked="FanMode_Changed"/>

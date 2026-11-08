@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Win32;
-using PreySense.Core.Acpi;
+using PreySense.Core.Driver;
 using PreySense.Core.Services;
 using PreySense;
 using PreySense.Frontend.Services;
@@ -29,62 +29,100 @@ namespace PreySense.Frontend.ViewModels
 
         public IHardwareService HardwareService => _hw;
 
-        public DtsAudioViewModel Dts { get; }
 
         [ObservableProperty] private bool _isAcConnected = true;
 
         // Status Feedback
-        [ObservableProperty] private string _statusMessage = "Ready";
+        private string _diagnosticMessage = string.Empty;
+        // Operation details are logged, not exposed as application status UI.
+        public string DiagnosticMessage
+        {
+            get => _diagnosticMessage;
+            private set { _diagnosticMessage = value; AppLogger.Log(value); }
+        }
         [ObservableProperty] private bool _isBusy = false;
 
         private bool? _lastAcState = null;
-        private PowerSourceKind _currentPowerSource = PowerSourceKind.Ac;
+        private PowerSourceKind _currentPowerSource = PowerSourceKind.Unknown;
+        private PowerSourceKind? _latestPowerSourceEvent;
+        private readonly object _powerSourceEventLock = new();
 
         private bool UpdatePowerSourceState(PowerSourceKind source)
         {
             _currentPowerSource = source;
-            IsAcConnected = source != PowerSourceKind.Battery;
+            if (source == PowerSourceKind.Unknown)
+            {
+                DiagnosticMessage = "Power source: N/A. Automatic power-source changes are paused.";
+                return IsAcConnected;
+            }
+            IsAcConnected = source == PowerSourceKind.Ac;
             return IsAcConnected;
         }
 
-        private void OnPowerSourceReceived(object? sender, PowerSourceKind source)
-        {
-            if (source is PowerSourceKind.Ac or PowerSourceKind.UsbC)
-            {
-                _hw.NotePluggedSource(source);
-            }
-            OnPowerSourceChanged(this, EventArgs.Empty);
-        }
+        // Acer APGeEvent (category 0x08) is the authority for AC/battery transitions.
+        private void OnAcerPowerSourceReceived(object? sender, PowerSourceKind source) =>
+            QueuePowerSourceChange(source);
 
-        private void OnPowerSourceChanged(object? sender, EventArgs e)
+        private void QueuePowerSourceChange(PowerSourceKind source)
         {
-            if (_disposed || Interlocked.Exchange(ref _powerSourceUpdateQueued, 1) != 0)
+            if (_disposed || source == PowerSourceKind.Unknown)
+                return;
+
+            lock (_powerSourceEventLock)
+                _latestPowerSourceEvent = source;
+
+            if (Interlocked.Exchange(ref _powerSourceUpdateQueued, 1) != 0)
                 return;
 
             _dispatcher.BeginInvoke(() =>
             {
                 try
                 {
-                    if (_disposed)
-                        return;
-
-                    PowerSourceKind source = _hw.GetPowerSource();
-                    bool onAc = UpdatePowerSourceState(source);
-                    if (_lastAcState.HasValue && _lastAcState.Value != onAc)
+                    while (!_disposed)
                     {
-                        NotifyModeSelectionsChanged();
-                        ApplyAutoRefreshForPower(onAc);
-                        ApplyGpuBatteryAuto(onAc);
-                    }
+                        PowerSourceKind pending;
+                        lock (_powerSourceEventLock)
+                        {
+                            if (_latestPowerSourceEvent is not PowerSourceKind queued)
+                                break;
+                            pending = queued;
+                            _latestPowerSourceEvent = null;
+                        }
 
-                    _lastAcState = onAc;
-                    ApplyPowerProfileForSource(source);
+                        ApplyPowerSourceTransition(pending);
+                    }
                 }
                 finally
                 {
                     Volatile.Write(ref _powerSourceUpdateQueued, 0);
+                    PowerSourceKind? again;
+                    lock (_powerSourceEventLock)
+                        again = _latestPowerSourceEvent;
+                    if (again is PowerSourceKind pending && !_disposed)
+                        QueuePowerSourceChange(pending);
                 }
             });
+        }
+
+        private void ApplyPowerSourceTransition(PowerSourceKind source)
+        {
+            bool onAc = UpdatePowerSourceState(source);
+            if (source == PowerSourceKind.Unknown)
+            {
+                _lastAcState = null;
+                return;
+            }
+
+            if (_lastAcState.HasValue && _lastAcState.Value != onAc)
+            {
+                NotifyModeSelectionsChanged();
+                ApplyAutoRefreshForPower(onAc);
+                ApplyGpuBatteryAuto(onAc);
+            }
+
+            _lastAcState = onAc;
+            AppLogger.Log($"Power source transition: {source}; applying {(onAc ? "AC" : "battery")} profile.");
+            ApplyPowerProfileForSource(source);
         }
 
         public MainViewModel(IHardwareService hw)
@@ -94,20 +132,17 @@ namespace PreySense.Frontend.ViewModels
             AttachSessionLifecycleHooks();
 
             _dispatcher = Dispatcher.CurrentDispatcher;
-            Dts = new DtsAudioViewModel(_dispatcher);
             _hw.PowerModeChanged += OnPowerModeChanged;
-            _hw.PowerSourceChanged += OnPowerSourceChanged;
             SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             _turboKeyWatcher = new TurboKeyWatcher();
             _turboKeyWatcher.TurboKeyPressed += OnTurboKeyPressed;
-            _turboKeyWatcher.PowerSourceReceived += OnPowerSourceReceived;
+            _turboKeyWatcher.PowerSourceReceived += OnAcerPowerSourceReceived;
             if (_hw is not MockHardwareService)
             {
                 _turboKeyWatcher.Start();
             }
             _hidModeKeyWatcher = new HidModeKeyWatcher(HandleModeKeyPressed, StepKeyboardBrightness);
             _turboKeyWatcher.BrightnessKeyPressed += OnBrightnessKeyPressed;
-            StartGameLaunchWatcher();
 
             UpdateFanDemand();
 
@@ -119,67 +154,55 @@ namespace PreySense.Frontend.ViewModels
 
             try
             {
-                using var advKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\PreySense\AdvancedSettings");
-                IsLcdOverdriveEnabled = advKey?.GetValue("LcdOverdrive") is int od ? od == 1 : false;
-                if (advKey?.GetValue("BlueLightShield") is int bl)
-                {
-                    BlueLightShieldMode = Math.Clamp(bl, 0, 2);
-                }
-                if (advKey?.GetValue("AcpiOverrideEnabled") is int ov)
-                {
-                    IsAcpiOverrideEnabled = ov == 1;
-                }
-                if (advKey?.GetValue("CpuBoost") is int boost)
-                {
-                    CpuBoostMode = Math.Clamp(boost, 0, 6);
-                    CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
-                }
+                var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
+                _isHardwareTuningEnabled = cfg.General.HardwareTuningEnabled && cfg.Tuning.HasFactoryDefaults;
 
-                bool? savedServicesDebloated = AcerServiceDebloater.GetRegistryState();
-                if (savedServicesDebloated.HasValue)
+                CpuBoostMode = cfg.Tuning.CpuBoostMode > 0 ? 1 : 0;
+                CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
+
+                // JSON preference paints the UI immediately; reconcile against live
+                // SCM state so a default `false` does not hide an already-debloated machine.
+                IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
+                DebloaterStatusText = IsAcerServicesDebloated
+                    ? "Acer OEM Services: Stopped & Disabled (~400MB Saved)"
+                    : "Acer OEM Services: Active";
+                _ = Task.Run(() =>
                 {
-                    IsAcerServicesDebloated = savedServicesDebloated.Value;
-                    DebloaterStatusText = IsAcerServicesDebloated
-                        ? "Acer OEM Services: Stopped & Disabled (~400MB Saved)"
-                        : "Acer OEM Services: Active";
-                }
-                else
-                {
-                    DebloaterStatusText = "Acer OEM Services: Active";
-                    _ = Task.Run(() =>
+                    bool acerDisabled = AcerServiceDebloater.AreAllServicesDisabled();
+                    _dispatcher.InvokeAsync(() =>
                     {
-                        bool disabled = AcerServiceDebloater.AreAllServicesDisabled();
-                        _dispatcher.InvokeAsync(() =>
+                        if (_disposed)
+                            return;
+                        if (IsAcerServicesDebloated != acerDisabled)
                         {
-                            if (_disposed)
-                                return;
-                            IsAcerServicesDebloated = disabled;
-                            DebloaterStatusText = disabled
+                            IsAcerServicesDebloated = acerDisabled;
+                            DebloaterStatusText = acerDisabled
                                 ? "Acer OEM Services: Stopped & Disabled (~400MB Saved)"
                                 : "Acer OEM Services: Active";
-                        });
+                            try { AcerServiceDebloater.SaveState(acerDisabled); } catch { }
+                        }
                     });
-                }
+                });
             }
             catch
             {
-                IsLcdOverdriveEnabled = false;
-                IsAcpiOverrideEnabled = false;
+                IsHardwareTuningEnabled = false;
             }
 
-            ActiveGpuMuxMode = LoadGpuModePreference();
+            ActiveGpuMuxMode = -1;
             GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
 
             LoadCoverLightingSettings();
             LoadRgbSettings();
-            LoadCpuLimitsFromRegistry();
+            LoadTuningProfilesFromJson();
             LoadSessionPreferences();
             UpdateModeName(ActivePowerMode);
 
             NotifyModeSelectionsChanged();
             NotifyGpuSelectionsChanged();
             NotifyRefreshRateChanged();
-            PersistSessionSettings();
+            // Lighting is loaded from JSON and applied once at session start — do not rewrite it here.
+            PersistSessionSettings(includeLighting: false);
 
             int startupPl1 = ActivePowerMode switch
             {
@@ -201,7 +224,7 @@ namespace PreySense.Frontend.ViewModels
             Pl2Watts = startupPl2;
             TauSeconds = TauForMode(ActivePowerMode);
 
-            _ = InitializeSessionAsync();
+            _ = InitializeTuningAndSessionAsync();
             if (_hw is MockHardwareService)
                 InitializeMockHardwareDiscovery();
             else
@@ -283,10 +306,11 @@ namespace PreySense.Frontend.ViewModels
 
         private void OnPowerModeChanged(object? sender, byte mode)
         {
-            App.Current?.Dispatcher?.InvokeAsync(() =>
+            App.Current?.Dispatcher?.InvokeAsync(async () =>
             {
                 if (_disposed) return;
-                if (IsFactoryCalibrationRunning) return;
+                if (IsBusy || _isRestoringSession || _modeSwitchGate.CurrentCount == 0) return;
+                if (!_hw.TryGetPowerMode(out byte confirmedMode) || confirmedMode != mode) return;
                 // PreySense owns the chassis Mode / Turbo key. Ignore OEM firmware
                 // echoes while a local cycle is pending or just queued.
                 if (IsModeSelectionPending()
@@ -294,6 +318,11 @@ namespace PreySense.Frontend.ViewModels
                     || ActivePowerMode == mode)
                     return;
                 _ = Task.Run(RestoreFanMode);
+                if (IsHardwareTuningEnabled)
+                {
+                    await ApplyModeSwitchAsync(mode);
+                    return;
+                }
                 ActivePowerMode = mode;
                 ApplyCpuBoostForMode(mode);
                 UpdateModeName(mode);
@@ -329,24 +358,19 @@ namespace PreySense.Frontend.ViewModels
             _applicationReady.TrySetResult();
             DisposeFanTelemetry();
             ReleaseCustomFans();
-            PreySense.Mode.PawnCpuPowerControl.Dispose();
+            PreySense.Core.Hardware.CpuDriverRuntime.Dispose();
             PersistSessionSettings();
             DetachSessionLifecycleHooks();
             _hw.PowerModeChanged -= OnPowerModeChanged;
-            _hw.PowerSourceChanged -= OnPowerSourceChanged;
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             DisposeDisplaySettingsWatcher();
             _turboKeyWatcher.TurboKeyPressed -= OnTurboKeyPressed;
             _turboKeyWatcher.BrightnessKeyPressed -= OnBrightnessKeyPressed;
-            _turboKeyWatcher.PowerSourceReceived -= OnPowerSourceReceived;
+            _turboKeyWatcher.PowerSourceReceived -= OnAcerPowerSourceReceived;
             _turboKeyWatcher.Dispose();
             _hidModeKeyWatcher.Dispose();
-            _gameLaunchWatcher?.Dispose();
-            _gameLaunchWatcher = null;
             CancelPendingModeSwitch();
             _modeSwitchGate.Dispose();
-            Dts.DisposeManager();
-            _usbChargingDebouncer.Dispose();
             _lightingDebouncer.Dispose();
             if (_coverSyncFrameHooked && _hw is ProductionHardwareService hooked)
             {
@@ -365,7 +389,7 @@ namespace PreySense.Frontend.ViewModels
             0x04 => "Performance",
             0x05 => "Turbo",
             0x06 => "Eco",
-            _ => "Custom"
+            _ => "N/A"
         });
     }
 }

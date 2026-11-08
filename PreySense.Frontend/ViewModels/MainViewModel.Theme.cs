@@ -11,6 +11,6 @@ public partial class MainViewModel
     partial void OnIsLightThemeChanged(bool value)
     {
         ThemeManager.Apply(value);
-        StatusMessage = value ? "Theme: Light" : "Theme: Dark";
+        DiagnosticMessage = value ? "Theme: Light" : "Theme: Dark";
     }
 }
