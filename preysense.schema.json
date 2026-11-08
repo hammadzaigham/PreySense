@@ -55,25 +55,12 @@
       "properties": {
         "ChargeLimitEnabled": {
           "type": "boolean",
-          "description": "Acer 80% battery charge care limit toggle."
-        },
-        "UsbChargingPercent": {
-          "type": "integer",
-          "enum": [
-            0,
-            10,
-            20,
-            30
-          ],
-          "description": "Cutoff battery percentage for USB charging while system is off."
+          "default": true,
+          "description": "Acer 80% battery charge care limit toggle. Default true (80%)."
         },
         "BatteryEnergySaver": {
           "type": "boolean",
           "description": "Automatic Windows energy saver toggle when on battery."
-        },
-        "GpuBatteryAuto": {
-          "type": "boolean",
-          "description": "Automatic switch to Eco mode on battery."
         }
       }
     },
@@ -441,11 +428,6 @@
         },
         "ApplyFanCurve": {
           "type": "boolean"
-        },
-        "FanRampUp": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 10
         }
       }
     },

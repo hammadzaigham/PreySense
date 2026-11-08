@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
-        Title="PreySense • Fans" Width="540" SizeToContent="Height"
+        Title="PreySense • Fans" Width="560" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" WindowStyle="None" AllowsTransparency="True"
         ResizeMode="NoResize" ShowInTaskbar="False" Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource AppFontFamily}">
@@ -23,12 +23,16 @@
                     RightIcon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
                     SelectionChanged="FanTab_Changed"/>
                 <StackPanel x:Name="CurveEditor">
+                    <controls:SettingSliderRow x:Name="DelayRow" Title="Fan Control Delay"
+                        Minimum="0" Maximum="5" SmallChange="1" LargeChange="1" TickFrequency="1"
+                        IsSnapToTickEnabled="True" Value="0" ValueText="0 s"
+                        ValueChanged="DelayRow_ValueChanged" Margin="0,0,0,8"/>
                     <Border BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="1" CornerRadius="4" Padding="4">
-                        <controls:WpfFanCurveControl x:Name="Curve" Height="300"/>
+                        <controls:WpfFanCurveControl x:Name="Curve" Height="260"/>
                     </Border>
-                    <controls:SettingValueRow x:Name="PointRow" Title="Selected Point" Minimum="0" Maximum="100" Unit="%" ValueCommitted="Point_Committed" Margin="0,8,0,0"/>
-                    <controls:SettingSliderRow x:Name="RampRow" Title="Fan Control Delay" Minimum="0" Maximum="5"
-                        SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,8,0,0"/>
+                    <controls:SettingValueRow x:Name="RowTemp" Title="Temp" Minimum="40" Maximum="100" Unit="&#xB0;C" ValueCommitted="StageField_Committed" Margin="0,8,0,0"/>
+                    <controls:SettingValueRow x:Name="RowDuty" Title="Duty" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
+                    <controls:SettingValueRow x:Name="RowRpm" Title="RPM" Minimum="0" Maximum="6400" Unit="RPM" ValueCommitted="StageField_Committed"/>
                 </StackPanel>
             </StackPanel>
             <UniformGrid x:Name="FooterPanel" Columns="3" Style="{StaticResource WindowFooterPanelStyle}">

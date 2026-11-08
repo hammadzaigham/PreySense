@@ -64,7 +64,6 @@ namespace PreySense.Frontend.ViewModels
                     : ProfileManager.SourceProfileIndex(ProfileManager.DefaultBatterySourceMode);
 
                 IsBatteryEnergySaverEnabled = cfg.Battery.BatteryEnergySaver;
-                IsGpuBatteryAutoEnabled = cfg.Battery.GpuBatteryAuto;
 
                 UpdatePowerSourceState(_hw.GetPowerSource());
                 _suppressPowerProfile = false;
@@ -92,7 +91,6 @@ namespace PreySense.Frontend.ViewModels
                     cfg.Session.AcPowerMode = ProfileManager.SourceProfileMode(AcPowerModeIndex);
                     cfg.Session.BatteryPowerMode = ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex);
                     cfg.Battery.BatteryEnergySaver = IsBatteryEnergySaverEnabled;
-                    cfg.Battery.GpuBatteryAuto = IsGpuBatteryAutoEnabled;
                 });
             }
             catch (Exception ex)
@@ -209,7 +207,6 @@ namespace PreySense.Frontend.ViewModels
                     bool onAc = source == PowerSourceKind.Ac;
                     _lastAcState = onAc;
                     ApplyAutoRefreshForPower(onAc);
-                    ApplyGpuBatteryAuto(onAc);
                     DiagnosticMessage = reason.Equals("startup", StringComparison.OrdinalIgnoreCase)
                         ? "Saved settings applied."
                         : "Saved settings reapplied after wake.";

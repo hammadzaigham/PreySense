@@ -153,8 +153,39 @@ namespace PreySense.Frontend.Views
             if (!Draft.TauSeconds.HasValue && LabelTau is not null) LabelTau.Text = string.Empty;
             if (RowProchotOffset != null)
                 RowProchotOffset.Value = vm.TuningEditorProchotOffset is int offset ? offset : double.NaN;
+            if (SwitchApplyCpuLimits != null)
+                SwitchApplyCpuLimits.IsChecked = Draft.ApplyCpuLimits;
+            if (SwitchApplyGpuLimits != null)
+                SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits;
             UpdateGpuDraftLabels();
+            UpdateApplyLimitPanels();
+            UpdateActionButtonsEnabled();
             _isUpdatingUi = false;
+        }
+
+        private void ApplyLimitsToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
+            Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
+            Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
+            UpdateApplyLimitPanels();
+            UpdateActionButtonsEnabled();
+        }
+
+        private void UpdateApplyLimitPanels()
+        {
+            if (CpuLimitsPanel != null)
+                CpuLimitsPanel.IsEnabled = SwitchApplyCpuLimits?.IsChecked == true;
+            if (GpuLimitsPanel != null)
+                GpuLimitsPanel.IsEnabled = SwitchApplyGpuLimits?.IsChecked == true;
+        }
+
+        private void UpdateActionButtonsEnabled()
+        {
+            bool anyLimits = SwitchApplyCpuLimits?.IsChecked == true || SwitchApplyGpuLimits?.IsChecked == true;
+            if (BtnApply != null) BtnApply.IsEnabled = anyLimits;
+            if (BtnSave != null) BtnSave.IsEnabled = anyLimits;
+            if (BtnReset != null) BtnReset.IsEnabled = anyLimits;
         }
 
         private void CommitSlider(System.Windows.Controls.Slider slider)
@@ -261,10 +292,10 @@ namespace PreySense.Frontend.Views
             SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value));
 
         private static int SnapGpuDelta(double watts) =>
-            (int)Math.Round(Math.Clamp(watts, 0, 50) / 5, MidpointRounding.AwayFromZero) * 5;
+            (int)Math.Round(Math.Clamp(watts, 0, PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts) / 5, MidpointRounding.AwayFromZero) * 5;
 
         private static int SnapGpuDynamicBoost(double watts) =>
-            watts < 5 ? 0 : Math.Clamp((int)Math.Round(watts / 5, MidpointRounding.AwayFromZero) * 5, 10, 25);
+            (int)Math.Round(Math.Clamp(watts, 0, PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDynamicBoostWatts) / 5, MidpointRounding.AwayFromZero) * 5;
 
         private static int SnapPlatformPowerOffset(double watts) =>
             (int)Math.Round(Math.Clamp(watts, 0, 100) / 5, MidpointRounding.AwayFromZero) * 5;
@@ -343,10 +374,14 @@ namespace PreySense.Frontend.Views
             if (confirmation.ShowDialog() != true)
                 return;
 
+            bool applyCpu = SwitchApplyCpuLimits?.IsChecked == true;
+            bool applyGpu = SwitchApplyGpuLimits?.IsChecked == true;
             _isUpdatingUi = true;
 
             vm.ResetModeToCapturedFactoryDefaults(_selectedModeIndex);
             _drafts[_selectedModeIndex] = vm.FactoryTuningMode(_selectedModeIndex) ?? new();
+            Draft.ApplyCpuLimits = applyCpu;
+            Draft.ApplyGpuLimits = applyGpu;
 
             _isUpdatingUi = false;
             LoadModeData();
@@ -373,17 +408,35 @@ namespace PreySense.Frontend.Views
             SetVerificationText(string.Empty);
             RowPl1.CommitText(notify: false); RowPl2.CommitText(notify: false);
             RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
+            Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
+            Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
             Draft.CpuPl1Watts = double.IsFinite(RowPl1.Value) ? (int)RowPl1.Value : null;
             Draft.CpuPl2Watts = double.IsFinite(RowPl2.Value) ? (int)RowPl2.Value : null;
+            Draft.TauSeconds = ReadTauSeconds();
+            Draft.GpuDeltaWatts = SnapGpuDelta(SliderGpuDelta.Value);
+            Draft.GpuDynamicBoostWatts = SnapGpuDynamicBoost(SliderGpuDynamicBoost.Value);
+            Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value);
             if (vm.IsProchotOffsetEnabled && vm.ProchotOffsetCelsius is null)
             {
                 SetVerificationText(Services.LocalizationService.Translate("Enter a PROCHOT offset or turn its switch off."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
-            if (!Draft.HasValues)
+            if (!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Choose CPU boost, CPU limits, time limit, GPU offsets, and platform power offset before applying."),
+                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU or GPU power limits before applying."),
+                    TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
+                return;
+            }
+            if (Draft.ApplyCpuLimits && !Draft.HasCpuLimitValues)
+            {
+                SetVerificationText(Services.LocalizationService.Translate("Choose CPU limits and time limit before applying."),
+                    TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
+                return;
+            }
+            if (Draft.ApplyGpuLimits && !Draft.HasGpuLimitValues)
+            {
+                SetVerificationText(Services.LocalizationService.Translate("Choose GPU offsets and platform power offset before applying."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -394,7 +447,8 @@ namespace PreySense.Frontend.Views
             try
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
-                    ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, vm.IsProchotOffsetEnabled);
+                    ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, vm.IsProchotOffsetEnabled,
+                    Draft.ApplyCpuLimits, Draft.ApplyGpuLimits);
                 string message = verified
                     ? Services.LocalizationService.Translate("Applied and readback successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
@@ -409,7 +463,7 @@ namespace PreySense.Frontend.Views
             }
             finally
             {
-                BtnApply.IsEnabled = BtnSave.IsEnabled = BtnReset.IsEnabled = true;
+                UpdateActionButtonsEnabled();
                 ComboModeSelect.IsEnabled = TuningScroll.IsEnabled = true;
             }
         }

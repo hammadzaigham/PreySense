@@ -21,27 +21,42 @@ public partial class MainViewModel
 
     private int? _factoryProchotOffset;
     private bool? _factoryProchotOffsetLocked;
+    private int? _factoryTjMaxCelsius;
+    private int? _factoryStaticCpuPl1;
+    private int? _factoryStaticCpuPl2;
     internal Task TuningEnableTask { get; private set; } = Task.CompletedTask;
     internal Func<Dictionary<string, ModeTuningConfig>>? CaptureTuningDefaults { get; set; }
 
     internal async Task CaptureMissingFactoryDefaultsAsync()
     {
-        if (TuningStore.GetCurrent().Tuning.HasFactoryDefaults || _disposed) return;
+        var tuning = TuningStore.GetCurrent().Tuning;
+        // Re-capture when mode defaults or global static MSR floors are missing so Delta/static stay accurate.
+        if ((tuning.HasFactoryDefaults && tuning.HasFactoryStaticCpuLimits) || _disposed) return;
         bool gateHeld = false;
         try
         {
             await _modeSwitchGate.WaitAsync();
             gateHeld = true;
-            if (TuningStore.GetCurrent().Tuning.HasFactoryDefaults || _disposed) return;
+            tuning = TuningStore.GetCurrent().Tuning;
+            if ((tuning.HasFactoryDefaults && tuning.HasFactoryStaticCpuLimits) || _disposed) return;
             var defaults = await Task.Run(CaptureDefaultsWithDriver);
             if (_disposed) return;
-            if (!new TuningConfig { FactoryDefaults = defaults }.HasFactoryDefaults)
+            if (!new TuningConfig
+                {
+                    FactoryDefaults = defaults,
+                    FactoryStaticCpuPl1Watts = _factoryStaticCpuPl1,
+                    FactoryStaticCpuPl2Watts = _factoryStaticCpuPl2
+                }.HasFactoryDefaults
+                || _factoryStaticCpuPl1 is null || _factoryStaticCpuPl2 is null)
                 throw new InvalidOperationException("Calibration did not capture valid defaults for all five modes.");
             TuningStore.Update(cfg =>
             {
                 cfg.Tuning.FactoryDefaults = defaults;
+                cfg.Tuning.FactoryStaticCpuPl1Watts = _factoryStaticCpuPl1;
+                cfg.Tuning.FactoryStaticCpuPl2Watts = _factoryStaticCpuPl2;
                 if (_factoryProchotOffset.HasValue) cfg.Tuning.FactoryProchotOffsetCelsius = _factoryProchotOffset;
                 if (_factoryProchotOffsetLocked.HasValue) cfg.Tuning.FactoryProchotOffsetLocked = _factoryProchotOffsetLocked;
+                if (_factoryTjMaxCelsius.HasValue) cfg.Tuning.FactoryTjMaxCelsius = _factoryTjMaxCelsius;
             });
             // Constructor may have left the switch off when defaults were missing at startup.
             if (TuningStore.GetCurrent().General.HardwareTuningEnabled
@@ -67,7 +82,13 @@ public partial class MainViewModel
 
     private Dictionary<string, ModeTuningConfig> CaptureDefaultsWithDriver()
     {
-        if (CaptureTuningDefaults is not null) return CaptureTuningDefaults();
+        if (CaptureTuningDefaults is not null)
+        {
+            // Tests inject profiles only; supply static MSR floors so capture persistence stays complete.
+            _factoryStaticCpuPl1 ??= 55;
+            _factoryStaticCpuPl2 ??= 80;
+            return CaptureTuningDefaults();
+        }
         if (!GpuBasePowerWatts.HasValue)
         {
             int? detectedGpu = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
@@ -82,6 +103,9 @@ public partial class MainViewModel
         var profiles = calibration.Capture(GpuBasePowerWatts);
         _factoryProchotOffset = calibration.ProchotOffsetCelsius;
         _factoryProchotOffsetLocked = calibration.ProchotOffsetLocked;
+        _factoryTjMaxCelsius = calibration.TjMaxCelsius;
+        _factoryStaticCpuPl1 = calibration.StaticCpuPl1Watts;
+        _factoryStaticCpuPl2 = calibration.StaticCpuPl2Watts;
         return profiles;
     }
 

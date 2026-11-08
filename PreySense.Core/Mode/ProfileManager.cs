@@ -99,7 +99,6 @@ namespace PreySense.Mode
                 profile.ApplyCpuLimits = modeCfg.ApplyCpuLimits;
                 profile.ApplyGpuLimits = modeCfg.ApplyGpuLimits;
                 profile.ApplyFanCurve = modeCfg.ApplyFanCurve;
-                profile.FanRampUp = Math.Clamp(modeCfg.FanRampUp, 0, 10);
             }
             catch { }
 
@@ -126,7 +125,6 @@ namespace PreySense.Mode
                     modeCfg.ApplyCpuLimits = profile.ApplyCpuLimits;
                     modeCfg.ApplyGpuLimits = profile.ApplyGpuLimits;
                     modeCfg.ApplyFanCurve = profile.ApplyFanCurve;
-                    modeCfg.FanRampUp = profile.FanRampUp;
                 });
                 return true;
             }
@@ -156,7 +154,6 @@ namespace PreySense.Mode
                     modeCfg.ApplyCpuLimits = false;
                     modeCfg.ApplyGpuLimits = false;
                     modeCfg.ApplyFanCurve = false;
-                    modeCfg.FanRampUp = 1;
                 });
             }
             catch (Exception ex)

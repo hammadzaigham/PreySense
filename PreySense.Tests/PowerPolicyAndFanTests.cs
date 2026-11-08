@@ -58,7 +58,7 @@ namespace PreySense.Tests
             Assert.Contains("FansButton_Click", mainWindow);
             Assert.DoesNotContain("CustomCpuFanPercent", mainWindow);
             Assert.IsTrue(File.Exists(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml")));
-            Assert.IsTrue(File.Exists(Path.Combine(root, "PreySense.Frontend", "Controls", "WpfFanCurveControl.cs")));
+            Assert.IsTrue(File.Exists(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs")));
         }
 
         [TestMethod]
@@ -111,15 +111,6 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void EcFanPolicy_SnapsDutyToFivePercentSteps()
-        {
-            Assert.AreEqual(0, EcFanPolicy.SnapDuty(1));
-            Assert.AreEqual(45, EcFanPolicy.SnapDuty(47));
-            Assert.AreEqual(50, EcFanPolicy.SnapDuty(48));
-            Assert.AreEqual(100, EcFanPolicy.SnapDuty(99));
-        }
-
-        [TestMethod]
         public void PowerEvents_NormalizeExternalPowerToAc()
         {
             Assert.IsTrue(WmiController.TryParseAcerPowerEvent(new byte[] { 8, 0 }, out var battery));
@@ -131,30 +122,20 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void FanCurveWindow_ShowsCurveEditorAsDisabled_InAutoOrMaxMode()
+        public void FanCurveWindow_ShowsStageEditorAsDisabled_InAutoOrMaxMode()
         {
             string root = GetSolutionRoot();
             string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
-            string fanCurveControlCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Controls", "WpfFanCurveControl.cs"));
 
-            // FanTabs is outside CurveEditor so users can switch between CPU/GPU tabs even when disabled
             Assert.Contains("x:Name=\"FanTabs\"", fanWindowXaml);
+            Assert.Contains("x:Name=\"Curve\"", fanWindowXaml);
             Assert.Contains("x:Name=\"CurveEditor\"", fanWindowXaml);
-            int fanTabsIndex = fanWindowXaml.IndexOf("x:Name=\"FanTabs\"", StringComparison.Ordinal);
-            int curveEditorIndex = fanWindowXaml.IndexOf("x:Name=\"CurveEditor\"", StringComparison.Ordinal);
-            Assert.IsLessThan(curveEditorIndex, fanTabsIndex, "FanTabs should be positioned outside and above CurveEditor");
+            Assert.Contains("WpfFanCurveControl", fanWindowXaml);
 
-            // Editor is kept visible and disabled with dimming opacity; footer buttons only show in Custom mode
             Assert.Contains("CurveEditor.IsEnabled = isCustom;", fanWindowCs);
             Assert.Contains("CurveEditor.Opacity = isCustom ? 1.0 : 0.45;", fanWindowCs);
-            Assert.DoesNotContain("CurveEditor.Visibility", fanWindowCs);
             Assert.Contains("FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
-
-            // Control guards against interaction when disabled
-            Assert.Contains("if (!IsEnabled || !BeginPointEdit(e.GetPosition(this))) return;", fanCurveControlCs);
-            Assert.Contains("if (!IsEnabled) { Cursor = Cursors.Arrow; return; }", fanCurveControlCs);
-            Assert.Contains("if (!IsEnabled) return;", fanCurveControlCs);
         }
 
         [TestMethod]
@@ -163,16 +144,16 @@ namespace PreySense.Tests
             string root = GetSolutionRoot();
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
-            // Reset creates default profile with Auto control mode, updates draft, persists and applies
+            // Reset creates default EC stages, updates draft, persists and applies
             Assert.Contains("var defaultProfile = FanCurveProfile.CreateDefault(_mode);", fanWindowCs);
-            Assert.Contains("Vm?.SaveFanProfile(_mode, defaultProfile);", fanWindowCs);
+            Assert.Contains("Vm.SaveFanProfile(_mode, defaultProfile);", fanWindowCs);
             Assert.Contains("await Vm.ApplyFanProfileAsync();", fanWindowCs);
 
             var def = FanCurveProfile.CreateDefault(1);
             Assert.AreEqual(FanControlMode.Auto, def.ControlMode);
-            Assert.AreEqual(2, def.RampUpSeconds);
-            CollectionAssert.AreEqual(FanCurveProfile.DefaultCurve(1), def.Cpu);
-            CollectionAssert.AreEqual(FanCurveProfile.DefaultCurve(1, gpu: true), def.Gpu);
+            Assert.AreEqual(0, def.RampUpSeconds);
+            Assert.AreEqual(FanCurveProfile.StageCount, def.Stages.Length);
+            Assert.AreEqual(1800, def.Stages[1].CpuTargetRpm);
         }
 
         [TestMethod]

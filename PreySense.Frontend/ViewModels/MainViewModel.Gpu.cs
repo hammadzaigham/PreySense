@@ -16,7 +16,6 @@ namespace PreySense.Frontend.ViewModels
     public partial class MainViewModel
     {
         private int _gpuProcessRefreshInProgress;
-        private int _gpuBatteryTransitionInProgress;
         private int _gpuSwitchInProgress;
         private int _gpuDisplayRevision;
 
@@ -359,10 +358,7 @@ namespace PreySense.Frontend.ViewModels
                     // Adapter handles acquired before re-enable may still be invalid.
                     await Task.Run(_hw.RefreshGpuAdapter);
                     if (persistPreference)
-                    {
                         SaveGpuModePreference(muxVal);
-                        _gpuModeDeferredForBattery = null;
-                    }
                     DiagnosticMessage = $"GPU Mode set to {GetGpuModeName(muxVal)} (confirmed)";
                     var display = await Task.Run(() => (_hw.GetSupportedRefreshRates(), _hw.GetDisplayRefreshRate()));
                     ApplyRefreshRateOptions(display.Item1, display.Item2);
@@ -421,87 +417,8 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        private void ApplyGpuBatteryAuto(bool isAcConnected)
-        {
-            if (!IsGpuBatteryAutoEnabled || IsBiosDiscreteGpuActive)
-                return;
-
-            if (!isAcConnected)
-            {
-                // Battery automation applies to Auto and Hybrid/Optimus. Do
-                // not override NVIDIA-only or Advanced Optimus modes.
-                if ((ActiveGpuMuxMode is 0 or 1) && !IsGpuIgpuOnlyActive)
-                    _ = ApplyGpuBatteryOnlyAsync();
-                return;
-            }
-
-            // Restore the eligible mode that was active before battery mode:
-            // Auto returns to Auto and Hybrid/Optimus returns to Hybrid.
-            if (_gpuModeDeferredForBattery is 0 or 1)
-            {
-                int restoreMode = _gpuModeDeferredForBattery.Value;
-                _gpuModeDeferredForBattery = null;
-                if (IsGpuIgpuOnlyActive)
-                    _ = ApplyGpuMuxModeCoreAsync(restoreMode, persistPreference: false);
-            }
-        }
-
-        private async Task ApplyGpuBatteryOnlyAsync()
-        {
-            if (Interlocked.Exchange(ref _gpuBatteryTransitionInProgress, 1) != 0)
-                return;
-
-            if (!IsGpuBatteryAutoEnabled || IsBiosDiscreteGpuActive || ActiveGpuMuxMode is not (0 or 1) || IsGpuIgpuOnlyActive)
-            {
-                Volatile.Write(ref _gpuBatteryTransitionInProgress, 0);
-                return;
-            }
-
-            try
-            {
-            int restoreMode = ActiveGpuMuxMode;
-            _gpuModeDeferredForBattery = restoreMode;
-                await ApplyIgpuOnlyAsync();
-                if (!IsGpuIgpuOnlyActive)
-                    _gpuModeDeferredForBattery = null;
-                else
-                    DiagnosticMessage = "iGPU on Battery: switched to iGPU Only";
-            }
-            finally
-            {
-                Volatile.Write(ref _gpuBatteryTransitionInProgress, 0);
-            }
-        }
-
-        [RelayCommand]
-        public void ToggleGpuBatteryAuto()
-        {
-            IsGpuBatteryAutoEnabled = !IsGpuBatteryAutoEnabled;
-        }
-
-        partial void OnIsGpuBatteryAutoEnabledChanged(bool value)
-        {
-            try
-            {
-                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
-                {
-                    cfg.Battery.GpuBatteryAuto = value;
-                });
-            }
-            catch { }
-
-            PersistSessionSettings();
-            DiagnosticMessage = value
-                ? "iGPU on Battery: Enabled (iGPU-only while unplugged)"
-                : "iGPU on Battery: Disabled";
-
-            if (value)
-                ApplyGpuBatteryAuto(IsAcConnected);
-        }
-
         /// <summary>
-        /// Shows CustomModalDialog when user-facing processes still hold the dGPU,
-        /// used by manual iGPU Only and battery auto-switch paths.
+        /// Shows CustomModalDialog when user-facing processes still hold the dGPU.
         /// </summary>
         private bool ConfirmGpuBatterySwitchIfNeeded()
         {

@@ -23,8 +23,7 @@ public class TelemetryAndBoostRegressionTests
         Set(vm, "_dispatcher", Dispatcher.CurrentDispatcher);
         Set(vm, "_fanControlGate", new object());
         Set(vm, "_displaySettingsDebounceLock", new object());
-        Set(vm, "_cpuFanFollower", new FanCurveFollower());
-        Set(vm, "_gpuFanFollower", new FanCurveFollower());
+        Set(vm, "_fanFollower", new FanCurveFollower());
         Set(vm, "_runningFanProfileMode", (byte)1);
         Set(vm, "_runningFanProfile", new FanCurveProfile { ControlMode = FanControlMode.Auto });
         Set(vm, "_autoFanModeApplied", true);
@@ -47,12 +46,25 @@ public class TelemetryAndBoostRegressionTests
     {
         var hardware = new RecordingHardware();
         var vm = Create(hardware);
+        var stages = new FanStage[FanCurveProfile.StageCount];
+        for (int i = 0; i < stages.Length; i++)
+        {
+            stages[i] = new FanStage
+            {
+                CpuRiseC = FanStage.DisabledTripCelsius,
+                CpuFallC = FanStage.DisabledTripCelsius,
+                GpuRiseC = FanStage.DisabledTripCelsius,
+                GpuFallC = FanStage.DisabledTripCelsius,
+                CpuTargetRpm = 40 * FanStage.CpuMaxRpm / 100,
+                GpuTargetRpm = 50 * FanStage.GpuMaxRpm / 100
+            };
+        }
         Set(vm, "_runningFanProfile", new FanCurveProfile
         {
             ControlMode = FanControlMode.Custom,
-            Cpu = Enumerable.Repeat(40, FanCurveProfile.PointCount).ToArray(),
-            Gpu = Enumerable.Repeat(50, FanCurveProfile.PointCount).ToArray()
+            Stages = stages
         });
+        Set(vm, "_fanFollower", new FanCurveFollower());
         Set(vm, "_fanOverrideActive", true);
         Set(vm, "_fanSnapshotsSubscribed", true);
         await RunOnSensorThread(() => { TelemetryCoordinator.Poll(); TelemetryCoordinator.Poll(); });
@@ -60,7 +72,7 @@ public class TelemetryAndBoostRegressionTests
         Assert.AreEqual(0, hardware.Reads);
         Assert.AreEqual(0, hardware.TemperatureReads, "Fan control must not perform independent reads.");
         Assert.AreEqual(0, hardware.AutoWrites);
-        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(50, vm.AppliedCpuFanPercent);
         Assert.AreEqual(50, vm.AppliedGpuFanPercent);
     }
 

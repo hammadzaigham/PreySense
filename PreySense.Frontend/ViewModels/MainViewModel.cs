@@ -25,7 +25,6 @@ namespace PreySense.Frontend.ViewModels
         private int _pendingBrightnessDelta;
         private int _powerSourceUpdateQueued;
         private bool _disposed;
-        private int? _gpuModeDeferredForBattery;
 
         public IHardwareService HardwareService => _hw;
 
@@ -117,7 +116,6 @@ namespace PreySense.Frontend.ViewModels
             {
                 NotifyModeSelectionsChanged();
                 ApplyAutoRefreshForPower(onAc);
-                ApplyGpuBatteryAuto(onAc);
             }
 
             _lastAcState = onAc;

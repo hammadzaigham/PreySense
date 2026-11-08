@@ -14,32 +14,13 @@ The old global FanMode preference no longer controls the runtime. Legacy
 profile switches migrate to the new selection, respecting a saved global Auto
 override; an explicit new per-mode selection takes priority over legacy keys.
 
-Curve points are spaced 5°C apart from 40°C to 100°C. Output duty can be any whole
-percentage from 0 to 100; it is not quantized into 5% steps. The controller sends
-new targets when a temperature band changes and the output actually changes.
-Points cannot be lower than the previous point or higher than the next point.
-Clicking a point selects it without changing duty; empty graph clicks do nothing.
-Dragging starts only after vertical movement exceeds the system drag threshold,
-then locks the selected temperature and adjusts duty relative to its starting
-value without a click-position jump. Sideways movement does not edit. Escape
-cancels a drag and restores the original point. Arrow keys select neighboring
-points or adjust the selected duty by 1% within its neighbors' bounds.
-Loading old curves raises any descending points to preserve nondecreasing speed.
-Both fan curves use the hotter of the CPU and GPU temperatures when both are
-available. If the GPU is asleep, both use CPU temperature alone. Each fan retains
-its own percentage targets. The editor draws curve segments and editable points
-over a static grid with axis labels. Live horizontal/vertical markers remain
-removed. Opening the editor requests no telemetry.
-
-Cooling uses a 5°C hysteresis to prevent chatter at a boundary. Fan Control Delay
-waits 0–5 seconds before accepting either a higher or lower target (default 2
-seconds). At zero, changes apply on the next one-second evaluation without an
-additional time delay. Old separate cooldown values are ignored; the existing
-ramp-up setting now controls both directions and values above 5 are clamped.
-Further changes in the same direction do not restart the clock; the
-latest demand is used when it expires. Returning to the applied demand cancels
-the pending change. These are delays, not gradual percentage ramps.
-Custom mode follows the saved curve and response delay at all temperatures.
+Custom mode follows EC-style **stages** (12 gears), not a 5°C percentage grid.
+Each stage has CPU/GPU rise and fall thresholds (°C) and CPU/GPU target RPM.
+Rising on either sensor advances to the next stage; falling retreats when both
+sensors clear their fall thresholds (`127` disables that trip). Rise/fall is the
+only hysteresis; there is no extra stage-change delay. Duties sent to WMI are
+`RPM / 6400` for both fans (measured Max ≈ 6250/6380). If the GPU is asleep, its temperature
+is treated as 0°C for trips. Opening the editor requests no telemetry.
 There is no separate immediate or emergency cooling override.
 
 The main window requests no telemetry. The visible overlay requests only its
@@ -81,22 +62,17 @@ is needed on an affected machine before claiming an audio fix. See Microsoft's
 ## v1.4 compatibility
 
 Per-mode fan curves persist under `Fans.{Quiet|Eco|Balanced|Performance|Turbo}` in
-`preysense.json` (`ControlMode`, `RampUpSeconds`, `CpuCurve`, `GpuCurve`).
-`RampUpSeconds` is the Fan Control Delay and controls increases and decreases.
-`ControlMode` stores Auto (0), Max (1), or Custom (2). Profile apply flags such as
-`Tuning.*.FanRampUp` / `ApplyFanCurve` live beside the CPU/GPU tuning profiles.
+`preysense.json` (`ControlMode`, `Stages`, `RampUpSeconds` shared delay for both fans).
+`ControlMode` stores Auto (0), Max (1), or Custom (2). `Tuning.*.ApplyFanCurve`
+lives beside the CPU/GPU tuning profiles.
 The old editor's points above 100°C are not needed by the new curve.
 Reset supplies the selected mode's app preset. New profiles use the same presets
 on all laptops; there is no model restriction. Existing saved curves take priority.
 
-The presets are derived from the recovered first-variant ZBJ-KQ EC 1.08 tables:
-for each 5°C point, advance through the factory stages when either rising sensor
-threshold is reached, then scale the CPU/GPU RPM targets by 6800/6400 RPM to
-whole percentages. A 20% floor replaces the factory fan-stop region and the
-95/100°C points request 100%. These are approximate starting presets, not a
-calibrated percentage-to-RPM mapping or an exact recreation of the factory policy.
-Quiet and Eco share the same extracted table. Each returned preset is independent
-and can be edited without changing defaults for other modes or users.
+Custom presets copy the recovered first-variant ZBJ-KQ EC 1.08 stage tables
+(rise/fall °C and RPM). Quiet and Eco share the same table. Duties are still
+approximate: Acer Custom accepts percent, not RPM feedback. Firmware Auto remains
+the authentic EC policy.
 
 ## Factory Auto vs Custom
 

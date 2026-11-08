@@ -25,7 +25,26 @@ public class DriverFactoryCalibrationTests
             }
         }
         public bool ReadMsr(uint msr, out ulong value)
-        { value = msr == 0x1A2 ? (100UL << 16) | (7UL << 24) | (ProchotLocked ? 1UL << 31 : 0) : 0; return true; }
+        {
+            if (msr == 0x1A2)
+            {
+                value = (100UL << 16) | (7UL << 24) | (ProchotLocked ? 1UL << 31 : 0);
+                return true;
+            }
+            if (msr == CpuPowerLimitController.MSR_RAPL_POWER_UNIT)
+            {
+                value = 0x000A0E03UL; // 1/8 W power unit
+                return true;
+            }
+            if (msr == CpuPowerLimitController.MSR_PKG_POWER_LIMIT)
+            {
+                // Static floors: PL1=55W, PL2=140W (raw = watts / 0.125)
+                value = 440UL | (1UL << 15) | (1120UL << 32) | (1UL << 47);
+                return true;
+            }
+            value = 0;
+            return true;
+        }
         public bool ReadPhysicalDword(ulong address, out uint value) => throw new AssertFailedException("Calibration must read stored profiles, not active CPU limits.");
         public bool ReadPhysicalByte(ulong address, out byte value)
         { value = Memory.GetValueOrDefault(address); return address != FailAddress && Memory.ContainsKey(address); }
@@ -39,9 +58,12 @@ public class DriverFactoryCalibrationTests
     public void MissingGpuBaseline_DoesNotInventNominalWattage()
     {
         var hw = new Hardware();
-        var profiles = new DriverFactoryCalibration(hw, hw).Capture(null);
+        var calibration = new DriverFactoryCalibration(hw, hw);
+        var profiles = calibration.Capture(null);
         Assert.IsNull(profiles["Turbo"].GpuWatts);
         Assert.AreEqual(20, profiles["Turbo"].GpuDeltaWatts);
+        Assert.AreEqual(55, calibration.StaticCpuPl1Watts);
+        Assert.AreEqual(140, calibration.StaticCpuPl2Watts);
     }
 
     [TestMethod]
@@ -106,19 +128,23 @@ public class DriverFactoryCalibrationTests
         foreach (byte mode in new byte[] { 6, 0, 1, 4, 5 })
         {
             ulong start = AcerProfileApplyTransaction.ProfileAddress(mode) - 4;
-            hw.Memory[start + 4] = 7;  // dynamic boost → 10
+            hw.Memory[start + 4] = 7;  // dynamic boost → 5
             hw.Memory[start + 5] = 22; // delta → 20
             hw.Memory[start + 6] = 13; // platform offset → 15
         }
         var profiles = new DriverFactoryCalibration(hw, hw).Capture(85);
         Assert.AreEqual(20, profiles["Turbo"].GpuDeltaWatts);
-        Assert.AreEqual(10, profiles["Turbo"].GpuDynamicBoostWatts);
+        Assert.AreEqual(5, profiles["Turbo"].GpuDynamicBoostWatts);
         Assert.AreEqual(15, profiles["Turbo"].PlatformPowerOffsetWatts);
-        Assert.AreEqual(115, profiles["Turbo"].GpuWatts);
+        Assert.AreEqual(110, profiles["Turbo"].GpuWatts);
         Assert.AreEqual(20, DriverFactoryCalibration.SnapGpuDelta(22));
-        Assert.AreEqual(50, DriverFactoryCalibration.SnapGpuDelta(53));
-        Assert.AreEqual(0, DriverFactoryCalibration.SnapGpuDynamicBoost(3));
-        Assert.AreEqual(10, DriverFactoryCalibration.SnapGpuDynamicBoost(7));
+        Assert.AreEqual(55, DriverFactoryCalibration.SnapGpuDelta(53));
+        Assert.AreEqual(100, DriverFactoryCalibration.SnapGpuDelta(255));
+        Assert.AreEqual(0, DriverFactoryCalibration.SnapGpuDynamicBoost(2));
+        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(3));
+        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(5));
+        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(7));
         Assert.AreEqual(25, DriverFactoryCalibration.SnapGpuDynamicBoost(255));
+        Assert.IsTrue(DriverFactoryCalibration.IsLegalGpuDynamicBoost(5));
     }
 }

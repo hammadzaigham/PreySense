@@ -15,11 +15,13 @@ Unset user tuning fields stay null in JSON. The editor shows captured factory de
 
 ## Factory calibration
 
-At startup, missing factory defaults are captured automatically into `Tuning.FactoryDefaults` without a prompt. Calibration reads firmware records immediately without switching modes or writing limits. Existing complete defaults are preserved. Failed or incomplete captures are not saved.
+At startup, missing factory defaults are captured automatically into `Tuning.FactoryDefaults` without a prompt. Calibration also reads global static CPU PL1/PL2 from MSR 0x610 into `FactoryStaticCpuPl1Watts` / `FactoryStaticCpuPl2Watts`. Reads happen immediately without switching modes or writing limits. Existing complete defaults (including static floors) are preserved. Failed or incomplete captures are not saved.
+
+When applying CPU limits at or below those calibrated static floors, PreySense writes MMIO only and leaves MSR 0x610 unchanged. Raises above the floors still write both MSR and MMIO.
 
 ## Global PROCHOT offset
 
-PROCHOT Offset sits under Enable Tuning as a global nullable value (0-63 °C below TjMax). Its switch controls whether the offset is included with the selected mode's other tuning. Off leaves the hardware offset alone. On applies the global value after successful CPU/GPU tuning and verifies readback. Apply uses the editor value; Save also persists `Tuning.ApplyProchotOffset` and `Tuning.ProchotOffsetCelsius`. The value is never stored in individual mode profiles.
+PROCHOT Offset sits under Enable Tuning as a global nullable value (0-63 °C below TjMax). A label row above the offset shows PROCHOT activation on the left and `TjMax` on the right (`TjMax − offset`). Its switch controls whether the offset is included with the selected mode's other tuning. Off leaves the hardware offset alone. On applies the global value after successful CPU/GPU tuning and verifies readback. Apply uses the editor value; Save also persists `Tuning.ApplyProchotOffset` and `Tuning.ProchotOffsetCelsius`. The value is never stored in individual mode profiles.
 
 The driver checks programmable-offset support and BIOS locks, preserves unrelated temperature-target bits, and attempts to restore the original offset if write/readback fails. Calibration stores the readable factory offset once as `Tuning.FactoryProchotOffsetCelsius`.
 
@@ -33,7 +35,7 @@ All manual, automatic, and session-restore operations share the mode-switch sema
 
 CPU writes snapshot register state, validate access and lock bits, verify readback, and attempt rollback on failure. GPU staging failures use verified rollback. A CPU failure after GPU staging reports that GPU staging already completed. Startup restore reports partial failure rather than claiming full success.
 
-User controls accept Delta in 5 W steps from 0 to 50 W and Dynamic Boost values 0, 10, 15, 20, and 25 W. Nominal GPU watts are the detected NVIDIA default plus those offsets; sustained draw remains subject to NVIDIA driver and firmware policy.
+User controls accept Delta in 5 W steps from 0 to 100 W and Dynamic Boost in 5 W steps from 0 to 25 W (including 5 W). Nominal GPU watts are the detected NVIDIA default plus those offsets; sustained draw remains subject to NVIDIA driver and firmware policy. On a given SKU, Delta or Dynamic Boost above the VBIOS/TGP ceiling may write successfully but not raise measured power.
 
 ## Hardware discovery
 

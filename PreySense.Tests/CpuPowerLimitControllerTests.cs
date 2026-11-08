@@ -400,4 +400,25 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         Assert.IsTrue(result.MmioUpdated);
         Assert.IsFalse(result.RollbackAttempted);
     }
+
+    [TestMethod]
+    public void Test_CombinedTransaction_SkipsMsrWhenAtOrBelowStaticFloors()
+    {
+        var mock = new MockCpuDriverBackend();
+        ulong mchbar = 0xFED10000UL;
+        ulong origMsr = 0x00000100_00000200UL;
+        mock.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits(3, 10);
+        mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = origMsr;
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] = 0x00000100U;
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] = 0x00000200U;
+
+        var controller = new CpuPowerLimitController(mock);
+        var result = controller.ExecuteCombinedTransaction(mchbar, 45, 65, true, 28, staticPl1FloorWatts: 55, staticPl2FloorWatts: 140);
+
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsFalse(result.MsrUpdated);
+        Assert.IsTrue(result.MmioUpdated);
+        Assert.AreEqual(origMsr, mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT]);
+        Assert.AreEqual(0, mock.WriteMsrCallCount);
+    }
 }

@@ -18,7 +18,6 @@ namespace PreySense.Frontend.ViewModels
         // Battery Care Limit
         [ObservableProperty] private bool _isBatteryLimitEnabled = true;
         [ObservableProperty] private int _batteryLimitPercent = 80;
-        [ObservableProperty] private bool _isGpuBatteryAutoEnabled = false;
 
         // Platform Features
         [ObservableProperty] private bool _isRunOnStartupEnabled = false;

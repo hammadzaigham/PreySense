@@ -50,17 +50,12 @@ Controls application-level behavior:
 - `HardwareTuningEnabled` (boolean): enables hardware tuning controls. Default: `false`.
 
 ### `Display`
-Controls panel response and eye-care modes:
-- `LcdOverdrive` (boolean): LCD 3ms panel overdrive toggle. Default: `false`.
-- `BlueLightShieldMode` (integer): `0` = Off, `1` = Low Reduction, `2` = Medium Reduction. Default: `0`.
 - `AutoRefreshRate` (boolean): Automatically switch display to 60Hz when running on battery. Default: `false`.
 
 ### `Battery`
-Manages battery care and charging policies:
-- `ChargeLimitEnabled` (boolean): Acer 80% maximum charge care limit toggle. Default: `false`.
-- `UsbChargingPercent` (integer): Cutoff battery percentage for USB charging while laptop is sleeping/off (`0`, `10`, `20`, `30`). Default: `0`.
+Manages battery care policies:
+- `ChargeLimitEnabled` (boolean): Acer 80% maximum charge care limit toggle. Default: `true`.
 - `BatteryEnergySaver` (boolean): Automatically engage Windows Energy Saver when on battery. Default: `false`.
-- `GpuBatteryAuto` (boolean): Automatically set GPU mode to Eco when disconnecting AC. Default: `false`.
 
 ### `Session`
 Power mode selection and automated switching rules:
@@ -77,8 +72,9 @@ Per-mode hardware tuning profiles (`Quiet`, `Eco`, `Balanced`, `Performance`, `T
 
 Root-level Tuning fields:
 - `GpuBasePowerWatts` (int or null): Hardware default GPU power limit in Watts from NVML or factory calibration (`1` - `999W`). Null until captured once via `GpuPowerBaseline`; subsequent saves keep the first valid value.
+- `FactoryStaticCpuPl1Watts` / `FactoryStaticCpuPl2Watts` (int or null): Global static CPU PL1/PL2 from MSR 0x610 at calibration. Applies at or below these floors write MMIO only.
 - `CpuBoostMode` (int): Global/extended CPU boost mode (`0` - `6`). Default: `1`.
-- `ApplyProchotOffset` / `ProchotOffsetCelsius` / factory PROCHOT fields: optional PROCHOT offset controls.
+- `ApplyProchotOffset` / `ProchotOffsetCelsius` / factory PROCHOT fields (`FactoryProchotOffsetCelsius`, `FactoryProchotOffsetLocked`, `FactoryTjMaxCelsius`): optional PROCHOT offset controls and TjMax for the tuning activation label.
 
 Per-mode profile fields:
 - `CpuPl1Watts` (int): Sustained CPU power limit (`5` - `300W`).
@@ -87,17 +83,16 @@ Per-mode profile fields:
 - `CpuBoostMode` (int): Per-mode Windows CPU boost (`0`–`6`). Preferred over legacy `CpuBoost`.
 - `CpuBoost` (boolean): Legacy on/off boost flag; normalized to `CpuBoostMode` on load.
 - `GpuWatts` (int): Total target GPU power limit (`1` - `999W`).
-- `GpuDeltaWatts` (int): NVPCF base power offset in Watts (`0` - `255W`).
-- `GpuDynamicBoostWatts` (int): NVPCF dynamic boost offset in Watts (`0` - `255W`).
+- `GpuDeltaWatts` (int): NVPCF base power offset in Watts (`0` - `100W`, steps of 5).
+- `GpuDynamicBoostWatts` (int): NVPCF dynamic boost offset in Watts (`0` - `25W`, steps of 5, including 5W).
 - `ApplyCpuLimits` (boolean): Apply CPU limits when switching to this mode. Default: `false`.
 - `ApplyGpuLimits` (boolean): Apply GPU limits when switching to this mode. Default: `false`.
 - `ApplyFanCurve` (boolean): Apply custom fan curve when switching to this mode. Default: `false`.
-- `FanRampUp` (int): Fan speed ramp-up delay in seconds (`0` - `10s`).
 
 ### `Fans`
 Per-mode fan curve definitions (`Quiet`, `Eco`, `Balanced`, `Performance`, `Turbo`):
 - `ControlMode` (int): `0` = Auto, `1` = Max, `2` = Custom.
-- `RampUpSeconds` (int): Fan ramp-up smoothing window (`0` - `10s`).
+- `RampUpSeconds` (int, 0–5): Shared fan stage-change delay (seconds) for both CPU and GPU fans in that mode.
 - `CpuCurve` (array of 10 integers): Fan duty cycle percentages (`0` - `100%`) for 10 temperature steps.
 - `GpuCurve` (array of 10 integers): Fan duty cycle percentages (`0` - `100%`) for 10 temperature steps.
 

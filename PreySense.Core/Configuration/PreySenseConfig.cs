@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using PreySense.Mode;
 
 namespace PreySense.Core.Configuration
 {
@@ -20,7 +22,7 @@ namespace PreySense.Core.Configuration
         /// <summary>Application preferences such as language, theme, startup, and debloating.</summary>
         public GeneralConfig General { get; set; } = new();
 
-        /// <summary>Display settings including LCD Overdrive and Acer BlueLight Shield.</summary>
+        /// <summary>Display settings including auto refresh rate.</summary>
         public DisplayConfig Display { get; set; } = new();
 
         /// <summary>Battery charge limit and USB charging settings.</summary>
@@ -59,12 +61,6 @@ namespace PreySense.Core.Configuration
 
     public sealed class DisplayConfig
     {
-        /// <summary>LCD 3ms response overdrive enabled state.</summary>
-        public bool LcdOverdrive { get; set; } = false;
-
-        /// <summary>Acer BlueLight Shield mode: 0 = Off, 1 = LowReduction, 2 = MediumReduction.</summary>
-        public int BlueLightShieldMode { get; set; } = 0;
-
         /// <summary>Automatically lower refresh rate when on battery.</summary>
         public bool AutoRefreshRate { get; set; } = false;
     }
@@ -72,16 +68,10 @@ namespace PreySense.Core.Configuration
     public sealed class BatteryConfig
     {
         /// <summary>80% battery charge limiter enabled.</summary>
-        public bool ChargeLimitEnabled { get; set; } = false;
-
-        /// <summary>USB charging cutoff threshold percent (0, 10, 20, 30).</summary>
-        public int UsbChargingPercent { get; set; } = 0;
+        public bool ChargeLimitEnabled { get; set; } = true;
 
         /// <summary>Automatically engage Windows Energy Saver when on battery.</summary>
         public bool BatteryEnergySaver { get; set; } = false;
-
-        /// <summary>Automatically switch GPU to Eco mode on battery.</summary>
-        public bool GpuBatteryAuto { get; set; } = false;
     }
 
     public sealed class SessionConfig
@@ -106,9 +96,17 @@ namespace PreySense.Core.Configuration
         public int? ProchotOffsetCelsius { get; set; }
         public int? FactoryProchotOffsetCelsius { get; set; }
         public bool? FactoryProchotOffsetLocked { get; set; }
+        /// <summary>Package TjMax (°C) captured during calibration from MSR 0x1A2.</summary>
+        public int? FactoryTjMaxCelsius { get; set; }
 
         /// <summary>Hardware default power limit in Watts detected via NVML or factory calibration.</summary>
         public int? GpuBasePowerWatts { get; set; }
+
+        /// <summary>Global static CPU PL1 from MSR 0x610 at calibration (RAPL package floor).</summary>
+        public int? FactoryStaticCpuPl1Watts { get; set; }
+
+        /// <summary>Global static CPU PL2 from MSR 0x610 at calibration (RAPL package floor).</summary>
+        public int? FactoryStaticCpuPl2Watts { get; set; }
 
         /// <summary>Driver-read factory profiles, saved only after all five modes were captured.</summary>
         public Dictionary<string, ModeTuningConfig> FactoryDefaults { get; set; } = new();
@@ -119,9 +117,17 @@ namespace PreySense.Core.Configuration
                 && profile != null && profile.CpuPl1Watts is >= 5 and <= 300
                 && profile.CpuPl2Watts is >= 5 and <= 300 && profile.CpuPl2Watts >= profile.CpuPl1Watts
                 && profile.TauSeconds is >= 0 and <= 449
-                && profile.GpuDeltaWatts is >= 0 and <= 50 && profile.GpuDeltaWatts % 5 == 0
-                && profile.GpuDynamicBoostWatts is 0 or 10 or 15 or 20 or 25
+                && profile.GpuDeltaWatts is >= 0 and <= Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
+                && profile.GpuDeltaWatts % 5 == 0
+                && profile.GpuDynamicBoostWatts is int db
+                && Hardware.DriverFactoryCalibration.IsLegalGpuDynamicBoost(db)
                 && profile.PlatformPowerOffsetWatts is >= 0 and <= 100 && profile.PlatformPowerOffsetWatts % 5 == 0);
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasFactoryStaticCpuLimits =>
+            FactoryStaticCpuPl1Watts is >= 5 and <= 300
+            && FactoryStaticCpuPl2Watts is >= 5 and <= 300
+            && FactoryStaticCpuPl2Watts >= FactoryStaticCpuPl1Watts;
 
         /// <summary>Global or active CPU boost mode (0 = Disabled, 1 = Enabled).</summary>
         public int CpuBoostMode { get; set; } = 1;
@@ -140,9 +146,18 @@ namespace PreySense.Core.Configuration
     public sealed class ModeTuningConfig
     {
         [System.Text.Json.Serialization.JsonIgnore]
-        public bool HasValues => CpuPl1Watts.HasValue && CpuPl2Watts.HasValue && TauSeconds.HasValue
-            && GpuDeltaWatts.HasValue && GpuDynamicBoostWatts.HasValue
-            && PlatformPowerOffsetWatts.HasValue && EffectiveCpuBoostMode.HasValue;
+        public bool HasCpuLimitValues => CpuPl1Watts.HasValue && CpuPl2Watts.HasValue && TauSeconds.HasValue;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasGpuLimitValues => GpuDeltaWatts.HasValue && GpuDynamicBoostWatts.HasValue
+            && PlatformPowerOffsetWatts.HasValue;
+
+        /// <summary>True when at least one apply flag is on and that side has complete values.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasValues =>
+            (ApplyCpuLimits || ApplyGpuLimits)
+            && (!ApplyCpuLimits || HasCpuLimitValues)
+            && (!ApplyGpuLimits || HasGpuLimitValues);
 
         /// <summary>Windows PERFBOOSTMODE 0–6 from <see cref="CpuBoostMode"/>, or legacy on/off <see cref="CpuBoost"/>.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
@@ -188,9 +203,6 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Apply fan curve flag for this profile.</summary>
         public bool ApplyFanCurve { get; set; } = false;
-
-        /// <summary>Fan ramp-up rate (0-10 seconds).</summary>
-        public int FanRampUp { get; set; } = 1;
     }
 
     public sealed class FanConfig
@@ -202,58 +214,49 @@ namespace PreySense.Core.Configuration
         public ModeFanCurveConfig Turbo { get; set; } = ModeFanCurveConfig.CreateDefaultTurbo();
     }
 
+    public sealed class FanStageConfig
+    {
+        public int CpuRiseC { get; set; }
+        public int CpuFallC { get; set; }
+        public int GpuRiseC { get; set; }
+        public int GpuFallC { get; set; }
+        public int CpuTargetRpm { get; set; }
+        public int GpuTargetRpm { get; set; }
+    }
+
     public sealed class ModeFanCurveConfig
     {
         /// <summary>Fan control mode: 0 = Auto, 1 = Max, 2 = Custom.</summary>
         public int ControlMode { get; set; } = 0;
 
-        /// <summary>Ramp up time in seconds.</summary>
+        /// <summary>Shared delay before accepting a stage change (0-5s).</summary>
         public int RampUpSeconds { get; set; } = 2;
 
-        /// <summary>CPU fan duty curve points (percentages 0-100%). Default length 13.</summary>
-        public int[] CpuCurve { get; set; } = new int[13];
+        /// <summary>EC-style stages (12). Preferred over legacy CpuCurve/GpuCurve.</summary>
+        public FanStageConfig[]? Stages { get; set; }
 
-        /// <summary>GPU fan duty curve points (percentages 0-100%). Default length 13.</summary>
-        public int[] GpuCurve { get; set; } = new int[13];
+        /// <summary>Legacy 5°C CPU duty curve. Ignored when <see cref="Stages"/> is present.</summary>
+        public int[] CpuCurve { get; set; } = Array.Empty<int>();
 
-        public static ModeFanCurveConfig CreateDefaultQuiet() => new()
+        /// <summary>Legacy 5°C GPU duty curve. Ignored when <see cref="Stages"/> is present.</summary>
+        public int[] GpuCurve { get; set; } = Array.Empty<int>();
+
+        public static ModeFanCurveConfig CreateDefaultQuiet() => FromProfile(FanCurveProfile.CreateDefault(0));
+        public static ModeFanCurveConfig CreateDefaultEco() => FromProfile(FanCurveProfile.CreateDefault(6));
+        public static ModeFanCurveConfig CreateDefaultBalanced() => FromProfile(FanCurveProfile.CreateDefault(1));
+        public static ModeFanCurveConfig CreateDefaultPerformance() => FromProfile(FanCurveProfile.CreateDefault(4));
+        public static ModeFanCurveConfig CreateDefaultTurbo() => FromProfile(FanCurveProfile.CreateDefault(5));
+
+        private static ModeFanCurveConfig FromProfile(FanCurveProfile profile) => new()
         {
-            ControlMode = 0,
-            RampUpSeconds = 2,
-            CpuCurve = new int[] { 20, 20, 20, 20, 26, 29, 32, 38, 42, 42, 42, 100, 100 },
-            GpuCurve = new int[] { 20, 20, 20, 20, 29, 31, 34, 40, 45, 45, 45, 100, 100 }
-        };
-
-        public static ModeFanCurveConfig CreateDefaultEco() => new()
-        {
-            ControlMode = 0,
-            RampUpSeconds = 2,
-            CpuCurve = new int[] { 20, 20, 20, 20, 26, 29, 32, 38, 42, 42, 42, 100, 100 },
-            GpuCurve = new int[] { 20, 20, 20, 20, 29, 31, 34, 40, 45, 45, 45, 100, 100 }
-        };
-
-        public static ModeFanCurveConfig CreateDefaultBalanced() => new()
-        {
-            ControlMode = 0,
-            RampUpSeconds = 2,
-            CpuCurve = new int[] { 20, 20, 26, 26, 29, 35, 38, 47, 53, 53, 53, 100, 100 },
-            GpuCurve = new int[] { 20, 20, 29, 29, 31, 37, 40, 50, 56, 56, 56, 100, 100 }
-        };
-
-        public static ModeFanCurveConfig CreateDefaultPerformance() => new()
-        {
-            ControlMode = 0,
-            RampUpSeconds = 1,
-            CpuCurve = new int[] { 20, 20, 29, 35, 38, 47, 57, 64, 64, 64, 64, 100, 100 },
-            GpuCurve = new int[] { 20, 20, 31, 37, 40, 50, 61, 68, 68, 68, 68, 100, 100 }
-        };
-
-        public static ModeFanCurveConfig CreateDefaultTurbo() => new()
-        {
-            ControlMode = 1, // Max
-            RampUpSeconds = 0,
-            CpuCurve = new int[] { 20, 20, 20, 35, 38, 58, 73, 73, 73, 73, 81, 100, 100 },
-            GpuCurve = new int[] { 20, 20, 20, 37, 40, 61, 77, 77, 77, 77, 86, 100, 100 }
+            ControlMode = (int)profile.ControlMode,
+            RampUpSeconds = profile.RampUpSeconds,
+            Stages = profile.Stages.Select(s => new FanStageConfig
+            {
+                CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
+                GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
+                CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
+            }).ToArray()
         };
     }
 

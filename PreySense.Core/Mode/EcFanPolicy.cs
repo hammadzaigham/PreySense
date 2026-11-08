@@ -11,7 +11,6 @@ namespace PreySense.Mode
     {
         public const int MinDutyPercent = 0;
         public const int MaxDutyPercent = 100;
-        public const int DutyStepPercent = 5;
 
         public static int FloorPercent(float temperatureCelsius)
         {
@@ -21,13 +20,6 @@ namespace PreySense.Mode
 
         public static int ClampDuty(int percent) =>
             Math.Clamp(percent, MinDutyPercent, MaxDutyPercent);
-
-        public static int SnapDuty(int percent)
-        {
-            int clamped = ClampDuty(percent);
-            int snapped = (int)Math.Round(clamped / (double)DutyStepPercent) * DutyStepPercent;
-            return ClampDuty(snapped);
-        }
 
         public static int ClampDuty(int percent, float temperatureCelsius) =>
             Math.Clamp(percent, FloorPercent(temperatureCelsius), MaxDutyPercent);

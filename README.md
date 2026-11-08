@@ -26,7 +26,7 @@ Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
 - Refresh rate control, Auto refresh rate to 60Hz on battery.
 
 ### Fans
-Per-mode Auto, Max, or Custom curves for Eco, Quiet, Balanced, Performance, and Turbo. Custom curves use independent CPU/GPU percentages against the hotter sensor, 5 °C edit points, and a 0-5 s response delay. Curves keep running while the app is in the tray.
+Per-mode Auto, Max, or Custom EC-style stages for Eco, Quiet, Balanced, Performance, and Turbo. CPU/GPU graphs set temperature thresholds; both fans share the higher stage duty and a per-mode 0–5 s stage delay. Fans keep running while the app is in the tray.
 
 ### Lighting
 Four-zone keyboard RGB plus cover logo lighting, with static colors, hardware effects, software animations, and optional logo sync.
@@ -73,7 +73,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, s
 2. Choose a mode, set CPU/GPU values, then **Apply** or **Save**.
 3. Switch modes as usual; saved profiles follow automatically.
 
-Details: [driver tuning](docs/driver_tuning.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
+Details: [driver tuning](docs/driver_tuning.md) · [v3.0.2](docs/releases/v3.0.2.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
 
 ## Build
 

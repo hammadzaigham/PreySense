@@ -283,19 +283,14 @@ namespace PreySense.Frontend.Services
         }
 
         // WMI / platform system controls
-        public bool GetLcdOverdrive()
+        private bool _lcdOverdrive;
+        public bool GetLcdOverdrive() => _lcdOverdrive;
+        public bool SetLcdOverdrive(bool enable)
         {
-            try
-            {
-                return PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Display.LcdOverdrive;
-            }
-            catch
-            {
-                return false;
-            }
+            bool ok = _wmi.SetLcdOverdrive(enable);
+            if (ok) _lcdOverdrive = enable;
+            return ok;
         }
-
-        public bool SetLcdOverdrive(bool enable) => _wmi.SetLcdOverdrive(enable);
 
         public bool GetBootSound() => _wmi.GetBootSound();
         public void SetBootSound(bool enable) => _wmi.SetBootSound(enable);

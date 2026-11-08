@@ -86,33 +86,35 @@ public class EventAndSimpleFanTests
     }
 
     [TestMethod]
-    public async Task FanCurveRendersGridCurveAndEditablePointsWithoutLiveMarkers()
+    public void FanStagePresetsExposeEcRiseAndRpmFields()
     {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                var control = new PreySense.Frontend.Controls.WpfFanCurveControl { Values = FanCurveProfile.DefaultCurve() };
-                control.Measure(new System.Windows.Size(400, 240));
-                control.Arrange(new System.Windows.Rect(0, 0, 400, 240));
-                var visual = new System.Windows.Media.DrawingVisual();
-                using (var context = visual.RenderOpen())
-                    typeof(PreySense.Frontend.Controls.WpfFanCurveControl).GetMethod("OnRender", BindingFlags.NonPublic | BindingFlags.Instance)!
-                        .Invoke(control, new object[] { context });
-                var shapes = visual.Drawing.Children.OfType<System.Windows.Media.GeometryDrawing>().ToArray();
-                var lines = shapes.Where(s => s.Geometry is System.Windows.Media.LineGeometry).ToArray();
-                Assert.AreEqual(11 + FanCurveProfile.PointCount, lines.Count(s => s.Pen.Thickness == 1));
-                Assert.AreEqual(FanCurveProfile.PointCount - 1, lines.Count(s => s.Pen.Thickness == 2));
-                Assert.HasCount(11 + FanCurveProfile.PointCount * 2 - 1, lines);
-                Assert.IsTrue(lines.All(s => s.Pen.DashStyle.Dashes.Count == 0));
-                Assert.AreEqual(FanCurveProfile.PointCount, shapes.Count(s => s.Geometry is System.Windows.Media.EllipseGeometry));
-                completion.SetResult();
-            }
-            catch (Exception ex) { completion.SetException(ex); }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        await completion.Task;
+        var balanced = FanCurveProfile.DefaultStages(1);
+        Assert.AreEqual(56, balanced[0].CpuRiseC);
+        Assert.AreEqual(50, balanced[0].GpuRiseC);
+        Assert.AreEqual(0, balanced[0].CpuTargetRpm);
+        Assert.AreEqual(1800, balanced[1].CpuTargetRpm);
+        Assert.AreEqual(FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm), balanced[1].CpuDutyPercent);
+    }
+
+    [TestMethod]
+    public void FanStageEntryTemperaturesStayStrictlyIncreasing()
+    {
+        Assert.AreEqual(61, FanStage.ClampRiseBetweenNeighbors(55, 60, 70));
+        Assert.AreEqual(69, FanStage.ClampRiseBetweenNeighbors(80, 60, 70));
+        Assert.AreEqual(65, FanStage.ClampRiseBetweenNeighbors(65, 60, 70));
+        Assert.AreEqual(FanStage.DisabledTripCelsius, FanStage.ClampRiseBetweenNeighbors(127, 60, 70));
+
+        int[] temps = [65, 65, 70];
+        FanStage.EnforceStrictlyIncreasing(temps);
+        Assert.AreEqual(65, temps[0]);
+        Assert.AreEqual(66, temps[1]);
+        Assert.AreEqual(70, temps[2]);
+
+        var stages = FanCurveProfile.DefaultStages(1);
+        FanStage.ApplyEntryTemperatures(stages, [1, 2, 3], [56, 65, 72], gpu: false);
+        Assert.AreEqual(56, stages[0].CpuRiseC);
+        Assert.AreEqual(65, stages[1].CpuRiseC);
+        Assert.AreEqual(72, stages[2].CpuRiseC);
+        Assert.AreEqual(FanStage.DisabledTripCelsius, stages[3].CpuRiseC);
     }
 }

@@ -5,230 +5,125 @@ namespace PreySense.Tests;
 [TestClass]
 public class FanCurveFollowerTests
 {
-    private static int[] TestCurve() => [20, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 100, 100];
-    [TestMethod]
-    public void TemperatureBandsDoNotQuantizeDutyToFivePercent()
-    {
-        int[] curve = TestCurve();
-        curve[1] = 37;
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(20, follower.Evaluate(44, curve, 0, 0));
-        Assert.AreEqual(37, follower.Evaluate(45, curve, 0, 1000));
-        Assert.AreEqual(37, follower.Evaluate(49, curve, 0, 2000));
-    }
+    private static FanStage[] Balanced() => FanCurveProfile.DefaultStages(1);
 
     [TestMethod]
-    public void FiveDegreeCoolingHysteresisPreventsBoundaryOscillation()
-    {
-        int[] curve = TestCurve();
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(30, follower.Evaluate(59, curve, 0, 0));
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 0, 1000));
-        Assert.AreEqual(40, follower.Evaluate(59, curve, 0, 2000));
-        Assert.AreEqual(40, follower.Evaluate(56, curve, 0, 3000));
-        Assert.AreEqual(30, follower.Evaluate(55, curve, 0, 4000));
-    }
-
-    [TestMethod]
-    public void RampUpDelayContinuesWithUnchangedTelemetry()
-    {
-        int[] curve = TestCurve();
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 2, 0));
-        Assert.AreEqual(40, follower.Evaluate(65, curve, 2, 1000));
-        Assert.AreEqual(40, follower.Evaluate(65, curve, 2, 2000));
-        Assert.AreEqual(50, follower.Evaluate(65, curve, 2, 3000));
-        Assert.AreEqual(50, follower.Evaluate(60, curve, 2, 4000));
-        Assert.AreEqual(50, follower.Evaluate(60, curve, 2, 5000));
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 2, 6000));
-    }
-
-    [TestMethod]
-    public void RisingBandsDoNotRestartTheRampUpClock()
-    {
-        var curve = TestCurve();
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 2, 0));
-        Assert.AreEqual(40, follower.Evaluate(65, curve, 2, 1000));
-        Assert.AreEqual(40, follower.Evaluate(70, curve, 2, 2000));
-        Assert.AreEqual(70, follower.Evaluate(75, curve, 2, 3000));
-    }
-
-    [TestMethod]
-    public void HeatingAndCoolingUseTheSameDelayAndApplyLatestTarget()
-    {
-        var curve = TestCurve();
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(70, follower.Evaluate(75, curve, 3, 0));
-        Assert.AreEqual(70, follower.Evaluate(70, curve, 3, 1000));
-        Assert.AreEqual(70, follower.Evaluate(65, curve, 3, 3000));
-        Assert.AreEqual(50, follower.Evaluate(65, curve, 3, 4000));
-        Assert.AreEqual(50, follower.Evaluate(75, curve, 3, 5000));
-        Assert.AreEqual(70, follower.Evaluate(75, curve, 3, 8000));
-    }
-
-    [TestMethod]
-    [DataRow(0)]
-    [DataRow(1)]
-    [DataRow(2)]
-    [DataRow(5)]
-    public void FanControlDelayAppliesSymmetricallyIncludingZero(int delay)
+    public void StageZeroStaysStoppedUntilRiseTrip()
     {
         var follower = new FanCurveFollower();
-        var curve = TestCurve();
-        Assert.AreEqual(40, follower.Evaluate(60, curve, delay, 0));
-        Assert.AreEqual(delay == 0 ? 50 : 40, follower.Evaluate(65, curve, delay, 1000));
-        if (delay > 0)
-            Assert.AreEqual(40, follower.Evaluate(65, curve, delay, 1000 + delay * 1000 - 1));
-        Assert.AreEqual(50, follower.Evaluate(65, curve, delay, 1000 + delay * 1000));
-        Assert.AreEqual(delay == 0 ? 40 : 50, follower.Evaluate(60, curve, delay, 10000));
-        if (delay > 0)
-            Assert.AreEqual(50, follower.Evaluate(60, curve, delay, 10000 + delay * 1000 - 1));
-        Assert.AreEqual(40, follower.Evaluate(60, curve, delay, 10000 + delay * 1000));
+        var stages = Balanced();
+        var (cpu, gpu, stage) = follower.Evaluate(40, 40, stages, 0, 0);
+        Assert.AreEqual(0, stage);
+        Assert.AreEqual(0, cpu);
+        Assert.AreEqual(0, gpu);
+        (cpu, gpu, stage) = follower.Evaluate(56, 40, stages, 0, 1000);
+        Assert.AreEqual(1, stage);
+        int shared = Math.Max(
+            FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm),
+            FanStage.RpmToDuty(1850, FanStage.GpuMaxRpm));
+        Assert.AreEqual(shared, cpu);
+        Assert.AreEqual(shared, gpu);
     }
 
     [TestMethod]
-    public void ReturningToAppliedDemandCancelsPendingCooldown()
-    {
-        var curve = TestCurve();
-        var follower = new FanCurveFollower();
-        Assert.AreEqual(60, follower.Evaluate(70, curve, 5, 0));
-        Assert.AreEqual(60, follower.Evaluate(65, curve, 5, 1000));
-        Assert.AreEqual(60, follower.Evaluate(70, curve, 5, 4000));
-        Assert.AreEqual(60, follower.Evaluate(65, curve, 5, 5000));
-        Assert.AreEqual(60, follower.Evaluate(65, curve, 5, 9000));
-        Assert.AreEqual(50, follower.Evaluate(65, curve, 5, 10000));
-    }
-
-    [TestMethod]
-    public void EitherSensorCanRaiseBothIndependentFanTargets()
-    {
-        var cpu = TestCurve();
-        var gpu = TestCurve();
-        gpu[8] = 83;
-        foreach (var (cpuTemp, gpuTemp) in new[] { (80, 50), (50, 80) })
-        {
-            int temperature = FanCurveProfile.CoolingTemperature(cpuTemp, gpuTemp);
-            Assert.AreEqual(80, new FanCurveFollower().Evaluate(temperature, cpu, 0, 0));
-            Assert.AreEqual(83, new FanCurveFollower().Evaluate(temperature, gpu, 0, 0));
-        }
-    }
-
-    [TestMethod]
-    public void OldRampUpValuesCannotDelayAnIncreaseLongerThanFiveSeconds()
+    public void GpuRiseAloneAdvancesStage()
     {
         var follower = new FanCurveFollower();
-        var curve = TestCurve();
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 99, 0));
-        Assert.AreEqual(40, follower.Evaluate(70, curve, 99, 1000));
-        Assert.AreEqual(40, follower.Evaluate(70, curve, 99, 5000));
-        Assert.AreEqual(60, follower.Evaluate(70, curve, 99, 6000));
+        var stages = Balanced();
+        var (_, _, stage) = follower.Evaluate(40, 50, stages, 0, 0);
+        Assert.AreEqual(1, stage);
     }
 
     [TestMethod]
-    public void ResetAppliesNewModeWithoutOldRampState()
+    public void RetreatUsesPreviousRiseAndRequiresBothSensorsClear()
     {
         var follower = new FanCurveFollower();
-        var curve = TestCurve();
-        Assert.AreEqual(40, follower.Evaluate(60, curve, 10, 0));
-        follower.Reset();
-        curve[4] = 73;
-        Assert.AreEqual(73, follower.Evaluate(60, curve, 10, 1));
+        var stages = Balanced();
+        follower.Evaluate(65, 56, stages, 0, 0);
+        var (_, _, stage) = follower.Evaluate(65, 56, stages, 0, 1000);
+        Assert.AreEqual(2, stage);
+        // Stage 2 was entered via stage 1 rises (CPU 65 / GPU 56). GPU still at 56 must not retreat.
+        (_, _, stage) = follower.Evaluate(50, 56, stages, 0, 2000);
+        Assert.AreEqual(2, stage, "CPU below previous rise but GPU still at previous rise must not retreat.");
+        // Both below stage-1 rises → stage 1; still above stage-0 rises (56/50) → stay at 1.
+        (_, _, stage) = follower.Evaluate(60, 52, stages, 0, 3000);
+        Assert.AreEqual(1, stage);
+        // Both below stage-0 rises → cold floor.
+        (_, _, stage) = follower.Evaluate(40, 40, stages, 0, 4000);
+        Assert.AreEqual(0, stage);
     }
 
     [TestMethod]
-    public void ProfilesCloneWithoutSharingDraftArraysAndClampInvalidPoints()
+    public void StageChangesImmediatelyWithoutDelay()
     {
-        var profile = new FanCurveProfile { RampUpSeconds = 99, Cpu = [-4, 150] };
-        profile.Normalize();
-        Assert.AreEqual(5, profile.RampUpSeconds);
-        Assert.HasCount(FanCurveProfile.PointCount, profile.Cpu);
-        Assert.AreEqual(0, profile.Cpu[0]);
-        Assert.AreEqual(100, profile.Cpu[1]);
-        var draft = profile.Copy();
-        draft.Cpu[0] = 49;
-        Assert.AreEqual(0, profile.Cpu[0]);
+        var follower = new FanCurveFollower();
+        var stages = Balanced();
+        var (_, _, stage) = follower.Evaluate(40, 40, stages);
+        Assert.AreEqual(0, stage);
+        (_, _, stage) = follower.Evaluate(56, 40, stages);
+        Assert.AreEqual(1, stage);
     }
 
     [TestMethod]
-    public void CurveEditsCannotDecreaseAtHigherTemperatures()
+    public void SharedDelayHoldsStageChangeUntilElapsed()
     {
-        int[] curve = TestCurve();
-        FanCurveProfile.SetPoint(curve, 6, 1);
-        Assert.AreEqual(curve[5], curve[6]);
-        FanCurveProfile.SetPoint(curve, 6, 99);
-        Assert.AreEqual(curve[7], curve[6]);
-        FanCurveProfile.SetPoint(curve, 0, -10);
-        Assert.AreEqual(0, curve[0]);
-        FanCurveProfile.SetPoint(curve, FanCurveProfile.PointCount - 1, 200);
-        Assert.AreEqual(100, curve[FanCurveProfile.PointCount - 1]);
+        var follower = new FanCurveFollower();
+        var stages = Balanced();
+        follower.Evaluate(40, 40, stages, delaySeconds: 2, nowMs: 0);
+        var (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 500);
+        Assert.AreEqual(0, stage, "Stage must wait for the shared delay.");
+        (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 2499);
+        Assert.AreEqual(0, stage);
+        (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 2500);
+        Assert.AreEqual(1, stage);
     }
 
     [TestMethod]
-    public void LoadedCurvesNormalizeWithoutLoweringEarlierCoolingTargets()
+    public void DisabledTripDoesNotAdvanceOnThatSensor()
     {
-        var profile = new FanCurveProfile { Cpu = [20, 40, 10, 60, 30], Gpu = [15, 80, 20] };
-        profile.Normalize();
-        Assert.AreEqual(40, profile.Cpu[2]);
-        Assert.AreEqual(60, profile.Cpu[4]);
-        foreach (var curve in new[] { profile.Cpu, profile.Gpu })
-            for (int i = 1; i < curve.Length; i++) Assert.IsGreaterThanOrEqualTo(curve[i - 1], curve[i]);
+        var follower = new FanCurveFollower();
+        var quiet = FanCurveProfile.DefaultStages(0);
+        // Quiet stage 5: CPU rise 127, GPU rise 80 — only GPU can advance to stage 6.
+        follower.Evaluate(90, 75, quiet, 0, 0);
+        var (_, _, stage) = follower.Evaluate(100, 75, quiet, 0, 1000);
+        Assert.IsTrue(stage <= 5);
+        (_, _, stage) = follower.Evaluate(100, 80, quiet, 0, 2000);
+        Assert.AreEqual(6, stage);
     }
 
     [TestMethod]
-    public void PerModeMaxChoiceDoesNotReplaceSavedCurveOrLeakToAnotherProfile()
+    public void FactoryPresetsMatchEcRpmTargets()
     {
-        var turbo = new FanCurveProfile { ControlMode = FanControlMode.Max };
+        var balanced = FanCurveProfile.CreateDefault(1);
+        Assert.AreEqual(12, balanced.Stages.Length);
+        Assert.AreEqual(0, balanced.Stages[0].CpuTargetRpm);
+        Assert.AreEqual(1800, balanced.Stages[1].CpuTargetRpm);
+        Assert.AreEqual(2350, balanced.Stages[3].CpuTargetRpm);
+        Assert.AreEqual(6400, balanced.Stages[11].CpuTargetRpm);
+        CollectionAssert.AreEqual(
+            FanCurveProfile.DefaultStages(0).Select(s => s.CpuTargetRpm).ToArray(),
+            FanCurveProfile.DefaultStages(6).Select(s => s.CpuTargetRpm).ToArray());
+    }
+
+    [TestMethod]
+    public void PerModeMaxChoiceDoesNotReplaceSavedStagesOrLeakToAnotherProfile()
+    {
+        var turbo = new FanCurveProfile { ControlMode = FanControlMode.Max, Stages = FanCurveProfile.DefaultStages(5) };
         var balanced = new FanCurveProfile();
         var draft = turbo.Copy();
         Assert.AreEqual(FanControlMode.Max, draft.ControlMode);
         Assert.AreEqual(FanControlMode.Auto, balanced.ControlMode);
         draft.ControlMode = FanControlMode.Custom;
         Assert.AreEqual(FanControlMode.Max, turbo.ControlMode);
-        CollectionAssert.AreEqual(FanCurveProfile.DefaultCurve(), turbo.Cpu);
+        Assert.AreEqual(2150, turbo.Stages[1].CpuTargetRpm);
     }
 
     [TestMethod]
-    public void ExtractedTablePresetsUseWmiModeCodesAndKeepBothFansMonotonic()
-    {
-        var balanced = FanCurveProfile.CreateDefault(1);
-        var turbo = FanCurveProfile.CreateDefault(5);
-        var quiet = FanCurveProfile.CreateDefault(0);
-        Assert.AreEqual(35, balanced.Cpu[5]); // 65°C, extracted stage 2350/6800.
-        Assert.AreEqual(37, balanced.Gpu[5]); // Same stage, 2350/6400.
-        Assert.AreEqual(58, turbo.Cpu[5]);
-        Assert.AreEqual(29, quiet.Cpu[5]);
-        CollectionAssert.AreEqual(quiet.Cpu, FanCurveProfile.CreateDefault(6).Cpu);
-        foreach (byte mode in new byte[] { 0, 1, 4, 5, 6 })
-        {
-            var profile = FanCurveProfile.CreateDefault(mode);
-            foreach (var curve in new[] { profile.Cpu, profile.Gpu })
-            {
-                Assert.HasCount(FanCurveProfile.PointCount, curve);
-                Assert.AreEqual(100, curve[11]);
-                for (int i = 0; i < curve.Length; i++)
-                {
-                    Assert.IsTrue(curve[i] is >= 20 and <= 100);
-                    if (i > 0) Assert.IsGreaterThanOrEqualTo(curve[i - 1], curve[i]);
-                }
-            }
-        }
-        turbo.Cpu[0] = 0;
-        Assert.AreEqual(20, FanCurveProfile.CreateDefault(5).Cpu[0]);
-    }
-
-    [TestMethod]
-    public void PerModeSelectionsOverrideLegacyGlobalAndMigrateOldSwitches()
+    public void DecodeControlModePrefersSavedValue()
     {
         Assert.AreEqual(FanControlMode.Max, FanCurveStorage.DecodeControlMode(1, false, false, 0));
         Assert.AreEqual(FanControlMode.Custom, FanCurveStorage.DecodeControlMode(2, false, true, 0));
-        Assert.AreEqual(FanControlMode.Auto, FanCurveStorage.DecodeControlMode(0, true, true, 2));
-        Assert.AreEqual(FanControlMode.Max, FanCurveStorage.DecodeControlMode(null, true, true, 2));
-        Assert.AreEqual(FanControlMode.Custom, FanCurveStorage.DecodeControlMode(null, true, false, 2));
-        Assert.AreEqual(FanControlMode.Auto, FanCurveStorage.DecodeControlMode(null, false, true, 2));
-        Assert.AreEqual(FanControlMode.Auto, FanCurveStorage.DecodeControlMode(null, true, true, 0));
-        Assert.AreEqual(FanControlMode.Auto, FanCurveStorage.DecodeControlMode(99, true, true, 2));
+        Assert.AreEqual(FanControlMode.Auto, FanCurveStorage.DecodeControlMode(null, false, true, 1));
+        Assert.AreEqual(FanControlMode.Max, FanCurveStorage.DecodeControlMode(null, true, true, 1));
     }
 }
-
-

@@ -35,7 +35,8 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
 
     public Result Apply(byte selected, int delta, int boost, byte? platformOffset = null)
     {
-        if (delta is < 0 or > 50 || delta % 5 != 0 || boost is not (0 or 10 or 15 or 20 or 25))
+        if (delta is < 0 || delta > DriverFactoryCalibration.MaxGpuDeltaWatts || delta % 5 != 0
+            || !DriverFactoryCalibration.IsLegalGpuDynamicBoost(boost))
             return new(false, "GPU offsets are outside the supported slider values.");
         if (platformOffset is byte po && (po > 100 || po % 5 != 0))
             return new(false, "Platform power offset is outside the supported slider values.");

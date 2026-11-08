@@ -6,71 +6,150 @@ public enum FanControlMode { Auto = 0, Max = 1, Custom = 2 }
 
 public sealed class FanCurveProfile
 {
-    public const int MinimumTemperature = 40;
-    public const int MaximumTemperature = 100;
-    public const int TemperatureStep = 5;
-    public const int PointCount = (MaximumTemperature - MinimumTemperature) / TemperatureStep + 1;
+    public const int StageCount = 12;
     public static bool ValidTemperatures(int cpu, int gpu) => cpu is > 0 and <= 125;
     public static int CoolingTemperature(int cpu, int gpu) => gpu is > 0 and <= 125 ? Math.Max(cpu, gpu) : cpu;
+
     public FanControlMode ControlMode { get; set; } = FanControlMode.Auto;
     public int RampUpSeconds { get; set; } = 2;
-    public int[] Cpu { get; set; } = DefaultCurve();
-    public int[] Gpu { get; set; } = DefaultCurve(gpu: true);
+    public FanStage[] Stages { get; set; } = DefaultStages(1);
 
-    // Starting presets derived from the extracted ZBJ-KQ EC 1.08 RPM stages.
-    // Percent commands are not calibrated RPM control; see docs/fan_control.md.
-    // Shared-temperature stage selection, 20% minimum, 100% from 95°C to 100°C.
-    public static int[] DefaultCurve(byte mode = 1, bool gpu = false) => (mode, gpu) switch
+    /// <summary>Factory ZBJ-KQ EC 1.08 variant-0 stage tables (RPM targets, rise/fall °C).</summary>
+    public static FanStage[] DefaultStages(byte mode) => mode switch
     {
-        (5, false) => [20, 20, 20, 35, 38, 58, 73, 73, 73, 73, 81, 100, 100],
-        (5, true) => [20, 20, 20, 37, 40, 61, 77, 77, 77, 77, 86, 100, 100],
-        (4, false) => [20, 20, 29, 35, 38, 47, 57, 64, 64, 64, 64, 100, 100],
-        (4, true) => [20, 20, 31, 37, 40, 50, 61, 68, 68, 68, 68, 100, 100],
-        (0 or 6, false) => [20, 20, 20, 20, 26, 29, 32, 38, 42, 42, 42, 100, 100],
-        (0 or 6, true) => [20, 20, 20, 20, 29, 31, 34, 40, 45, 45, 45, 100, 100],
-        (_, false) => [20, 20, 26, 26, 29, 35, 38, 47, 53, 53, 53, 100, 100],
-        (_, true) => [20, 20, 29, 29, 31, 37, 40, 50, 56, 56, 56, 100, 100]
+        5 => Clone(Turbo),
+        4 => Clone(Performance),
+        0 or 6 => Clone(QuietEco),
+        _ => Clone(Balanced)
     };
+
     public static FanCurveProfile CreateDefault(byte mode) => new()
     {
         ControlMode = FanControlMode.Auto,
-        RampUpSeconds = 2,
-        Cpu = DefaultCurve(mode),
-        Gpu = DefaultCurve(mode, gpu: true)
+        RampUpSeconds = 0,
+        Stages = DefaultStages(mode)
     };
-    public static int PointIndex(int temperature) =>
-        Math.Clamp((temperature - MinimumTemperature) / TemperatureStep, 0, PointCount - 1);
+
     public FanCurveProfile Copy() => new()
     {
-        ControlMode = ControlMode, RampUpSeconds = RampUpSeconds,
-        Cpu = (int[])Cpu.Clone(), Gpu = (int[])Gpu.Clone()
+        ControlMode = ControlMode,
+        RampUpSeconds = RampUpSeconds,
+        Stages = Clone(Stages)
     };
+
     public void Normalize()
     {
         RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
         if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
-        Cpu = NormalizeCurve(Cpu);
-        Gpu = NormalizeCurve(Gpu, gpu: true);
+        if (Stages is not { Length: StageCount })
+            Stages = DefaultStages(1);
+        else
+            foreach (var stage in Stages)
+                stage.Normalize();
     }
-    private static int[] NormalizeCurve(int[]? source, bool gpu = false)
+
+    public void Normalize(byte mode)
     {
-        var result = DefaultCurve(gpu: gpu);
-        for (int i = 0; i < result.Length; i++)
-            result[i] = Math.Max(i == 0 ? 0 : result[i - 1],
-                source != null && i < source.Length ? Math.Clamp(source[i], 0, 100) : result[i]);
+        RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
+        if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
+        Stages = NormalizeStages(Stages, mode);
+    }
+
+    private static FanStage[] NormalizeStages(FanStage[]? source, byte mode)
+    {
+        var result = DefaultStages(mode);
+        if (source == null) return result;
+        for (int i = 0; i < StageCount && i < source.Length; i++)
+        {
+            result[i] = source[i]?.Copy() ?? result[i];
+            result[i].Normalize();
+        }
         return result;
     }
-    public static void SetPoint(int[] curve, int index, int value)
+
+    private static FanStage[] Clone(FanStage[] source)
     {
-        int minimum = index == 0 ? 0 : curve[index - 1];
-        int maximum = index == curve.Length - 1 ? 100 : curve[index + 1];
-        curve[index] = Math.Clamp(value, minimum, maximum);
+        var copy = new FanStage[source.Length];
+        for (int i = 0; i < source.Length; i++) copy[i] = source[i].Copy();
+        return copy;
     }
+
+    private static FanStage S(int cpuRise, int cpuFall, int gpuRise, int gpuFall, int cpuRpm, int gpuRpm) => new()
+    {
+        CpuRiseC = cpuRise, CpuFallC = cpuFall, GpuRiseC = gpuRise, GpuFallC = gpuFall,
+        CpuTargetRpm = cpuRpm, GpuTargetRpm = gpuRpm
+    };
+
+    // Quiet and Eco share the same EC table.
+    private static readonly FanStage[] QuietEco =
+    [
+        S(57, 0, 57, 0, 0, 0),
+        S(64, 40, 62, 40, 1800, 1850),
+        S(70, 56, 66, 56, 1970, 1980),
+        S(76, 65, 71, 61, 2150, 2150),
+        S(81, 71, 75, 65, 2350, 2350),
+        S(127, 77, 80, 70, 2550, 2550),
+        S(127, 127, 127, 74, 2850, 2850),
+        S(127, 127, 127, 127, 2850, 2850),
+        S(127, 127, 127, 127, 2850, 2850),
+        S(127, 127, 127, 127, 2850, 2850),
+        S(127, 127, 127, 127, 2850, 2850),
+        S(127, 127, 127, 127, 6400, 6400),
+    ];
+
+    private static readonly FanStage[] Balanced =
+    [
+        S(56, 0, 50, 0, 0, 0),
+        S(65, 40, 56, 40, 1800, 1850),
+        S(72, 55, 62, 51, 1970, 1980),
+        S(78, 64, 68, 57, 2350, 2350),
+        S(84, 71, 73, 63, 2550, 2550),
+        S(89, 77, 77, 69, 3180, 3170),
+        S(127, 83, 127, 74, 3600, 3600),
+        S(127, 127, 127, 127, 3600, 3600),
+        S(127, 127, 127, 127, 3600, 3600),
+        S(127, 127, 127, 127, 3600, 3600),
+        S(127, 127, 127, 127, 3600, 3600),
+        S(127, 127, 127, 127, 6400, 6400),
+    ];
+
+    private static readonly FanStage[] Performance =
+    [
+        S(50, 0, 50, 0, 0, 0),
+        S(54, 40, 56, 40, 1970, 1980),
+        S(60, 51, 61, 51, 2350, 2350),
+        S(65, 55, 66, 57, 2550, 2550),
+        S(70, 61, 71, 62, 3180, 3170),
+        S(75, 66, 76, 67, 3900, 3900),
+        S(127, 71, 127, 72, 4350, 4350),
+        S(127, 127, 127, 127, 4350, 4350),
+        S(127, 127, 127, 127, 4350, 4350),
+        S(127, 127, 127, 127, 4350, 4350),
+        S(127, 127, 127, 127, 4350, 4350),
+        S(127, 127, 127, 127, 6400, 6400),
+    ];
+
+    private static readonly FanStage[] Turbo =
+    [
+        S(55, 0, 52, 0, 0, 0),
+        S(60, 40, 55, 40, 2150, 2150),
+        S(65, 56, 58, 53, 2350, 2350),
+        S(70, 61, 61, 56, 2550, 2550),
+        S(74, 66, 64, 59, 3180, 3170),
+        S(78, 71, 67, 62, 3950, 3900),
+        S(95, 75, 86, 65, 4950, 4950),
+        S(127, 85, 127, 78, 5500, 5500),
+        S(127, 127, 127, 127, 5500, 5500),
+        S(127, 127, 127, 127, 5500, 5500),
+        S(127, 127, 127, 127, 5500, 5500),
+        S(127, 127, 127, 127, 6400, 6400),
+    ];
 }
 
 public static class FanCurveStorage
 {
-    private static PreySense.Core.Configuration.ModeFanCurveConfig GetModeFanConfig(PreySense.Core.Configuration.PreySenseConfig cfg, byte mode) => mode switch
+    private static PreySense.Core.Configuration.ModeFanCurveConfig GetModeFanConfig(
+        PreySense.Core.Configuration.PreySenseConfig cfg, byte mode) => mode switch
     {
         0 => cfg.Fans.Quiet,
         6 => cfg.Fans.Eco,
@@ -88,13 +167,23 @@ public static class FanCurveStorage
             var fanMode = GetModeFanConfig(cfg, mode);
             profile.ControlMode = (FanControlMode)Math.Clamp(fanMode.ControlMode, 0, 2);
             profile.RampUpSeconds = Math.Clamp(fanMode.RampUpSeconds, 0, 5);
-            if (fanMode.CpuCurve != null && fanMode.CpuCurve.Length == FanCurveProfile.PointCount)
-                Array.Copy(fanMode.CpuCurve, profile.Cpu, FanCurveProfile.PointCount);
-            if (fanMode.GpuCurve != null && fanMode.GpuCurve.Length == FanCurveProfile.PointCount)
-                Array.Copy(fanMode.GpuCurve, profile.Gpu, FanCurveProfile.PointCount);
+            if (fanMode.Stages is { Length: FanCurveProfile.StageCount })
+            {
+                for (int i = 0; i < FanCurveProfile.StageCount; i++)
+                {
+                    var s = fanMode.Stages[i];
+                    if (s == null) continue;
+                    profile.Stages[i] = new FanStage
+                    {
+                        CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
+                        GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
+                        CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
+                    };
+                }
+            }
         }
         catch { }
-        profile.Normalize();
+        profile.Normalize(mode);
         return profile;
     }
 
@@ -109,7 +198,7 @@ public static class FanCurveStorage
     public static void Save(byte mode, FanCurveProfile profile)
     {
         var saved = profile.Copy();
-        saved.Normalize();
+        saved.Normalize(mode);
         try
         {
             PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
@@ -117,8 +206,20 @@ public static class FanCurveStorage
                 var fanMode = GetModeFanConfig(cfg, mode);
                 fanMode.ControlMode = (int)saved.ControlMode;
                 fanMode.RampUpSeconds = saved.RampUpSeconds;
-                fanMode.CpuCurve = (int[])saved.Cpu.Clone();
-                fanMode.GpuCurve = (int[])saved.Gpu.Clone();
+                fanMode.Stages = new PreySense.Core.Configuration.FanStageConfig[FanCurveProfile.StageCount];
+                for (int i = 0; i < FanCurveProfile.StageCount; i++)
+                {
+                    var s = saved.Stages[i];
+                    fanMode.Stages[i] = new PreySense.Core.Configuration.FanStageConfig
+                    {
+                        CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
+                        GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
+                        CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
+                    };
+                }
+                // Drop legacy 5°C arrays so they are not re-loaded as authority.
+                fanMode.CpuCurve = Array.Empty<int>();
+                fanMode.GpuCurve = Array.Empty<int>();
             });
         }
         catch { }

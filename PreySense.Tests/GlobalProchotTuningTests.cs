@@ -60,6 +60,8 @@ public class GlobalProchotTuningTests
         {
             profile.CpuPl1Watts = 55; profile.CpuPl2Watts = 90; profile.TauSeconds = 56;
             profile.GpuDeltaWatts = 20; profile.GpuDynamicBoostWatts = 15; profile.PlatformPowerOffsetWatts = 10; profile.CpuBoost = true;
+            profile.ApplyCpuLimits = true;
+            profile.ApplyGpuLimits = true;
         }
         var vm = Create(config);
         var requests = new List<MainViewModel.DriverTuningRequest>();

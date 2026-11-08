@@ -168,6 +168,11 @@ namespace PreySense.Core.Configuration
                 foreach (var entry in config.Tuning.FactoryDefaults)
                     ValidateModeTuning("FactoryDefaults." + entry.Key, entry.Value);
             }
+            if (config.Tuning.FactoryStaticCpuPl1Watts is not null || config.Tuning.FactoryStaticCpuPl2Watts is not null)
+            {
+                if (!config.Tuning.HasFactoryStaticCpuLimits)
+                    throw new ArgumentException("FactoryStaticCpuPl1Watts/FactoryStaticCpuPl2Watts must both be valid PL1/PL2 watts.");
+            }
 
             if (config.Tuning.CpuBoostMode is < 0 or > 6)
                 throw new ArgumentOutOfRangeException(nameof(config.Tuning.CpuBoostMode), "CpuBoostMode must be between 0 and 6.");
@@ -178,10 +183,6 @@ namespace PreySense.Core.Configuration
 
             if (config.Session.GpuModePreference is < 0 or > 2)
                 throw new ArgumentOutOfRangeException(nameof(config.Session.GpuModePreference), "GpuModePreference must be 0, 1, or 2.");
-
-            // Battery validation
-            if (config.Battery.UsbChargingPercent is not (0 or 10 or 20 or 30))
-                throw new ArgumentOutOfRangeException(nameof(config.Battery.UsbChargingPercent), "UsbChargingPercent must be 0, 10, 20, or 30.");
 
             // Overlay validation
             if (config.Overlay.ScalePercent is < 50 or > 200)
@@ -242,17 +243,18 @@ namespace PreySense.Core.Configuration
             if (mode.GpuWatts is < 1 or > 999)
                 throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuWatts", $"GPU target watts for {modeName} must be between 1W and 999W.");
 
-            if (mode.GpuDeltaWatts is < 0 or > 50 || (mode.GpuDeltaWatts is int delta && delta % 5 != 0))
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDeltaWatts", $"GPU delta for {modeName} must be 0–50W in steps of 5.");
+            if (mode.GpuDeltaWatts is < 0
+                || mode.GpuDeltaWatts > Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
+                || (mode.GpuDeltaWatts is int delta && delta % 5 != 0))
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDeltaWatts",
+                    $"GPU delta for {modeName} must be 0–{Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts}W in steps of 5.");
 
-            if (mode.GpuDynamicBoostWatts is int db && db is not (0 or 10 or 15 or 20 or 25))
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDynamicBoostWatts", $"GPU dynamic boost for {modeName} must be 0, 10, 15, 20, or 25W.");
+            if (mode.GpuDynamicBoostWatts is int db && !Hardware.DriverFactoryCalibration.IsLegalGpuDynamicBoost(db))
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDynamicBoostWatts",
+                    $"GPU dynamic boost for {modeName} must be 0–{Hardware.DriverFactoryCalibration.MaxGpuDynamicBoostWatts}W in steps of 5.");
 
             if (mode.PlatformPowerOffsetWatts is < 0 or > 100 || (mode.PlatformPowerOffsetWatts is int platform && platform % 5 != 0))
                 throw new ArgumentOutOfRangeException($"Tuning.{modeName}.PlatformPowerOffsetWatts", $"Platform power offset for {modeName} must be 0–100W in steps of 5.");
-
-            if (mode.FanRampUp is < 0 or > 10)
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.FanRampUp", $"Fan ramp-up for {modeName} must be between 0 and 10.");
         }
 
         /// <summary>Promotes legacy boost bools and snaps factory GPU offsets to apply-legal steps.</summary>

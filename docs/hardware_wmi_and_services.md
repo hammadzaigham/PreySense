@@ -82,18 +82,6 @@ Identical custom PWM is not rewritten on a timer. Repeating the same duty made t
 
 ---
 
-## USB power-off charging
-
-`APGeAction` cutoff 0 (off), 10, 20, or 30% remaining. Settings slider snaps to those four values.
-
----
-
-## LCD overdrive
-
-`SetGamingProfile(enable ? 0x1000000000010 : 0x10)`. Firmware returns 0 on accept; it does not expose a reliable live state on this model.
-
----
-
 ## GPU mux
 
 Optimus / Automatic / Advanced Optimus use NVIDIA DDS only. Acer `SetGamingMiscSetting(((mode + 1) << 8) | 0x02)` stages the BIOS mux for **dGPU Only** and does not switch the live panel. See [GPU switching](gpu_switching_and_dds.md).

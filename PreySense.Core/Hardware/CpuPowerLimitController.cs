@@ -352,15 +352,19 @@ public sealed class CpuPowerLimitController
     }
 
     /// <summary>
-    /// Executes a combined atomic transaction applying both MSR and MMIO power limits
+    /// Executes a combined atomic transaction applying MSR and/or MMIO power limits
     /// with coordinated rollback if either fails.
+    /// When <paramref name="staticPl1FloorWatts"/> / <paramref name="staticPl2FloorWatts"/> are set
+    /// and both requested limits stay at or below those calibrated MSR floors, only MMIO is written.
     /// </summary>
     public CombinedTransactionResult ExecuteCombinedTransaction(
         ulong mchbarBase,
         int pl1Watts,
         int pl2Watts,
         bool pl2Enable,
-        double tauSeconds)
+        double tauSeconds,
+        int? staticPl1FloorWatts = null,
+        int? staticPl2FloorWatts = null)
     {
         if (!_backend.IsInitialized)
         {
@@ -399,7 +403,12 @@ public sealed class CpuPowerLimitController
                 Status: $"Requested limits exceed maximum 15-bit hardware range ({MMIO_MAX_MW}mW).");
         }
 
-        // 1. Snapshot original MSR state
+        bool skipMsr = staticPl1FloorWatts is int floorPl1
+            && staticPl2FloorWatts is int floorPl2
+            && pl1Watts <= floorPl1
+            && pl2Watts <= floorPl2;
+
+        // 1. Snapshot original MSR state (units always needed for Tau encoding)
         if (!_backend.ReadMsr(MSR_RAPL_POWER_UNIT, out ulong units) ||
             !_backend.ReadMsr(MSR_PKG_POWER_LIMIT, out ulong origMsr))
         {
@@ -412,7 +421,7 @@ public sealed class CpuPowerLimitController
                 Status: "Failed to read initial MSR state.");
         }
 
-        if ((origMsr & MSR_610_LOCK_BIT) != 0)
+        if (!skipMsr && (origMsr & MSR_610_LOCK_BIT) != 0)
         {
             return new CombinedTransactionResult(
                 Success: false,
@@ -425,6 +434,17 @@ public sealed class CpuPowerLimitController
 
         // 2. Snapshot original MMIO state
         bool mmioRequested = mchbarBase != 0;
+        if (skipMsr && !mmioRequested)
+        {
+            return new CombinedTransactionResult(
+                Success: false,
+                MsrUpdated: false,
+                MmioUpdated: false,
+                RollbackAttempted: false,
+                RollbackSucceeded: true,
+                Status: "Static MSR floors skip MSR writes, but MCHBAR/MMIO is unavailable.");
+        }
+
         uint origMmio1 = 0;
         uint origMmio2 = 0;
 
@@ -456,16 +476,19 @@ public sealed class CpuPowerLimitController
 
         byte tauEncoded = EncodeTau(tauSeconds, units);
 
-        // 3. Apply MSR power limits
-        if (!TrySetMsrPowerLimits(pl1Watts, pl2Watts, pl2Enable, tauSeconds, out string msrStatus))
+        // 3. Apply MSR power limits when raising above calibrated static floors
+        if (!skipMsr)
         {
-            return new CombinedTransactionResult(
-                Success: false,
-                MsrUpdated: false,
-                MmioUpdated: false,
-                RollbackAttempted: true,
-                RollbackSucceeded: msrStatus.Contains("Rollback verified successfully"),
-                Status: $"MSR update failed: {msrStatus}");
+            if (!TrySetMsrPowerLimits(pl1Watts, pl2Watts, pl2Enable, tauSeconds, out string msrStatus))
+            {
+                return new CombinedTransactionResult(
+                    Success: false,
+                    MsrUpdated: false,
+                    MmioUpdated: false,
+                    RollbackAttempted: true,
+                    RollbackSucceeded: msrStatus.Contains("Rollback verified successfully"),
+                    Status: $"MSR update failed: {msrStatus}");
+            }
         }
 
         // 4. If MMIO is configured, apply MMIO power limits
@@ -473,8 +496,8 @@ public sealed class CpuPowerLimitController
         {
             if (!TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out string mmioStatus))
             {
-                // MMIO failed -> coordinated rollback: restore MSR as well
-                bool msrRollbackOk = RollbackMsrVerified(origMsr);
+                // MMIO failed -> coordinated rollback: restore MSR when it was written
+                bool msrRollbackOk = skipMsr || RollbackMsrVerified(origMsr);
                 bool mmioRollbackOk = mmioStatus.Contains("Rollback verified successfully")
                     || mmioStatus.Contains("Failed to write MMIO registers. Rollback verified successfully.")
                     || !mmioStatus.Contains("CRITICAL");
@@ -494,13 +517,15 @@ public sealed class CpuPowerLimitController
 
         return new CombinedTransactionResult(
             Success: true,
-            MsrUpdated: true,
+            MsrUpdated: !skipMsr,
             MmioUpdated: mmioRequested,
             RollbackAttempted: false,
             RollbackSucceeded: true,
-            Status: mmioRequested
-                ? $"Combined MSR and MMIO limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                : $"MSR limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s (MMIO bypassed).");
+            Status: skipMsr
+                ? $"MMIO limits applied (MSR unchanged at/below static floors): PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
+                : mmioRequested
+                    ? $"Combined MSR and MMIO limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
+                    : $"MSR limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s (MMIO bypassed).");
     }
 
     /// <summary>

@@ -17,6 +17,8 @@ public class AutomaticDriverTuningTests
             profile.GpuDeltaWatts ??= 20; profile.GpuDynamicBoostWatts ??= 15;
             profile.PlatformPowerOffsetWatts ??= 10;
             profile.CpuBoost ??= true; profile.CpuBoostMode ??= profile.CpuBoost == true ? 1 : 0;
+            profile.ApplyCpuLimits = true;
+            profile.ApplyGpuLimits = true;
         }
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
         void Set(string name, object value) => typeof(MainViewModel)

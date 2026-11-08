@@ -10,8 +10,7 @@ public partial class MainViewModel
     public string[] FanCurveModeNames { get; } = { "Eco", "Quiet", "Balanced", "Performance", "Turbo" };
 
     private readonly object _fanControlGate = new();
-    private readonly FanCurveFollower _cpuFanFollower = new();
-    private readonly FanCurveFollower _gpuFanFollower = new();
+    private readonly FanCurveFollower _fanFollower = new();
     private FanCurveProfile? _runningFanProfile;
     private byte _runningFanProfileMode = 0xFF;
     private int? _sentCpuFan, _sentGpuFan;
@@ -90,7 +89,7 @@ public partial class MainViewModel
     }
     private void ResetFanFollower()
     {
-        _cpuFanFollower.Reset(); _gpuFanFollower.Reset();
+        _fanFollower.Reset();
         _runningFanProfile = null;
         _runningFanProfileMode = 0xFF;
         _sentCpuFan = _sentGpuFan = null;
@@ -150,10 +149,10 @@ public partial class MainViewModel
             }
             bool valid = FanCurveProfile.ValidTemperatures(telemetry.CpuTemp, telemetry.GpuTemp);
             if (Environment.TickCount64 < _fanModeSettlesAt || !valid) return;
-            int temperature = FanCurveProfile.CoolingTemperature(telemetry.CpuTemp, telemetry.GpuTemp);
-            long now = Environment.TickCount64;
-            int cpu = _cpuFanFollower.Evaluate(temperature, _runningFanProfile.Cpu, _runningFanProfile.RampUpSeconds, now);
-            int gpu = _gpuFanFollower.Evaluate(temperature, _runningFanProfile.Gpu, _runningFanProfile.RampUpSeconds, now);
+            int gpuTemp = telemetry.GpuTemp is > 0 and <= 125 ? telemetry.GpuTemp : 0;
+            var (cpu, gpu, _) = _fanFollower.Evaluate(
+                telemetry.CpuTemp, gpuTemp, _runningFanProfile.Stages,
+                _runningFanProfile.RampUpSeconds, Environment.TickCount64);
             if (_sentCpuFan == cpu && _sentGpuFan == gpu) return;
             _fanOverrideActive = true;
             if (_hw.SetFanSpeeds((byte)cpu, (byte)gpu))

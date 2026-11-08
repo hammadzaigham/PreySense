@@ -236,13 +236,7 @@ namespace PreySense.Frontend
                 }
             }
 
-            // 3. Verification and diagnostic logging
-            IntPtr currentForeground = GetForegroundWindow();
-            if (currentForeground != hwnd && !IsApplicationHwnd(currentForeground))
-            {
-                string procInfo = string.Empty; try { GetWindowThreadProcessId(currentForeground, out uint pid); if (pid != 0) { using var proc = System.Diagnostics.Process.GetProcessById((int)pid); procInfo = $" [{proc.ProcessName}, PID {pid}]"; } } catch { }
-                AppLogger.Log($"ForceToForeground: Failed to activate window {window.GetType().Name} to foreground (external foreground HWND: 0x{currentForeground:X}{procInfo}).");
-            }
+            // Windows may keep focus on shell UI (e.g. ShellExperienceHost); that is expected and not an error.
         }
 
         private const int SwRestore = 9;
@@ -261,8 +255,6 @@ namespace PreySense.Frontend
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
-        [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll")]
         private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);

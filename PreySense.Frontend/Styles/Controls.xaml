@@ -272,7 +272,12 @@
                 <RepeatButton Command="{x:Static Slider.DecreaseLarge}">
                   <Control.Template>
                     <ControlTemplate>
-                      <Border Height="5" CornerRadius="2.5" VerticalAlignment="Center" Background="{DynamicResource ControlTrackFillBrush}" />
+                      <Border x:Name="DecreaseTrack" Height="5" CornerRadius="2.5" VerticalAlignment="Center" Background="{DynamicResource ControlTrackFillBrush}" />
+                      <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Slider}}" Value="False">
+                          <Setter TargetName="DecreaseTrack" Property="Background" Value="{DynamicResource DisabledControlBrush}" />
+                        </DataTrigger>
+                      </ControlTemplate.Triggers>
                     </ControlTemplate>
                   </Control.Template>
                 </RepeatButton>
@@ -301,6 +306,11 @@
                         </Ellipse>
                       </Grid>
                       <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Slider}}" Value="False">
+                          <Setter TargetName="ThumbBody" Property="Shape.Fill" Value="{DynamicResource DisabledControlBrush}" />
+                          <Setter TargetName="ThumbBody" Property="Shape.Stroke" Value="{DynamicResource ControlTrackBrush}" />
+                          <Setter TargetName="ThumbBody" Property="UIElement.Effect" Value="{x:Null}" />
+                        </DataTrigger>
                         <Trigger Property="UIElement.IsMouseOver" Value="True">
                           <Setter TargetName="ThumbBody" Property="Shape.StrokeThickness" Value="2.5" />
                           <Setter TargetName="ThumbBody" Property="Shape.Fill" Value="{DynamicResource ControlThumbHoverBrush}" />
