@@ -2,7 +2,7 @@
 
 PreySense is a Windows utility for Acer Predator laptops. It replaces the official Predator Sense suite.
 
-**v3.0.0** uses a bundled CPU driver for per-mode CPU/GPU tuning — no OpenCore. See [What’s new in v3.0.0](docs/releases/v3.0.0.md).
+**v3.0.0** uses a bundled kernel driver for per-mode CPU/GPU tuning — no OpenCore. See [What’s new in v3.0.0](docs/releases/v3.0.0.md).
 
 Developed and verified on the **Acer Predator Helios Neo 16S (`PHN16S-71-98RF`)**. Other Predator models may work; that is not guaranteed.
 
