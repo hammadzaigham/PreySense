@@ -62,7 +62,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, s
 
 ## Install
 
-1. Uninstall any previous PreySense version (required when upgrading from v2 / OpenCore builds).
+1. Uninstall any previous PreySense version (required when upgrading from v2).
 2. Download the latest `PreySense.exe` from [Releases](https://github.com/hammadzaigham/PreySense/releases).
 3. Run as administrator. Close official Predator Sense if it is running.
 4. Closing the window hides to the tray; use **Quit** to exit.

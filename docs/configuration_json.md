@@ -47,7 +47,6 @@ Controls application-level behavior:
 - `Language` (string): UI culture code (`"en-US"`, `"zh-CN"`, `"hi-IN"`, `"es-ES"`, `"fr-FR"`). Default: `"en-US"`.
 - `LightTheme` (boolean): `true` for light UI theme, `false` for dark theme. Default: `false`.
 - `AcerServicesDebloated` (boolean): `true` if Acer OEM background services are stopped and disabled. Default: `false`.
-- `IntelIpfServicesDisabled` (boolean): `true` if Intel IPF (`ipfsvc`) and DTT (`dptftcs`) services are stopped and disabled so driver PL1 can exceed the OEM PCCC ceiling. Does not touch Acer OEM services or Intel XTU. Default: `false`.
 - `HardwareTuningEnabled` (boolean): enables hardware tuning controls. Default: `false`.
 
 ### `Display`
@@ -74,11 +73,10 @@ Power mode selection and automated switching rules:
 ### `Tuning`
 Per-mode hardware tuning profiles (`Quiet`, `Eco`, `Balanced`, `Performance`, `Turbo`). Numeric tuning values and CPU boost are nullable: unset controls stay blank and are not replaced with preset values. Only explicit Save creates a user profile. Incomplete profiles leave Acer stock mode selection active.
 
-`FactoryDefaults` is a separate map of the five driver-read mode profiles. The first enable requires confirmation and a complete capture; cancelling or failing leaves tuning off. Calibration does not populate user profiles.
+`FactoryDefaults` is a separate map of the five driver-read mode profiles. Missing defaults are captured at startup; calibration does not populate user profiles.
 
 Root-level Tuning fields:
 - `GpuBasePowerWatts` (int or null): Hardware default GPU power limit in Watts from NVML or factory calibration (`1` - `999W`). Null until captured once via `GpuPowerBaseline`; subsequent saves keep the first valid value.
-- `FactoryPcccWatts` (int or null): OEM Intel PCCC platform ceiling in Watts captured during calibration (typically `85`). Null until calibration reads it.
 - `CpuBoostMode` (int): Global/extended CPU boost mode (`0` - `6`). Default: `1`.
 - `ApplyProchotOffset` / `ProchotOffsetCelsius` / factory PROCHOT fields: optional PROCHOT offset controls.
 

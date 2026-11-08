@@ -205,7 +205,7 @@ namespace PreySense.Frontend.ViewModels
 
         private int ProfileIndexFor(PowerSourceKind source) => source switch
         {
-            PowerSourceKind.Battery => BatteryPowerModeIndex,
+            PowerSourceKind.Battery => ProfileManager.BatterySourceProfileIndexOrDefault(BatteryPowerModeIndex),
             _ => AcPowerModeIndex
         };
 
@@ -243,8 +243,19 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnBatteryPowerModeIndexChanged(int value)
         {
-            if (_suppressPowerProfile || value < 0)
+            if (_suppressPowerProfile)
                 return;
+
+            if (value < 0 || value >= ProfileManager.SourceProfileNames.Length)
+            {
+                _suppressPowerProfile = true;
+                BatteryPowerModeIndex = ProfileManager.SourceProfileIndex(ProfileManager.DefaultBatterySourceMode);
+                _suppressPowerProfile = false;
+                PersistSessionSettings();
+                if (_currentPowerSource == PowerSourceKind.Battery)
+                    ApplyPowerProfileForSource(PowerSourceKind.Battery);
+                return;
+            }
 
             PersistSessionSettings();
             if (_currentPowerSource == PowerSourceKind.Battery)

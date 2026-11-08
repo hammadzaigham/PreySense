@@ -98,55 +98,9 @@ calibrated percentage-to-RPM mapping or an exact recreation of the factory polic
 Quiet and Eco share the same extracted table. Each returned preset is independent
 and can be edited without changing defaults for other modes or users.
 
-## Factory EC tables
+## Factory Auto vs Custom
 
-Factory tables were found by offline analysis of the cached Acer BIOS V1.26
-package, which contains the ZBJ-KQ EC 1.08 payload built 2025-12-29. The running
-PHN16S-71 reports BIOS V1.28 and EC 1.08 through SMBIOS. The EC version matches;
-the running EC flash was not dumped, so byte-for-byte identity is not established.
-
-See [the extraction evidence](factory_fan_tables_phn16s71.md) for firmware
-addresses, row semantics, mode selection, and the reason Acer's getter fails.
-`tools/extract_factory_fans.py` exports JSON and CSV from this verified layout
-without hardware access. It rejects unknown signatures. These tables remain
-separate from user curves and the immutable factory power calibration.
-
-## Diagnostic history
-
-The existing DSDT dump declares EFN1 / EFN2 at EC offsets 0x49 / 0x4A, ETP1 / ETP2
-at 0x51 / 0x52, and FANM at 0x54. Those are active fan/sensor/mode fields, not a
-complete temperature-to-duty table. Existing Acer WMI code exposes sensor reads,
-fan behavior, and per-fan percentage writes. The inspected source does not expose
-a verified factory-curve read command.
-
-### Live diagnostic results
-
-A legacy elevated diagnostic EC read transaction timed out waiting for output;
-the batch stopped that read path. That diagnostic transport is no longer used.
-
-Acer WMI temperature, RPM, and behavior reads succeeded. GetGamingFanTable
-(method 19) returned 0x1: status 1, with no usable table selection. That getter
-returns one UInt64, not a set of temperature/duty points; its presence alone does
-not establish that firmware curves can be exported.
-
-A fresh elevated WMI-only capture on 2026-10-26 confirmed administrator access
-and successful live sensor reads. GetGamingFanTable returned the same status 1
-in all three samples. The report is `elevated-wmi.json` in the local diagnostic
-output folder. No fan targets, operating modes, or EC memory were written.
-
-The DSDT maps ERAM to 0xFE800500 and ERM6 to 0xFE800600, both 256-byte regions.
-This explains why mapped-memory access is a separate route from legacy EC ports;
-it does not prove that ERM6 contains fan curves. The available RWEverything 1.7
-crashed during the mapped-memory attempt and exported no register pages.
-
-Subsequent direct reads through the already-running inpoutx64 driver successfully
-captured ERM4, ERAM and ERM6. ERM6 contains power-profile values, not the fan
-tables. The EC firmware loads its fan table into private XRAM at 0x0800;
-reading host address 0xFE800800 returned only FF bytes. This is not a usable
-live fan-table mapping. The factory tables were instead recovered from the
-firmware payload described above.
-
-Firmware Auto remains the way to execute the exact coupled factory policy.
-The custom editor uses the derived percentage presets or user edits; exact
-factory RPM feedback is still handled by Auto. Diagnostics did not change fan
-targets or operating modes.
+Firmware **Auto** remains the way to run Acer's coupled factory fan policy.
+Custom curves use derived percentage presets or user edits; they are not a
+byte-for-byte recreation of the EC table. Acer's live fan-table getter does not
+export usable temperature/duty points on this chassis.

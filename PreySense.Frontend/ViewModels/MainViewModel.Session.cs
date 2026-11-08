@@ -59,8 +59,9 @@ namespace PreySense.Frontend.ViewModels
                 _suppressPowerProfile = true;
                 if (cfg.Session.AcPowerMode is 0 or 1 or 4 or 5 or 6)
                     AcPowerModeIndex = ProfileManager.SourceProfileIndex(cfg.Session.AcPowerMode);
-                if (cfg.Session.BatteryPowerMode is 0 or 1 or 4 or 5 or 6)
-                    BatteryPowerModeIndex = ProfileManager.SourceProfileIndex(cfg.Session.BatteryPowerMode);
+                BatteryPowerModeIndex = cfg.Session.BatteryPowerMode is 0 or 1 or 4 or 5 or 6
+                    ? ProfileManager.SourceProfileIndex(cfg.Session.BatteryPowerMode)
+                    : ProfileManager.SourceProfileIndex(ProfileManager.DefaultBatterySourceMode);
 
                 IsBatteryEnergySaverEnabled = cfg.Battery.BatteryEnergySaver;
                 IsGpuBatteryAutoEnabled = cfg.Battery.GpuBatteryAuto;
@@ -89,7 +90,7 @@ namespace PreySense.Frontend.ViewModels
                     cfg.Battery.ChargeLimitEnabled = IsBatteryLimitEnabled;
                     cfg.General.AcerServicesDebloated = IsAcerServicesDebloated;
                     cfg.Session.AcPowerMode = ProfileManager.SourceProfileMode(AcPowerModeIndex);
-                    cfg.Session.BatteryPowerMode = ProfileManager.SourceProfileMode(BatteryPowerModeIndex);
+                    cfg.Session.BatteryPowerMode = ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex);
                     cfg.Battery.BatteryEnergySaver = IsBatteryEnergySaverEnabled;
                     cfg.Battery.GpuBatteryAuto = IsGpuBatteryAutoEnabled;
                 });
@@ -179,11 +180,9 @@ namespace PreySense.Frontend.ViewModels
                         restoreWarning = "Power source: N/A. Source-specific settings were not applied.";
                         return;
                     }
-                    mode = ProfileManager.SourceProfileMode(source switch
-                    {
-                        PowerSourceKind.Battery => BatteryPowerModeIndex,
-                        _ => AcPowerModeIndex
-                    });
+                    mode = source == PowerSourceKind.Battery
+                        ? ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex)
+                        : ProfileManager.SourceProfileMode(AcPowerModeIndex);
                     if (IsBatteryEnergySaverEnabled)
                         PowerLimitController.SetEnergySaverOnBattery(true);
 

@@ -49,4 +49,15 @@ public class FallbackPolicyTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ProfileManager.ModeToProfileName(255));
         Assert.Throws<ArgumentOutOfRangeException>(() => WindowsPowerPolicy.OverlaySchemeForMode(255));
     }
+
+    [TestMethod]
+    public void SourceProfiles_ListEcoFirst_AndBatteryDefaultsToEco()
+    {
+        Assert.AreEqual("Eco", ProfileManager.SourceProfileNames[0]);
+        Assert.AreEqual(0x06, ProfileManager.SourceProfileMode(0));
+        Assert.AreEqual(0, ProfileManager.SourceProfileIndex(0x06));
+        Assert.AreEqual(0x06, ProfileManager.DefaultBatterySourceMode);
+        Assert.AreEqual(0, ProfileManager.BatterySourceProfileIndexOrDefault(-1));
+        Assert.AreEqual(0x06, ProfileManager.BatterySourceProfileModeOrDefault(-1));
+    }
 }

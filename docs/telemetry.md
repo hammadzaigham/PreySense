@@ -122,5 +122,3 @@ GPU throttle reasons are derived from NVIDIA's NVML clocks event reasons bitmask
 ## Missing readings
 
 Failed reads remain unavailable. Package temperature is never substituted with core temperature. CPU active clocks are not substituted with another clock, and wall-time estimates are not substituted for unavailable TSC deltas. Unknown graphs contain gaps instead of zero samples. RAM collection failures invalidate cached readings immediately. Missing GPU baselines leave nominal wattage unavailable while independent, captured offsets remain usable.
-
-See `fallback_policy.md` for retained recovery mechanisms and their purposes.

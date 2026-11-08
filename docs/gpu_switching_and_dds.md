@@ -38,4 +38,4 @@ SetGamingMiscSetting( ((predatorMode + 1) << 8) | 0x02 )
 
 Predator Sense `GPU_MODE` is 0 Optimus, 1 NVIDIA GPU only, 2 Automatic. PreySense stores Automatic as 1 and Discrete as 2, so those two are swapped before the call. NVIDIA GPU only is `0x202`. Firmware byte 1 / 2 / 3 is Optimus / NVIDIA GPU only / Automatic. After reboot, PreySense treats BIOS dGPU-only as active when an Intel/AMD iGPU is missing and NVIDIA is present.
 
-Insyde Setup offset for this byte on this chassis is `0x50` (see [BIOS offsets](bios_setup_var_offsets.md)).
+Insyde Setup NVRAM offset for this display-mode byte on PHN16 / PHN16S-class firmware is `0x50`.

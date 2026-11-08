@@ -342,7 +342,7 @@ if ($RgbValues -ne "") {
                 Write-Error "Invalid RGB profile values count. Expected at least $($zoneStart + 6) elements, got $valsCount (backlight=$kbBacklightCount, zoneStart=$zoneStart)."
             }
             else {
-                Write-Warning "WMI backlight buffer apply is legacy. For lighting modes use PreySense or docs/acer_service_rgb.md (AcerService TCP)."
+                Write-Warning "WMI backlight buffer apply is legacy. Prefer PreySense for lighting modes."
                 try {
                     $backlightBuffer = New-Object byte[] 16
                     for ($i = 0; $i -lt 16; $i++) { $backlightBuffer[$i] = [byte]$valArray[$i] }

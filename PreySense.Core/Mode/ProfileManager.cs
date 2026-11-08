@@ -34,22 +34,33 @@ namespace PreySense.Mode
             };
         }
 
-        public static readonly string[] SourceProfileNames = { "Quiet", "Balanced", "Performance", "Turbo", "Eco" };
+        public static readonly string[] SourceProfileNames = { "Eco", "Quiet", "Balanced", "Performance", "Turbo" };
 
-        private static readonly byte[] SourceProfileModes = { 0x00, 0x01, 0x04, 0x05, 0x06 };
+        private static readonly byte[] SourceProfileModes = { 0x06, 0x00, 0x01, 0x04, 0x05 };
 
         public static int SourceProfileIndex(byte mode) => mode switch
         {
-            0x00 => 0,
-            0x01 => 1,
-            0x04 => 2,
-            0x05 => 3,
-            0x06 => 4,
+            0x06 => 0,
+            0x00 => 1,
+            0x01 => 2,
+            0x04 => 3,
+            0x05 => 4,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 
         public static byte SourceProfileMode(int index)
             => index >= 0 && index < SourceProfileModes.Length ? SourceProfileModes[index] : throw new ArgumentOutOfRangeException(nameof(index));
+
+        /// <summary>Battery source-profile fallback when no dropdown selection is set.</summary>
+        public static byte DefaultBatterySourceMode => 0x06;
+
+        /// <summary>Resolves a battery source-profile index, defaulting to Eco when unset.</summary>
+        public static int BatterySourceProfileIndexOrDefault(int index)
+            => index >= 0 && index < SourceProfileModes.Length ? index : SourceProfileIndex(DefaultBatterySourceMode);
+
+        /// <summary>Resolves a battery source-profile mode, defaulting to Eco when unset.</summary>
+        public static byte BatterySourceProfileModeOrDefault(int index)
+            => SourceProfileMode(BatterySourceProfileIndexOrDefault(index));
 
         private static ModeTuningConfig GetModeTuningConfig(PreySenseConfig cfg, byte mode) => mode switch
         {
