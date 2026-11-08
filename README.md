@@ -15,7 +15,7 @@ Quiet, Eco, Balanced, Performance, and Turbo with one-click switching. Source pr
 
 ### Hardware tuning
 Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
-- CPU PL1, PL2, Tau, and Windows CPU Boost (full PERFBOOSTMODE options)
+- CPU PL1, PL2, Tau, and CPU Boost
 - GPU Delta, Dynamic Boost, and platform power offset
 - Optional global PROCHOT offset
 - Factory calibration stored in `preysense.json`, with Reset to captured defaults
