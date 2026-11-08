@@ -216,7 +216,7 @@ public class TuningCalibrationTests
         _vm.IsProchotOffsetEnabled = true;
         _vm.ResetModeToCapturedFactoryDefaults(4);
         Assert.AreEqual(8, _vm.ProchotOffsetCelsius);
-        Assert.IsFalse(_vm.IsProchotOffsetEnabled);
+        Assert.IsFalse(_vm.IsProchotOffsetEnabled, "Reset restores the factory offset and clears the apply switch.");
         Assert.IsFalse(_vm.IsProchotOffsetLocked);
     }
 }

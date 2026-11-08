@@ -58,10 +58,11 @@
                                 Title="CPU PROCHOT Offset" AllowEmpty="True" Minimum="0" Maximum="63" Unit="&#xB0;C"
                                 IsValueEnabled="{Binding CanEditProchotOffset}"
                                 ValueAutomationId="GlobalProchotOffsetValue" LostFocus="RowProchotOffset_LostFocus"/>
-                            <controls:RectangularSwitch Grid.Column="1" Width="56" Height="28"
+                            <controls:RectangularSwitch x:Name="SwitchProchotOffset" Grid.Column="1" Width="56" Height="28"
                                 Margin="12,0,0,0" VerticalAlignment="Center"
                                 IsEnabled="{Binding CanToggleProchotOffset}"
-                                IsChecked="{Binding IsProchotOffsetEnabled, Mode=TwoWay}"
+                                IsChecked="{Binding IsProchotOffsetEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Checked="ProchotOffsetToggle_Changed" Unchecked="ProchotOffsetToggle_Changed"
                                 AutomationProperties.AutomationId="EnableGlobalProchotOffset"
                                 AutomationProperties.Name="Include PROCHOT offset"/>
                         </Grid>

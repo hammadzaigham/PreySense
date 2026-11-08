@@ -71,6 +71,17 @@ namespace PreySense.Frontend.Views
         {
             if (e.PropertyName == nameof(MainViewModel.IsHardwareTuningEnabled) && IsLoaded)
                 LoadModeData();
+            else if (e.PropertyName == nameof(MainViewModel.IsProchotOffsetEnabled) && !_isUpdatingUi)
+            {
+                if (SwitchProchotOffset != null &&
+                    SwitchProchotOffset.IsChecked != (DataContext as MainViewModel)?.IsProchotOffsetEnabled)
+                {
+                    _isUpdatingUi = true;
+                    SwitchProchotOffset.IsChecked = (DataContext as MainViewModel)?.IsProchotOffsetEnabled == true;
+                    _isUpdatingUi = false;
+                }
+                UpdateActionButtonsEnabled();
+            }
         }
 
         internal void SyncFromViewModel()
@@ -153,6 +164,8 @@ namespace PreySense.Frontend.Views
             if (!Draft.TauSeconds.HasValue && LabelTau is not null) LabelTau.Text = string.Empty;
             if (RowProchotOffset != null)
                 RowProchotOffset.Value = vm.TuningEditorProchotOffset is int offset ? offset : double.NaN;
+            if (SwitchProchotOffset != null)
+                SwitchProchotOffset.IsChecked = vm.IsProchotOffsetEnabled;
             if (SwitchApplyCpuLimits != null)
                 SwitchApplyCpuLimits.IsChecked = Draft.ApplyCpuLimits;
             if (SwitchApplyGpuLimits != null)
@@ -172,6 +185,16 @@ namespace PreySense.Frontend.Views
             UpdateActionButtonsEnabled();
         }
 
+        private void ProchotOffsetToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isUpdatingUi || DataContext is not MainViewModel vm) return;
+            bool enabled = SwitchProchotOffset?.IsChecked == true;
+            vm.IsProchotOffsetEnabled = enabled;
+            if (enabled && vm.ProchotOffsetCelsius is null)
+                RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
+            UpdateActionButtonsEnabled();
+        }
+
         private void UpdateApplyLimitPanels()
         {
             if (CpuLimitsPanel != null)
@@ -183,9 +206,11 @@ namespace PreySense.Frontend.Views
         private void UpdateActionButtonsEnabled()
         {
             bool anyLimits = SwitchApplyCpuLimits?.IsChecked == true || SwitchApplyGpuLimits?.IsChecked == true;
-            if (BtnApply != null) BtnApply.IsEnabled = anyLimits;
-            if (BtnSave != null) BtnSave.IsEnabled = anyLimits;
-            if (BtnReset != null) BtnReset.IsEnabled = anyLimits;
+            bool prochotOnly = SwitchProchotOffset?.IsChecked == true;
+            bool canAct = anyLimits || prochotOnly;
+            if (BtnApply != null) BtnApply.IsEnabled = canAct;
+            if (BtnSave != null) BtnSave.IsEnabled = canAct;
+            if (BtnReset != null) BtnReset.IsEnabled = canAct;
         }
 
         private void CommitSlider(System.Windows.Controls.Slider slider)
@@ -374,18 +399,47 @@ namespace PreySense.Frontend.Views
             if (confirmation.ShowDialog() != true)
                 return;
 
-            bool applyCpu = SwitchApplyCpuLimits?.IsChecked == true;
-            bool applyGpu = SwitchApplyGpuLimits?.IsChecked == true;
             _isUpdatingUi = true;
-
             vm.ResetModeToCapturedFactoryDefaults(_selectedModeIndex);
             _drafts[_selectedModeIndex] = vm.FactoryTuningMode(_selectedModeIndex) ?? new();
-            Draft.ApplyCpuLimits = applyCpu;
-            Draft.ApplyGpuLimits = applyGpu;
-
+            Draft.ApplyCpuLimits = false;
+            Draft.ApplyGpuLimits = false;
+            vm.IsProchotOffsetEnabled = false;
             _isUpdatingUi = false;
             LoadModeData();
-            await ApplySelectedModeAsync(persist: true);
+
+            // Write factory CPU/GPU/PROCHOT once, then persist with every apply switch off.
+            SetVerificationText(string.Empty);
+            var (pl1, pl2, tau) = StoreEditorSettings(vm, updateActiveValues: true);
+            byte mode = ModeIndexToByte(_selectedModeIndex);
+            bool applyProchot = !vm.IsProchotOffsetLocked && vm.ProchotOffsetCelsius is not null;
+            BtnApply.IsEnabled = BtnSave.IsEnabled = BtnReset.IsEnabled = false;
+            ComboModeSelect.IsEnabled = TuningScroll.IsEnabled = false;
+            try
+            {
+                bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
+                    ReadGpuOffsets(), persist: true, vm.ProchotOffsetCelsius, applyProchot,
+                    applyCpuLimits: true, applyGpuLimits: true, persistApplySwitches: false);
+                Draft.ApplyCpuLimits = false;
+                Draft.ApplyGpuLimits = false;
+                vm.IsProchotOffsetEnabled = false;
+                LoadModeData();
+                string message = verified
+                    ? Services.LocalizationService.Translate("Applied and readback successfully.")
+                    : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
+                        ? Services.LocalizationService.Translate("Apply failed.")
+                        : vm.DiagnosticMessage);
+                SetVerificationText(message, verified
+                    ? TryFindResource("SuccessTextBrush") as Brush ?? Brushes.LightGreen
+                    : TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
+                _verificationTimer.Stop();
+                if (IsLoaded) _verificationTimer.Start();
+            }
+            finally
+            {
+                UpdateActionButtonsEnabled();
+                ComboModeSelect.IsEnabled = TuningScroll.IsEnabled = true;
+            }
         }
 
         private async void ApplyButton_Click(object sender, RoutedEventArgs e)
@@ -408,6 +462,8 @@ namespace PreySense.Frontend.Views
             SetVerificationText(string.Empty);
             RowPl1.CommitText(notify: false); RowPl2.CommitText(notify: false);
             RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
+            bool applyProchot = SwitchProchotOffset?.IsChecked == true;
+            vm.IsProchotOffsetEnabled = applyProchot;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
             Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
             Draft.CpuPl1Watts = double.IsFinite(RowPl1.Value) ? (int)RowPl1.Value : null;
@@ -416,15 +472,15 @@ namespace PreySense.Frontend.Views
             Draft.GpuDeltaWatts = SnapGpuDelta(SliderGpuDelta.Value);
             Draft.GpuDynamicBoostWatts = SnapGpuDynamicBoost(SliderGpuDynamicBoost.Value);
             Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value);
-            if (vm.IsProchotOffsetEnabled && vm.ProchotOffsetCelsius is null)
+            if (applyProchot && vm.ProchotOffsetCelsius is null)
             {
                 SetVerificationText(Services.LocalizationService.Translate("Enter a PROCHOT offset or turn its switch off."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
-            if (!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits)
+            if (!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU or GPU power limits before applying."),
+                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, or PROCHOT offset before applying."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -447,7 +503,7 @@ namespace PreySense.Frontend.Views
             try
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
-                    ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, vm.IsProchotOffsetEnabled,
+                    ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, applyProchot,
                     Draft.ApplyCpuLimits, Draft.ApplyGpuLimits);
                 string message = verified
                     ? Services.LocalizationService.Translate("Applied and readback successfully.")

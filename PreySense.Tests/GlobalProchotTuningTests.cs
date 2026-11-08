@@ -92,6 +92,43 @@ public class GlobalProchotTuningTests
     }
 
     [TestMethod]
+    public async Task ManualApply_AllowsProchotOnlyWhenCpuAndGpuLimitsAreOff()
+    {
+        var vm = Create(new());
+        MainViewModel.DriverTuningRequest? captured = null;
+        vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };
+        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
+            applyCpuLimits: false, applyGpuLimits: false));
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(10, captured.Value.ProchotOffsetCelsius);
+        Assert.IsFalse(captured.Value.ApplyCpuLimits);
+        Assert.IsFalse(captured.Value.ApplyGpuLimits);
+
+        Assert.IsFalse(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, false,
+            applyCpuLimits: false, applyGpuLimits: false));
+        Assert.Contains("PROCHOT", vm.DiagnosticMessage);
+    }
+
+    [TestMethod]
+    public void SavedRestore_AppliesProchotWhenModeLimitsAreOff()
+    {
+        var config = new PreySenseConfig();
+        config.Tuning.ApplyProchotOffset = true;
+        config.Tuning.ProchotOffsetCelsius = 9;
+        config.Tuning.Turbo.ApplyCpuLimits = false;
+        config.Tuning.Turbo.ApplyGpuLimits = false;
+        var vm = Create(config);
+        MainViewModel.DriverTuningRequest? captured = null;
+        vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };
+        var result = vm.ApplySavedDriverTuning(5);
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(9, captured.Value.ProchotOffsetCelsius);
+        Assert.IsFalse(captured.Value.ApplyCpuLimits);
+        Assert.IsFalse(captured.Value.ApplyGpuLimits);
+    }
+
+    [TestMethod]
     public void GlobalOffsetRoundTripsInJsonOutsidePerModeProfiles()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PreySenseProchot-" + Guid.NewGuid().ToString("N"));

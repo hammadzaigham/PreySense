@@ -30,7 +30,7 @@ namespace PreySense.Frontend.ViewModels
             if (GpuBasePowerWatts.HasValue)
                 StoreGpuOffsets(modeIndex, new(profile.GpuDeltaWatts.Value, profile.GpuDynamicBoostWatts.Value, profile.PlatformPowerOffsetWatts.Value));
 
-            // Restore factory PROCHOT value in the editor; leave the apply switch off.
+            // Restore factory PROCHOT value and clear the apply switch.
             ProchotOffsetCelsius = tuning.FactoryProchotOffsetCelsius;
             IsProchotOffsetLocked = tuning.FactoryProchotOffsetLocked == true;
             IsProchotOffsetEnabled = false;

@@ -79,8 +79,8 @@ public partial class MainViewModel
     {
         if (request.Mode is not (0 or 1 or 4 or 5 or 6))
             return new(false, "Invalid tuning profile; nothing was written.");
-        if (!request.ApplyCpuLimits && !request.ApplyGpuLimits)
-            return new(false, "CPU and GPU power limits are both off; nothing was written.");
+        if (!request.ApplyCpuLimits && !request.ApplyGpuLimits && request.ProchotOffsetCelsius is null)
+            return new(false, "CPU/GPU power limits and PROCHOT are all off; nothing was written.");
         if (request.ApplyCpuLimits &&
             (request.Pl1 is < 5 or > 300 || request.Pl2 < request.Pl1 || request.Pl2 > 300 || request.Tau is < 0 or > 449))
             return new(false, "Invalid CPU power limits; nothing was written.");
@@ -139,17 +139,21 @@ public partial class MainViewModel
             0 => tuning.Quiet, 1 => tuning.Balanced, 4 => tuning.Performance,
             5 => tuning.Turbo, 6 => tuning.Eco, _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
+        int? prochot = tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null;
         if (!profile.ApplyCpuLimits && !profile.ApplyGpuLimits)
-            return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
-                : new(false, "The Acer mode could not be activated.");
+        {
+            if (prochot is null)
+                return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
+                    : new(false, "The Acer mode could not be activated.");
+            return ExecuteDriverTuning(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
+        }
         if (!profile.HasValues)
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
                 : new(false, "The Acer mode could not be activated.");
         return ExecuteDriverTuning(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,
             new(profile.GpuDeltaWatts ?? 0, profile.GpuDynamicBoostWatts ?? 0, profile.PlatformPowerOffsetWatts ?? 0),
-            tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null,
-            profile.ApplyCpuLimits, profile.ApplyGpuLimits));
+            prochot, profile.ApplyCpuLimits, profile.ApplyGpuLimits));
     }
 
     internal DriverTuningResult RestoreSavedPowerMode(byte mode)
@@ -220,7 +224,7 @@ public partial class MainViewModel
 
     internal async Task<bool> ApplyTuningProfileAsync(byte mode, int pl1, int pl2, int tau,
         PreySense.Core.Driver.GpuPowerOffsets offsets, bool persist, int? prochotOffsetCelsius = null, bool applyProchotOffset = false,
-        bool applyCpuLimits = true, bool applyGpuLimits = true)
+        bool applyCpuLimits = true, bool applyGpuLimits = true, bool persistApplySwitches = true)
     {
         applyProchotOffset &= !IsProchotOffsetLocked;
         if (applyProchotOffset && prochotOffsetCelsius is null)
@@ -228,9 +232,9 @@ public partial class MainViewModel
             DiagnosticMessage = "Enter a global PROCHOT offset before applying.";
             return false;
         }
-        if (!applyCpuLimits && !applyGpuLimits)
+        if (!applyCpuLimits && !applyGpuLimits && !applyProchotOffset)
         {
-            DiagnosticMessage = "Turn on CPU or GPU power limits before applying.";
+            DiagnosticMessage = "Turn on CPU limits, GPU limits, or PROCHOT offset before applying.";
             return false;
         }
         if (!IsHardwareTuningEnabled || IsBusy)
@@ -255,22 +259,27 @@ public partial class MainViewModel
             if (persist)
             {
                 int boost = CpuBoostModeForMode(mode);
+                bool saveCpu = persistApplySwitches && applyCpuLimits;
+                bool saveGpu = persistApplySwitches && applyGpuLimits;
+                bool saveProchot = persistApplySwitches && applyProchotOffset;
                 TuningStore.Update(cfg =>
                 {
                     var profile = mode switch { 0 => cfg.Tuning.Quiet, 1 => cfg.Tuning.Balanced,
                         4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
                         _ => throw new ArgumentOutOfRangeException(nameof(mode)) };
-                    profile.ApplyCpuLimits = applyCpuLimits;
-                    profile.ApplyGpuLimits = applyGpuLimits;
+                    profile.ApplyCpuLimits = saveCpu;
+                    profile.ApplyGpuLimits = saveGpu;
                     profile.CpuPl1Watts = pl1; profile.CpuPl2Watts = pl2; profile.TauSeconds = tau;
                     cfg.Tuning.ProchotOffsetCelsius = prochotOffsetCelsius;
-                    cfg.Tuning.ApplyProchotOffset = applyProchotOffset;
+                    cfg.Tuning.ApplyProchotOffset = saveProchot;
                     profile.GpuDeltaWatts = offsets.DeltaWatts; profile.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
                     profile.PlatformPowerOffsetWatts = offsets.PlatformOffsetWatts;
                     profile.CpuBoostMode = boost;
                     profile.CpuBoost = boost > 0;
                     profile.GpuWatts = offsets.NominalReferenceWatts(GpuBasePowerWatts);
                 });
+                if (!persistApplySwitches)
+                    IsProchotOffsetEnabled = false;
             }
             DiagnosticMessage = boostOk
                 ? (persist ? "Applied and saved." : "Applied and readback successfully.")

@@ -21,7 +21,7 @@ When applying CPU limits at or below those calibrated static floors, PreySense w
 
 ## Global PROCHOT offset
 
-PROCHOT Offset sits under Enable Tuning as a global nullable value (0-63 °C below TjMax). A label row above the offset shows PROCHOT activation on the left and `TjMax` on the right (`TjMax − offset`). Its switch controls whether the offset is included with the selected mode's other tuning. Off leaves the hardware offset alone. On applies the global value after successful CPU/GPU tuning and verifies readback. Apply uses the editor value; Save also persists `Tuning.ApplyProchotOffset` and `Tuning.ProchotOffsetCelsius`. The value is never stored in individual mode profiles.
+PROCHOT Offset sits under Enable Tuning as a global nullable value (0-63 °C below TjMax). A label row above the offset shows PROCHOT activation on the left and `TjMax` on the right (`TjMax − offset`). Its switch controls whether the offset is applied. Off leaves the hardware offset alone. On applies the global value (after CPU/GPU tuning when those are enabled, or on its own when both limit switches are off) and verifies readback. Apply uses the editor value; Save also persists `Tuning.ApplyProchotOffset` and `Tuning.ProchotOffsetCelsius`. The value is never stored in individual mode profiles.
 
 The driver checks programmable-offset support and BIOS locks, preserves unrelated temperature-target bits, and attempts to restore the original offset if write/readback fails. Calibration stores the readable factory offset once as `Tuning.FactoryProchotOffsetCelsius`.
 
