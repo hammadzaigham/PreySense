@@ -24,15 +24,15 @@ PowerShell helpers that launch PreySense on the interactive desktop (`WinSta0\De
 | :--- | :--- | :--- |
 | Lighting / Keyboard | `BtnNavLighting` | Keyboard / cover lighting |
 | Metrics | `BtnNavMetrics` | Overlay column editor |
-| Advanced | `BtnNavAdvanced` | Mode CPU/GPU limits |
+| Advanced / Tuning | `BtnNavMode` | Mode CPU/GPU limits |
 | Settings | `BtnSettings` | Platform settings |
-| Fans | `BtnFanCustom` | Selects Custom fans on the main window |
+| Fans | `BtnNavFans` | Fan curve editor |
 
 ## Scripts
 
 - `Restart-PreySense.ps1` — close, build, spawn on the interactive desktop
 - `Monitor-Window.ps1` — process health and HWNDs
-- `Capture-Window.ps1` — GDI/`PrintWindow` PNG under `test_tools\captures`
+- `Capture-Window.ps1` — GDI/`PrintWindow` PNG under `test_tools\captures`. Auto-crops the window drop shadow: DWM frame bounds when present, otherwise the near-black WPF `DropShadowEffect` fringe (measured **10px** per side on PreySense).
 - `Inspect-UiTree.ps1` — UI Automation dump (`-Sliders`, `-Switches`, `-Buttons`)
 - `Open-Subwindow.ps1` — click a footer/title-bar button, capture, optional inspect
 - `Test-UiWorkflow.ps1` — smoke suite → `smoke_test_report.md`

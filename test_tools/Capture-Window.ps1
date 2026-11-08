@@ -54,7 +54,8 @@ foreach ($w in $wins) {
     Write-Host "[*] Capturing HWND $($w.HWnd) ('$($w.Title)')..." -ForegroundColor Gray
     $capWidth = 0
     $capHeight = 0
-    $hBmp = [PreySense.TestTools.WindowHelper]::CaptureHBitmap($w.HWnd, [ref]$capWidth, [ref]$capHeight)
+    $shadow = New-Object 'PreySense.TestTools.WindowHelper+ShadowInsets'
+    $hBmp = [PreySense.TestTools.WindowHelper]::CaptureHBitmap($w.HWnd, [ref]$capWidth, [ref]$capHeight, [ref]$shadow)
 
     if ($hBmp -ne [IntPtr]::Zero) {
         try {
@@ -69,19 +70,23 @@ foreach ($w in $wins) {
         $fileUri = (Resolve-Path $targetFile).Path -replace '\\', '/'
         Write-Host "[OK] Screenshot saved successfully!" -ForegroundColor Green
         Write-Host "     Path: file:///$fileUri" -ForegroundColor White
-        Write-Host "     Size: ${capWidth}x${capHeight}" -ForegroundColor White
+        Write-Host "     Size: ${capWidth}x${capHeight} (shadow L$($shadow.Left) T$($shadow.Top) R$($shadow.Right) B$($shadow.Bottom) cropped)" -ForegroundColor White
 
         if ($Open) {
             Invoke-Item $targetFile
         }
 
         $results.Add([PSCustomObject]@{
-            HWnd      = $w.HWnd
-            Title     = $w.Title
-            FilePath  = $targetFile
-            FileUri   = "file:///$fileUri"
-            Width     = $capWidth
-            Height    = $capHeight
+            HWnd         = $w.HWnd
+            Title        = $w.Title
+            FilePath     = $targetFile
+            FileUri      = "file:///$fileUri"
+            Width        = $capWidth
+            Height       = $capHeight
+            ShadowLeft   = $shadow.Left
+            ShadowTop    = $shadow.Top
+            ShadowRight  = $shadow.Right
+            ShadowBottom = $shadow.Bottom
         })
     } else {
         Write-Error "Failed to capture window '$($w.Title)' (HWND $($w.HWnd))."

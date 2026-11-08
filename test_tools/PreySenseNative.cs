@@ -84,6 +84,112 @@ namespace PreySense.TestTools
         [DllImport("gdi32.dll")]
         public static extern bool DeleteObject(IntPtr hObject);
 
+        [DllImport("gdi32.dll")]
+        public static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int w, int h, IntPtr hdcSrc, int xSrc, int ySrc, int rop);
+
+        [DllImport("gdi32.dll")]
+        private static extern int GetPixel(IntPtr hdc, int x, int y);
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
+        private const int DwmwaExtendedFrameBounds = 9;
+        private const int SrcCopy = 0x00CC0020;
+        // PreySense WindowShadowEffect (BlurRadius 18) flattens to ~10px black fringe under PrintWindow.
+        private const int ShadowLumaThreshold = 8;
+
+        /// <summary>Drop-shadow insets around the solid window chrome.</summary>
+        public struct ShadowInsets
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+
+            public int Max
+            {
+                get { return Math.Max(Math.Max(Left, Right), Math.Max(Top, Bottom)); }
+            }
+
+            public bool HasShadow
+            {
+                get { return Left > 0 || Top > 0 || Right > 0 || Bottom > 0; }
+            }
+        }
+
+        public static bool TryGetDwmShadowInsets(IntPtr hWnd, out ShadowInsets insets)
+        {
+            insets = new ShadowInsets();
+            RECT window;
+            if (!GetWindowRect(hWnd, out window)) return false;
+            RECT frame;
+            int hr = DwmGetWindowAttribute(hWnd, DwmwaExtendedFrameBounds, out frame, Marshal.SizeOf(typeof(RECT)));
+            if (hr != 0) return false;
+            insets.Left = Math.Max(0, frame.Left - window.Left);
+            insets.Top = Math.Max(0, frame.Top - window.Top);
+            insets.Right = Math.Max(0, window.Right - frame.Right);
+            insets.Bottom = Math.Max(0, window.Bottom - frame.Bottom);
+            return true;
+        }
+
+        /// <summary>Kept for callers; prefers DWM, else reports empty (bitmap scan happens during capture).</summary>
+        public static bool TryGetShadowInsets(IntPtr hWnd, out ShadowInsets insets)
+        {
+            return TryGetDwmShadowInsets(hWnd, out insets);
+        }
+
+        private static bool IsShadowPixel(int colorRef)
+        {
+            int r = colorRef & 0xFF;
+            int g = (colorRef >> 8) & 0xFF;
+            int b = (colorRef >> 16) & 0xFF;
+            return r <= ShadowLumaThreshold && g <= ShadowLumaThreshold && b <= ShadowLumaThreshold;
+        }
+
+        private static bool IsUniformWindowShadow(ShadowInsets insets)
+        {
+            if (!insets.HasShadow) return false;
+            int min = Math.Min(Math.Min(insets.Left, insets.Right), Math.Min(insets.Top, insets.Bottom));
+            int max = insets.Max;
+            return min >= 6 && max <= 16 && (max - min) <= 2;
+        }
+
+        /// <summary>
+        /// Measure WPF DropShadowEffect fringe after PrintWindow (opaque near-black padding).
+        /// On this app the measured crop is typically 10px on each side.
+        /// </summary>
+        public static ShadowInsets MeasureBitmapShadowInsets(IntPtr hdc, int width, int height)
+        {
+            ShadowInsets insets = new ShadowInsets();
+            if (width < 4 || height < 4) return insets;
+
+            int midX = width / 2;
+            int midY = height / 2;
+            int maxScan = Math.Min(64, Math.Min(width, height) / 2);
+
+            for (int x = 0; x < maxScan; x++)
+            {
+                if (!IsShadowPixel(GetPixel(hdc, x, midY))) { insets.Left = x; break; }
+                if (x == maxScan - 1) insets.Left = maxScan;
+            }
+            for (int x = 0; x < maxScan; x++)
+            {
+                if (!IsShadowPixel(GetPixel(hdc, width - 1 - x, midY))) { insets.Right = x; break; }
+                if (x == maxScan - 1) insets.Right = maxScan;
+            }
+            for (int y = 0; y < maxScan; y++)
+            {
+                if (!IsShadowPixel(GetPixel(hdc, midX, y))) { insets.Top = y; break; }
+                if (y == maxScan - 1) insets.Top = maxScan;
+            }
+            for (int y = 0; y < maxScan; y++)
+            {
+                if (!IsShadowPixel(GetPixel(hdc, midX, height - 1 - y))) { insets.Bottom = y; break; }
+                if (y == maxScan - 1) insets.Bottom = maxScan;
+            }
+            return insets;
+        }
+
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct STARTUPINFO
         {
@@ -266,29 +372,64 @@ namespace PreySense.TestTools
 
         public static IntPtr CaptureHBitmap(IntPtr hWnd, out int width, out int height)
         {
+            ShadowInsets unused;
+            return CaptureHBitmap(hWnd, out width, out height, out unused);
+        }
+
+        /// <summary>
+        /// Captures with PrintWindow, then crops drop shadow. Prefers DWM frame bounds;
+        /// for AllowsTransparency WPF windows (PreySense) DWM is empty, so the black
+        /// DropShadowEffect fringe is measured from the bitmap (typically 10px/side).
+        /// </summary>
+        public static IntPtr CaptureHBitmap(IntPtr hWnd, out int width, out int height, out ShadowInsets shadow)
+        {
             width = 0;
             height = 0;
+            shadow = new ShadowInsets();
 
-            RECT r;
-            GetWindowRect(hWnd, out r);
-            int w = r.Right - r.Left;
-            int h = r.Bottom - r.Top;
-            if (w <= 0 || h <= 0) return IntPtr.Zero;
-
-            width = w;
-            height = h;
+            RECT window;
+            if (!GetWindowRect(hWnd, out window)) return IntPtr.Zero;
+            int fullW = window.Right - window.Left;
+            int fullH = window.Bottom - window.Top;
+            if (fullW <= 0 || fullH <= 0) return IntPtr.Zero;
 
             IntPtr hdcScreen = GetDC(IntPtr.Zero);
-            IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
-            IntPtr hBmp = CreateCompatibleBitmap(hdcScreen, w, h);
-            IntPtr hOld = SelectObject(hdcMem, hBmp);
+            IntPtr hdcFull = CreateCompatibleDC(hdcScreen);
+            IntPtr hFull = CreateCompatibleBitmap(hdcScreen, fullW, fullH);
+            IntPtr hOldFull = SelectObject(hdcFull, hFull);
 
-            PrintWindow(hWnd, hdcMem, 2); // PW_RENDERFULLCONTENT
+            PrintWindow(hWnd, hdcFull, 2); // PW_RENDERFULLCONTENT
 
-            SelectObject(hdcMem, hOld);
-            DeleteDC(hdcMem);
+            TryGetDwmShadowInsets(hWnd, out shadow);
+            if (!shadow.HasShadow)
+            {
+                ShadowInsets measured = MeasureBitmapShadowInsets(hdcFull, fullW, fullH);
+                // WPF WindowShadowEffect flattens to a uniform ~10px black fringe.
+                // Skip irregular crops (e.g. dark translucent overlay HUDs).
+                if (IsUniformWindowShadow(measured))
+                    shadow = measured;
+            }
+
+            int cropL = shadow.Left;
+            int cropT = shadow.Top;
+            int cropW = Math.Max(1, fullW - shadow.Left - shadow.Right);
+            int cropH = Math.Max(1, fullH - shadow.Top - shadow.Bottom);
+
+            IntPtr hdcCrop = CreateCompatibleDC(hdcScreen);
+            IntPtr hCrop = CreateCompatibleBitmap(hdcScreen, cropW, cropH);
+            IntPtr hOldCrop = SelectObject(hdcCrop, hCrop);
+            BitBlt(hdcCrop, 0, 0, cropW, cropH, hdcFull, cropL, cropT, SrcCopy);
+
+            SelectObject(hdcCrop, hOldCrop);
+            SelectObject(hdcFull, hOldFull);
+            DeleteDC(hdcCrop);
+            DeleteDC(hdcFull);
+            DeleteObject(hFull);
             ReleaseDC(IntPtr.Zero, hdcScreen);
-            return hBmp;
+
+            width = cropW;
+            height = cropH;
+            return hCrop;
         }
     }
 }

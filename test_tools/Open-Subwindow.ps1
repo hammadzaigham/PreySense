@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('Settings', 'Advanced', 'Lighting', 'Keyboard', 'Metrics', 'Fans', 'FanCurve')]
+    [ValidateSet('Settings', 'Advanced', 'Tuning', 'Lighting', 'Keyboard', 'Metrics', 'Fans', 'FanCurve')]
     [string]$Window,
 
     [switch]$Capture,
@@ -26,12 +26,13 @@ $ErrorActionPreference = 'Stop'
 
 $autoIdMap = @{
     'Settings' = 'BtnSettings'
-    'Advanced' = 'BtnNavAdvanced'
+    'Advanced' = 'BtnNavMode'
+    'Tuning'   = 'BtnNavMode'
     'Lighting' = 'BtnNavLighting'
     'Keyboard' = 'BtnNavLighting'
     'Metrics'  = 'BtnNavMetrics'
-    'Fans'     = 'BtnFanCustom'
-    'FanCurve' = 'BtnFanCustom'
+    'Fans'     = 'BtnNavFans'
+    'FanCurve' = 'BtnNavFans'
 }
 
 $targetAutoId = $autoIdMap[$Window]
