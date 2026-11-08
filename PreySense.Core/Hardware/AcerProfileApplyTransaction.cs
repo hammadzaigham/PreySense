@@ -75,7 +75,7 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
                 !Verify(address, (byte)boost, (byte)delta, platformOffset))
                 throw new InvalidOperationException("GPU profile write/readback failed.");
 
-            Thread.Sleep(1500);
+            Thread.Sleep(2000);
             if (!Switch(selected))
                 throw new InvalidOperationException("Selected Acer mode could not be activated.");
             Thread.Sleep(500);

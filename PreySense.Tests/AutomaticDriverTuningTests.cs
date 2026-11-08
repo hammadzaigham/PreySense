@@ -175,4 +175,49 @@ public class AutomaticDriverTuningTests
         Assert.Contains("CPU limits failed: locked", vm.DiagnosticMessage);
         Assert.IsFalse(vm.IsBusy);
     }
+
+    [TestMethod]
+    public void ModeChange_AppliesSavedCpuWhenGpuLimitsAreOff()
+    {
+        var config = new PreySenseConfig();
+        config.Tuning.Turbo.CpuPl1Watts = 66;
+        config.Tuning.Turbo.CpuPl2Watts = 99;
+        config.Tuning.Turbo.TauSeconds = 28;
+        config.Tuning.ApplyProchotOffset = true;
+        config.Tuning.ProchotOffsetCelsius = 11;
+        var hw = new MockHardwareService();
+        Assert.AreNotEqual((byte)5, hw.CurrentPowerMode);
+        var vm = Create(config);
+        config.Tuning.Turbo.ApplyCpuLimits = true;
+        config.Tuning.Turbo.ApplyGpuLimits = false;
+        typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(vm, hw);
+        MainViewModel.DriverTuningRequest? captured = null;
+        vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };
+
+        var result = vm.ApplySavedDriverTuning(5);
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.AreEqual((byte)5, hw.CurrentPowerMode, "Mode restore must switch Acer mode even when GPU limits are off.");
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(66, captured.Value.Pl1);
+        Assert.AreEqual(99, captured.Value.Pl2);
+        Assert.AreEqual(28, captured.Value.Tau);
+        Assert.AreEqual(11, captured.Value.ProchotOffsetCelsius);
+        Assert.IsTrue(captured.Value.ApplyCpuLimits);
+        Assert.IsFalse(captured.Value.ApplyGpuLimits);
+    }
+
+    [TestMethod]
+    public async Task ManualApply_DoesNotSwitchModeWhenGpuLimitsAreOff()
+    {
+        var hw = new MockHardwareService();
+        byte before = hw.CurrentPowerMode;
+        var vm = Create(new());
+        typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(vm, hw);
+        vm.DriverTuningExecutor = null;
+        Assert.IsFalse(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
+            applyCpuLimits: true, applyGpuLimits: false));
+        Assert.AreEqual(before, hw.CurrentPowerMode);
+    }
 }

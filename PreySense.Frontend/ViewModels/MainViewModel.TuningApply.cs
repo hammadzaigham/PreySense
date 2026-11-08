@@ -10,7 +10,7 @@ public partial class MainViewModel
 {
     internal readonly record struct DriverTuningRequest(byte Mode, int Pl1, int Pl2, int Tau,
         PreySense.Core.Driver.GpuPowerOffsets Offsets, int? ProchotOffsetCelsius = null,
-        bool ApplyCpuLimits = true, bool ApplyGpuLimits = true);
+        bool ApplyCpuLimits = true, bool ApplyGpuLimits = true, bool RestoreMsrToStaticFloor = false);
     internal readonly record struct DriverTuningResult(bool Success, string Status);
     // Allows regression tests to exercise the same automatic/manual orchestration without hardware writes.
     internal Func<DriverTuningRequest, DriverTuningResult>? DriverTuningExecutor { get; set; }
@@ -109,8 +109,7 @@ public partial class MainViewModel
                 .Apply(request.Mode, request.Offsets.DeltaWatts, request.Offsets.DynamicBoostWatts, (byte)request.Offsets.PlatformOffsetWatts);
             if (!gpu.Success) return new(false, gpu.Status);
         }
-        else if (!_hw.SetPowerMode(request.Mode))
-            return new(false, "The Acer mode could not be activated.");
+        // Apply/Save with GPU off leaves the current Acer mode alone; mode restores set it first.
 
         if (request.ApplyCpuLimits)
         {
@@ -118,7 +117,8 @@ public partial class MainViewModel
             var tuning = TuningStore.GetCurrent().Tuning;
             var result = cpu.ExecuteCombinedTransaction(
                 mchbar, request.Pl1, request.Pl2, true, request.Tau,
-                tuning.FactoryStaticCpuPl1Watts, tuning.FactoryStaticCpuPl2Watts);
+                tuning.FactoryStaticCpuPl1Watts, tuning.FactoryStaticCpuPl2Watts,
+                restoreMsrToStaticFloor: request.RestoreMsrToStaticFloor);
             if (!result.Success)
                 return new(false, $"Apply failed: {result.Status}");
         }
@@ -142,14 +142,18 @@ public partial class MainViewModel
         int? prochot = tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null;
         if (!profile.ApplyCpuLimits && !profile.ApplyGpuLimits)
         {
+            if (!_hw.SetPowerMode(mode))
+                return new(false, "The Acer mode could not be activated.");
             if (prochot is null)
-                return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
-                    : new(false, "The Acer mode could not be activated.");
+                return new(true, "Acer mode selected; no custom profile is saved.");
             return ExecuteDriverTuning(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
         }
         if (!profile.HasValues)
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
                 : new(false, "The Acer mode could not be activated.");
+        // GPU apply switches Acer mode itself; CPU/PROCHOT-only restores must switch first.
+        if (!profile.ApplyGpuLimits && !_hw.SetPowerMode(mode))
+            return new(false, "The Acer mode could not be activated.");
         return ExecuteDriverTuning(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,
             new(profile.GpuDeltaWatts ?? 0, profile.GpuDynamicBoostWatts ?? 0, profile.PlatformPowerOffsetWatts ?? 0),
@@ -224,7 +228,8 @@ public partial class MainViewModel
 
     internal async Task<bool> ApplyTuningProfileAsync(byte mode, int pl1, int pl2, int tau,
         PreySense.Core.Driver.GpuPowerOffsets offsets, bool persist, int? prochotOffsetCelsius = null, bool applyProchotOffset = false,
-        bool applyCpuLimits = true, bool applyGpuLimits = true, bool persistApplySwitches = true)
+        bool applyCpuLimits = true, bool applyGpuLimits = true, bool persistApplySwitches = true,
+        bool restoreMsrToStaticFloor = false)
     {
         applyProchotOffset &= !IsProchotOffsetLocked;
         if (applyProchotOffset && prochotOffsetCelsius is null)
@@ -250,7 +255,7 @@ public partial class MainViewModel
         {
             AppLogger.Log($"[Tuning] Apply mode=0x{mode:X2} CPU={(applyCpuLimits ? $"{pl1}/{pl2}/τ{tau}" : "off")} GPU={(applyGpuLimits ? $"Δ{offsets.DeltaWatts}/DB{offsets.DynamicBoostWatts}/CP{offsets.PlatformOffsetWatts}" : "off")}");
             var applied = await Task.Run(() => ExecuteDriverTuning(new(mode, pl1, pl2, tau, offsets,
-                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits)));
+                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits, restoreMsrToStaticFloor)));
             if (!applied.Success) throw new InvalidOperationException(applied.Status);
             ActivePowerMode = _hw.CurrentPowerMode;
             UpdateModeName(ActivePowerMode);

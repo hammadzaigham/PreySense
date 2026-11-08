@@ -356,6 +356,8 @@ public sealed class CpuPowerLimitController
     /// with coordinated rollback if either fails.
     /// When <paramref name="staticPl1FloorWatts"/> / <paramref name="staticPl2FloorWatts"/> are set
     /// and both requested limits stay at or below those calibrated MSR floors, only MMIO is written.
+    /// When <paramref name="restoreMsrToStaticFloor"/> is also set and live MSR is above those floors,
+    /// MSR is written back to the floor values while MMIO still receives the requested limits.
     /// </summary>
     public CombinedTransactionResult ExecuteCombinedTransaction(
         ulong mchbarBase,
@@ -364,7 +366,8 @@ public sealed class CpuPowerLimitController
         bool pl2Enable,
         double tauSeconds,
         int? staticPl1FloorWatts = null,
-        int? staticPl2FloorWatts = null)
+        int? staticPl2FloorWatts = null,
+        bool restoreMsrToStaticFloor = false)
     {
         if (!_backend.IsInitialized)
         {
@@ -403,7 +406,7 @@ public sealed class CpuPowerLimitController
                 Status: $"Requested limits exceed maximum 15-bit hardware range ({MMIO_MAX_MW}mW).");
         }
 
-        bool skipMsr = staticPl1FloorWatts is int floorPl1
+        bool belowStaticFloor = staticPl1FloorWatts is int floorPl1
             && staticPl2FloorWatts is int floorPl2
             && pl1Watts <= floorPl1
             && pl2Watts <= floorPl2;
@@ -420,6 +423,21 @@ public sealed class CpuPowerLimitController
                 RollbackSucceeded: true,
                 Status: "Failed to read initial MSR state.");
         }
+
+        bool restoreMsrToFloor = false;
+        if (belowStaticFloor && restoreMsrToStaticFloor
+            && staticPl1FloorWatts is int restorePl1
+            && staticPl2FloorWatts is int restorePl2)
+        {
+            double powerUnit = Math.Pow(2, -(int)(units & 0xF));
+            int currentPl1 = (int)Math.Round((origMsr & MSR_610_PL1_POWER_MASK) * powerUnit);
+            int currentPl2 = (int)Math.Round(((origMsr & MSR_610_PL2_POWER_MASK) >> 32) * powerUnit);
+            restoreMsrToFloor = currentPl1 > restorePl1 || currentPl2 > restorePl2;
+        }
+
+        bool skipMsr = belowStaticFloor && !restoreMsrToFloor;
+        int msrPl1Watts = restoreMsrToFloor ? staticPl1FloorWatts!.Value : pl1Watts;
+        int msrPl2Watts = restoreMsrToFloor ? staticPl2FloorWatts!.Value : pl2Watts;
 
         if (!skipMsr && (origMsr & MSR_610_LOCK_BIT) != 0)
         {
@@ -476,10 +494,10 @@ public sealed class CpuPowerLimitController
 
         byte tauEncoded = EncodeTau(tauSeconds, units);
 
-        // 3. Apply MSR power limits when raising above calibrated static floors
+        // 3. Apply MSR when raising above floors, or restoring floors on Reset.
         if (!skipMsr)
         {
-            if (!TrySetMsrPowerLimits(pl1Watts, pl2Watts, pl2Enable, tauSeconds, out string msrStatus))
+            if (!TrySetMsrPowerLimits(msrPl1Watts, msrPl2Watts, pl2Enable, tauSeconds, out string msrStatus))
             {
                 return new CombinedTransactionResult(
                     Success: false,
@@ -523,9 +541,11 @@ public sealed class CpuPowerLimitController
             RollbackSucceeded: true,
             Status: skipMsr
                 ? $"MMIO limits applied (MSR unchanged at/below static floors): PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                : mmioRequested
-                    ? $"Combined MSR and MMIO limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                    : $"MSR limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s (MMIO bypassed).");
+                : restoreMsrToFloor
+                    ? $"MSR restored to static floors ({msrPl1Watts}/{msrPl2Watts}W); MMIO PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
+                    : mmioRequested
+                        ? $"Combined MSR and MMIO limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
+                        : $"MSR limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s (MMIO bypassed).");
     }
 
     /// <summary>

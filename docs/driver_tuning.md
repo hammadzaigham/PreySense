@@ -17,7 +17,7 @@ Unset user tuning fields stay null in JSON. The editor shows captured factory de
 
 At startup, missing factory defaults are captured automatically into `Tuning.FactoryDefaults` without a prompt. Calibration also reads global static CPU PL1/PL2 from MSR 0x610 into `FactoryStaticCpuPl1Watts` / `FactoryStaticCpuPl2Watts`. Reads happen immediately without switching modes or writing limits. Existing complete defaults (including static floors) are preserved. Failed or incomplete captures are not saved.
 
-When applying CPU limits at or below those calibrated static floors, PreySense writes MMIO only and leaves MSR 0x610 unchanged. Raises above the floors still write both MSR and MMIO.
+When applying CPU limits at or below those calibrated static floors, PreySense writes MMIO only and leaves MSR 0x610 unchanged. Raises above the floors still write both MSR and MMIO. Reset restores MSR 0x610 to the calibrated static floors when live MSR is above them, then writes the mode’s factory MMIO limits.
 
 ## Global PROCHOT offset
 
@@ -29,9 +29,9 @@ The driver checks programmable-offset support and BIOS locks, preserves unrelate
 
 All manual, automatic, and session-restore operations share the mode-switch semaphore.
 
-1. Stage the GPU profile on an alternate Acer mode (ERM4 Dynamic Boost / Delta bytes; platform-offset byte preserved).
-2. Verify the inactive profile, wait for the EC, then reactivate the target mode.
-3. Write CPU package MSR and MCHBAR MMIO limits last, because an EC transition can reload CPU limits.
+1. Stage the GPU profile on an alternate Acer mode (ERM4 Dynamic Boost / Delta bytes; platform-offset byte preserved). Manual Apply/Save with GPU limits off skips this and does not change Acer mode.
+2. Verify the inactive profile, wait 2 s for the EC, then reactivate the target mode. CPU-only applies do not wait.
+3. Write CPU package MSR and MCHBAR MMIO limits last, because an EC transition can reload CPU limits. Mode restores still switch Acer mode before CPU/PROCHOT-only writes.
 
 CPU writes snapshot register state, validate access and lock bits, verify readback, and attempt rollback on failure. GPU staging failures use verified rollback. A CPU failure after GPU staging reports that GPU staging already completed. Startup restore reports partial failure rather than claiming full success.
 

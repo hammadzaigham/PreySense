@@ -419,7 +419,8 @@ namespace PreySense.Frontend.Views
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
                     ReadGpuOffsets(), persist: true, vm.ProchotOffsetCelsius, applyProchot,
-                    applyCpuLimits: true, applyGpuLimits: true, persistApplySwitches: false);
+                    applyCpuLimits: true, applyGpuLimits: true, persistApplySwitches: false,
+                    restoreMsrToStaticFloor: true);
                 Draft.ApplyCpuLimits = false;
                 Draft.ApplyGpuLimits = false;
                 vm.IsProchotOffsetEnabled = false;

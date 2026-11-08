@@ -421,4 +421,59 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         Assert.AreEqual(origMsr, mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT]);
         Assert.AreEqual(0, mock.WriteMsrCallCount);
     }
+
+    [TestMethod]
+    public void Test_CombinedTransaction_RestoresElevatedMsrToStaticFloorsOnReset()
+    {
+        var mock = new MockCpuDriverBackend();
+        ulong mchbar = 0xFED10000UL;
+        // Power unit 1/8 W: PL1=90W (0x2D0), PL2=140W (0x460) — above PL1 floor 55.
+        ulong elevatedMsr = (0x460UL << 32) | 0x2D0UL
+            | CpuPowerLimitController.MSR_610_PL1_ENABLE_BIT
+            | CpuPowerLimitController.MSR_610_PL2_ENABLE_BIT;
+        mock.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits(3, 10);
+        mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = elevatedMsr;
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] = 0x000001C0U; // 56W in 125mW units
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] = 0x00000280U;
+
+        var controller = new CpuPowerLimitController(mock);
+        var result = controller.ExecuteCombinedTransaction(
+            mchbar, 45, 65, true, 28,
+            staticPl1FloorWatts: 55, staticPl2FloorWatts: 140,
+            restoreMsrToStaticFloor: true);
+
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsTrue(result.MsrUpdated);
+        Assert.IsTrue(result.MmioUpdated);
+        Assert.IsGreaterThan(0, mock.WriteMsrCallCount);
+        var snap = controller.ReadMsrPowerLimits();
+        Assert.AreEqual(55, snap.Pl1Watts);
+        Assert.AreEqual(140, snap.Pl2Watts);
+        Assert.AreEqual(45U * 1000U / 125U, mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] & 0x7FFFU);
+        Assert.AreEqual(65U * 1000U / 125U, mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] & 0x7FFFU);
+    }
+
+    [TestMethod]
+    public void Test_CombinedTransaction_RestoreFlagLeavesMsrWhenAlreadyAtOrBelowFloor()
+    {
+        var mock = new MockCpuDriverBackend();
+        ulong mchbar = 0xFED10000UL;
+        // Power unit 1/8 W: PL1=40W (0x140), PL2=50W (0x190) — already at/below floors 55/140.
+        ulong origMsr = (0x190UL << 32) | 0x140UL;
+        mock.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits(3, 10);
+        mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = origMsr;
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] = 0x00000100U;
+        mock.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] = 0x00000200U;
+
+        var controller = new CpuPowerLimitController(mock);
+        var result = controller.ExecuteCombinedTransaction(
+            mchbar, 45, 65, true, 28,
+            staticPl1FloorWatts: 55, staticPl2FloorWatts: 140,
+            restoreMsrToStaticFloor: true);
+
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsFalse(result.MsrUpdated);
+        Assert.AreEqual(origMsr, mock.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT]);
+        Assert.AreEqual(0, mock.WriteMsrCallCount);
+    }
 }
