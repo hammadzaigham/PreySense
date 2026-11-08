@@ -214,14 +214,57 @@ namespace PreySense.Core.Configuration
         public ModeFanCurveConfig Turbo { get; set; } = ModeFanCurveConfig.CreateDefaultTurbo();
     }
 
+    /// <summary>Persisted fan stage: separate CPU/GPU trip °C and duties. No fall/RPM fields.</summary>
     public sealed class FanStageConfig
     {
+        public int? CpuTempC { get; set; }
+        public int? GpuTempC { get; set; }
+        public int? CpuDutyPercent { get; set; }
+        public int? GpuDutyPercent { get; set; }
+
+        // Legacy fields — read for migration only; omitted when writing defaults (0).
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+        public int? DutyPercent { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int CpuRiseC { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int CpuFallC { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int GpuRiseC { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int GpuFallC { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int CpuTargetRpm { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public int GpuTargetRpm { get; set; }
+
+        public FanStageConfig() { }
+
+        public FanStageConfig(Mode.FanStage stage)
+        {
+            CpuTempC = stage.CpuRiseC;
+            GpuTempC = stage.GpuRiseC;
+            CpuDutyPercent = stage.CpuDutyPercent;
+            GpuDutyPercent = stage.GpuDutyPercent;
+        }
+
+        public Mode.FanStage ToFanStage()
+        {
+            int cpuTemp = CpuTempC ?? (CpuRiseC != 0 ? CpuRiseC : Mode.FanStage.DisabledTripCelsius);
+            int gpuTemp = GpuTempC ?? (GpuRiseC != 0 ? GpuRiseC : Mode.FanStage.DisabledTripCelsius);
+            int cpuDuty = CpuDutyPercent
+                ?? DutyPercent
+                ?? Mode.FanStage.RpmToDuty(CpuTargetRpm, Mode.FanStage.CpuMaxRpm);
+            int gpuDuty = GpuDutyPercent
+                ?? DutyPercent
+                ?? Mode.FanStage.RpmToDuty(GpuTargetRpm, Mode.FanStage.GpuMaxRpm);
+
+            var stage = new Mode.FanStage { CpuRiseC = cpuTemp, GpuRiseC = gpuTemp };
+            stage.SetDuty(gpu: false, cpuDuty);
+            stage.SetDuty(gpu: true, gpuDuty);
+            stage.Normalize();
+            return stage;
+        }
     }
 
     public sealed class ModeFanCurveConfig
@@ -232,14 +275,8 @@ namespace PreySense.Core.Configuration
         /// <summary>Shared delay before accepting a stage change (0-5s).</summary>
         public int RampUpSeconds { get; set; } = 2;
 
-        /// <summary>EC-style stages (12). Preferred over legacy CpuCurve/GpuCurve.</summary>
+        /// <summary>EC-style stages (12): CpuTempC, GpuTempC, CpuDutyPercent, GpuDutyPercent.</summary>
         public FanStageConfig[]? Stages { get; set; }
-
-        /// <summary>Legacy 5°C CPU duty curve. Ignored when <see cref="Stages"/> is present.</summary>
-        public int[] CpuCurve { get; set; } = Array.Empty<int>();
-
-        /// <summary>Legacy 5°C GPU duty curve. Ignored when <see cref="Stages"/> is present.</summary>
-        public int[] GpuCurve { get; set; } = Array.Empty<int>();
 
         public static ModeFanCurveConfig CreateDefaultQuiet() => FromProfile(FanCurveProfile.CreateDefault(0));
         public static ModeFanCurveConfig CreateDefaultEco() => FromProfile(FanCurveProfile.CreateDefault(6));
@@ -251,12 +288,7 @@ namespace PreySense.Core.Configuration
         {
             ControlMode = (int)profile.ControlMode,
             RampUpSeconds = profile.RampUpSeconds,
-            Stages = profile.Stages.Select(s => new FanStageConfig
-            {
-                CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
-                GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
-                CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
-            }).ToArray()
+            Stages = profile.Stages.Select(s => new FanStageConfig(s)).ToArray()
         };
     }
 

@@ -62,17 +62,15 @@ is needed on an affected machine before claiming an audio fix. See Microsoft's
 ## v1.4 compatibility
 
 Per-mode fan curves persist under `Fans.{Quiet|Eco|Balanced|Performance|Turbo}` in
-`preysense.json` (`ControlMode`, `Stages`, `RampUpSeconds` shared delay for both fans).
+`preysense.json` as `ControlMode`, `RampUpSeconds`, and `Stages` of
+`{ CpuTempC, GpuTempC, CpuDutyPercent, GpuDutyPercent }` (stored per sensor; both fans apply the higher duty).
 `ControlMode` stores Auto (0), Max (1), or Custom (2). `Tuning.*.ApplyFanCurve`
 lives beside the CPU/GPU tuning profiles.
-The old editor's points above 100°C are not needed by the new curve.
-Reset supplies the selected mode's app preset. New profiles use the same presets
-on all laptops; there is no model restriction. Existing saved curves take priority.
+Reset supplies the selected mode's app preset. Existing saved curves take priority.
 
-Custom presets copy the recovered first-variant ZBJ-KQ EC 1.08 stage tables
-(rise/fall °C and RPM). Quiet and Eco share the same table. Duties are still
-approximate: Acer Custom accepts percent, not RPM feedback. Firmware Auto remains
-the authentic EC policy.
+Custom presets start from recovered ZBJ-KQ EC 1.08 stage tables. Quiet and Eco share
+the same table. Duties are approximate: Acer Custom accepts percent, not RPM feedback.
+Firmware Auto remains the authentic EC policy.
 
 ## Factory Auto vs Custom
 

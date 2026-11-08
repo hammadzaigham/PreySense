@@ -44,8 +44,9 @@ public sealed class FanCurveFollower
         }
 
         int applied = Math.Clamp(_stage ?? desired, 0, stages.Length - 1);
-        // Graphs are per-sensor temperature thresholds; both fans share the higher duty.
-        int duty = stages[applied].SharedDutyPercent;
+        var current = stages[applied];
+        // Curves keep separate CPU/GPU duties; both fans run at the higher of the two.
+        int duty = Math.Max(current.CpuDutyPercent, current.GpuDutyPercent);
         return (duty, duty, applied);
     }
 

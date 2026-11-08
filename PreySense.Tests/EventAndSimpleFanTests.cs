@@ -117,4 +117,35 @@ public class EventAndSimpleFanTests
         Assert.AreEqual(72, stages[2].CpuRiseC);
         Assert.AreEqual(FanStage.DisabledTripCelsius, stages[3].CpuRiseC);
     }
+
+    [TestMethod]
+    public void FanStageConfigKeepsCpuAndGpuTempsAndDutiesSeparate()
+    {
+        var runtime = FanCurveProfile.DefaultStages(1)[1];
+        var stored = new PreySense.Core.Configuration.FanStageConfig(runtime);
+        Assert.AreEqual(runtime.CpuRiseC, stored.CpuTempC);
+        Assert.AreEqual(runtime.GpuRiseC, stored.GpuTempC);
+        Assert.AreEqual(runtime.CpuDutyPercent, stored.CpuDutyPercent);
+        Assert.AreEqual(runtime.GpuDutyPercent, stored.GpuDutyPercent);
+        Assert.AreEqual(0, stored.CpuRiseC);
+        Assert.AreEqual(0, stored.CpuFallC);
+        Assert.AreEqual(0, stored.CpuTargetRpm);
+
+        var restored = stored.ToFanStage();
+        Assert.AreEqual(runtime.CpuRiseC, restored.CpuRiseC);
+        Assert.AreEqual(runtime.GpuRiseC, restored.GpuRiseC);
+        Assert.AreEqual(runtime.CpuDutyPercent, restored.CpuDutyPercent);
+        Assert.AreEqual(runtime.GpuDutyPercent, restored.GpuDutyPercent);
+
+        var legacy = new PreySense.Core.Configuration.FanStageConfig
+        {
+            CpuRiseC = 70, GpuRiseC = 65, CpuFallC = 60, GpuFallC = 55,
+            CpuTargetRpm = 2000, GpuTargetRpm = 2200
+        };
+        var migrated = legacy.ToFanStage();
+        Assert.AreEqual(70, migrated.CpuRiseC);
+        Assert.AreEqual(65, migrated.GpuRiseC);
+        Assert.AreEqual(FanStage.RpmToDuty(2000, FanStage.CpuMaxRpm), migrated.CpuDutyPercent);
+        Assert.AreEqual(FanStage.RpmToDuty(2200, FanStage.GpuMaxRpm), migrated.GpuDutyPercent);
+    }
 }

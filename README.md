@@ -26,7 +26,7 @@ Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
 - Refresh rate control, Auto refresh rate to 60Hz on battery.
 
 ### Fans
-Per-mode Auto, Max, or Custom EC-style stages for Eco, Quiet, Balanced, Performance, and Turbo. CPU/GPU graphs set temperature thresholds; both fans share the higher stage duty and a per-mode 0–5 s stage delay. Fans keep running while the app is in the tray.
+Per-mode Auto, Max, or Custom EC-style stages for Eco, Quiet, Balanced, Performance, and Turbo. CPU/GPU graphs set separate temps and duties; both fans run at the higher duty, with a shared 0–5 s stage delay. Fans keep running while the app is in the tray.
 
 ### Lighting
 Four-zone keyboard RGB plus cover logo lighting, with static colors, hardware effects, software animations, and optional logo sync.

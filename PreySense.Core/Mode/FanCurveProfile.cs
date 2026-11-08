@@ -173,12 +173,7 @@ public static class FanCurveStorage
                 {
                     var s = fanMode.Stages[i];
                     if (s == null) continue;
-                    profile.Stages[i] = new FanStage
-                    {
-                        CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
-                        GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
-                        CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
-                    };
+                    profile.Stages[i] = s.ToFanStage();
                 }
             }
         }
@@ -208,18 +203,7 @@ public static class FanCurveStorage
                 fanMode.RampUpSeconds = saved.RampUpSeconds;
                 fanMode.Stages = new PreySense.Core.Configuration.FanStageConfig[FanCurveProfile.StageCount];
                 for (int i = 0; i < FanCurveProfile.StageCount; i++)
-                {
-                    var s = saved.Stages[i];
-                    fanMode.Stages[i] = new PreySense.Core.Configuration.FanStageConfig
-                    {
-                        CpuRiseC = s.CpuRiseC, CpuFallC = s.CpuFallC,
-                        GpuRiseC = s.GpuRiseC, GpuFallC = s.GpuFallC,
-                        CpuTargetRpm = s.CpuTargetRpm, GpuTargetRpm = s.GpuTargetRpm
-                    };
-                }
-                // Drop legacy 5°C arrays so they are not re-loaded as authority.
-                fanMode.CpuCurve = Array.Empty<int>();
-                fanMode.GpuCurve = Array.Empty<int>();
+                    fanMode.Stages[i] = new PreySense.Core.Configuration.FanStageConfig(saved.Stages[i]);
             });
         }
         catch { }

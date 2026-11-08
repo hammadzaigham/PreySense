@@ -16,14 +16,13 @@ public sealed class FanStage
 
     public int CpuDutyPercent => RpmToDuty(CpuTargetRpm, CpuMaxRpm);
     public int GpuDutyPercent => RpmToDuty(GpuTargetRpm, GpuMaxRpm);
-    /// <summary>Both fans run at this duty — the higher of the two stored targets.</summary>
-    public int SharedDutyPercent => Math.Max(CpuDutyPercent, GpuDutyPercent);
 
-    public void SetSharedDuty(int dutyPercent)
+    public int DutyPercent(bool gpu) => gpu ? GpuDutyPercent : CpuDutyPercent;
+
+    public void SetDuty(bool gpu, int dutyPercent)
     {
-        int rpm = DutyToRpm(dutyPercent, Math.Max(CpuMaxRpm, GpuMaxRpm));
-        CpuTargetRpm = Math.Clamp(rpm, 0, CpuMaxRpm);
-        GpuTargetRpm = Math.Clamp(rpm, 0, GpuMaxRpm);
+        if (gpu) GpuTargetRpm = DutyToRpm(dutyPercent, GpuMaxRpm);
+        else CpuTargetRpm = DutyToRpm(dutyPercent, CpuMaxRpm);
     }
 
     /// <summary>True when every trip is the EC disabled sentinel (filler plateau stages).</summary>

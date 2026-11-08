@@ -93,8 +93,7 @@ Per-mode profile fields:
 Per-mode fan curve definitions (`Quiet`, `Eco`, `Balanced`, `Performance`, `Turbo`):
 - `ControlMode` (int): `0` = Auto, `1` = Max, `2` = Custom.
 - `RampUpSeconds` (int, 0–5): Shared fan stage-change delay (seconds) for both CPU and GPU fans in that mode.
-- `CpuCurve` (array of 10 integers): Fan duty cycle percentages (`0` - `100%`) for 10 temperature steps.
-- `GpuCurve` (array of 10 integers): Fan duty cycle percentages (`0` - `100%`) for 10 temperature steps.
+- `Stages` (array of 12 objects): each `{ CpuTempC, GpuTempC, CpuDutyPercent, GpuDutyPercent }`. Trips and duties are stored per sensor; at runtime both fans run at `max(CpuDutyPercent, GpuDutyPercent)`. Fall/RPM are not stored.
 
 ### `Lighting`
 Keyboard and cover RGB lighting:

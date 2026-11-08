@@ -90,7 +90,7 @@ public partial class FanCurveWindow : Window
             reachable.Add(i);
         }
 
-        _leadInDuty = reachable.Count > 0 ? _profile.Stages[0].SharedDutyPercent : 0;
+        _leadInDuty = reachable.Count > 0 ? _profile.Stages[0].DutyPercent(_gpu) : 0;
         for (int v = 0; v < reachable.Count; v++)
         {
             int stageIndex = reachable[v];
@@ -98,7 +98,7 @@ public partial class FanCurveWindow : Window
                 continue;
 
             var stage = _profile.Stages[stageIndex];
-            int duty = stage.SharedDutyPercent;
+            int duty = stage.DutyPercent(_gpu);
             if (!_profile.Stages[stageIndex - 1].HasActiveRise(_gpu))
                 continue;
             int entryC = Math.Clamp(
@@ -135,9 +135,9 @@ public partial class FanCurveWindow : Window
         for (int v = 0; v < _visibleStageIndices.Count; v++)
         {
             int stageIndex = _visibleStageIndices[v];
-            _profile.Stages[stageIndex].SetSharedDuty(_dutyValues[v]);
+            _profile.Stages[stageIndex].SetDuty(_gpu, _dutyValues[v]);
             _profile.Stages[stageIndex].Normalize();
-            _dutyValues[v] = _profile.Stages[stageIndex].SharedDutyPercent;
+            _dutyValues[v] = _profile.Stages[stageIndex].DutyPercent(_gpu);
         }
     }
 
@@ -179,9 +179,9 @@ public partial class FanCurveWindow : Window
         }
 
         int duty = Math.Clamp(_dutyValues[visible], 0, 100);
-        _profile.Stages[stageIndex].SetSharedDuty(duty);
+        _profile.Stages[stageIndex].SetDuty(_gpu, duty);
         _profile.Stages[stageIndex].Normalize();
-        _dutyValues[visible] = _profile.Stages[stageIndex].SharedDutyPercent;
+        _dutyValues[visible] = _profile.Stages[stageIndex].DutyPercent(_gpu);
         SyncSelectedStage();
         SaveDraft();
     }
@@ -218,10 +218,9 @@ public partial class FanCurveWindow : Window
         int celsius = visible >= 0 && visible < _temperatureLabels.Length
             ? _temperatureLabels[visible]
             : WpfFanCurveControl.MinCelsius;
-        // Tabs only switch temperature thresholds; duty/RPM are shared by both fans.
         RowTemp.Title = $"{fan} Temp";
-        RowDuty.Title = "Duty";
-        RowRpm.Title = "RPM";
+        RowDuty.Title = $"{fan} Duty";
+        RowRpm.Title = $"{fan} RPM";
         var (minDuty, maxDuty) = WpfFanCurveControl.DutyBounds(_dutyValues, visible);
         RowDuty.Minimum = minDuty;
         RowDuty.Maximum = maxDuty;
@@ -229,8 +228,10 @@ public partial class FanCurveWindow : Window
         RowTemp.Minimum = minTemp;
         RowTemp.Maximum = maxTemp;
         RowTemp.Value = celsius;
-        RowDuty.Value = stage.SharedDutyPercent;
-        RowRpm.Value = FanStage.DutyToRpm(stage.SharedDutyPercent, FanStage.CpuMaxRpm);
+        int duty = stage.DutyPercent(_gpu);
+        int maxRpm = _gpu ? FanStage.GpuMaxRpm : FanStage.CpuMaxRpm;
+        RowDuty.Value = duty;
+        RowRpm.Value = FanStage.DutyToRpm(duty, maxRpm);
         _loading = false;
         UpdateEditor();
     }
@@ -250,13 +251,14 @@ public partial class FanCurveWindow : Window
         else if (ReferenceEquals(sender, RowDuty))
         {
             WpfFanCurveControl.SetDuty(_dutyValues, visible, (int)Math.Round(RowDuty.Value));
-            stage.SetSharedDuty(_dutyValues[visible]);
+            stage.SetDuty(_gpu, _dutyValues[visible]);
         }
         else if (ReferenceEquals(sender, RowRpm))
         {
-            int duty = FanStage.RpmToDuty((int)Math.Round(RowRpm.Value), FanStage.CpuMaxRpm);
+            int maxRpm = _gpu ? FanStage.GpuMaxRpm : FanStage.CpuMaxRpm;
+            int duty = FanStage.RpmToDuty((int)Math.Round(RowRpm.Value), maxRpm);
             WpfFanCurveControl.SetDuty(_dutyValues, visible, duty);
-            stage.SetSharedDuty(_dutyValues[visible]);
+            stage.SetDuty(_gpu, _dutyValues[visible]);
         }
 
         stage.Normalize();
