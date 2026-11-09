@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using PreySense.Mode;
 
 namespace PreySense.Core.Configuration
@@ -14,7 +15,11 @@ namespace PreySense.Core.Configuration
     /// </summary>
     public sealed class PreySenseConfig
     {
-        public const int CurrentSchemaVersion = 1;
+        /// <summary>Preserves unrecognized settings when a newer file is edited by this build.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, System.Text.Json.JsonElement>? AdditionalSettings { get; set; }
+
+        public const int CurrentSchemaVersion = 2;
 
         /// <summary>Schema version of the configuration file.</summary>
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
@@ -92,36 +97,68 @@ namespace PreySense.Core.Configuration
 
     public sealed class TuningConfig
     {
+        /// <summary>Preserves unrecognized settings when a newer file is edited by this build.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, System.Text.Json.JsonElement>? AdditionalSettings { get; set; }
+
+        [JsonPropertyOrder(0)]
         public bool ApplyProchotOffset { get; set; }
+        [JsonPropertyOrder(1)]
         public int? ProchotOffsetCelsius { get; set; }
+        [JsonPropertyOrder(9)]
         public int? FactoryProchotOffsetCelsius { get; set; }
+        [JsonPropertyOrder(10)]
         public bool? FactoryProchotOffsetLocked { get; set; }
         /// <summary>Package TjMax (°C) captured during calibration from MSR 0x1A2.</summary>
+        [JsonPropertyOrder(11)]
         public int? FactoryTjMaxCelsius { get; set; }
 
         /// <summary>Hardware default power limit in Watts detected via NVML or factory calibration.</summary>
+        [JsonPropertyOrder(8)]
         public int? GpuBasePowerWatts { get; set; }
 
         /// <summary>Global static CPU PL1 from MSR 0x610 at calibration (RAPL package floor).</summary>
+        [JsonPropertyOrder(12)]
         public int? FactoryStaticCpuPl1Watts { get; set; }
 
         /// <summary>Global static CPU PL2 from MSR 0x610 at calibration (RAPL package floor).</summary>
+        [JsonPropertyOrder(13)]
         public int? FactoryStaticCpuPl2Watts { get; set; }
 
         /// <summary>Driver-read factory profiles, saved only after all five modes were captured.</summary>
+        [JsonPropertyOrder(14)]
         public Dictionary<string, ModeTuningConfig> FactoryDefaults { get; set; } = new();
 
+        /// <summary>
+        /// True when all five modes have valid CPU factory limits. GPU ERM4 fields may be
+        /// absent on SKUs without an Acer profile table (CPU/PROCHOT tuning still works).
+        /// </summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasFactoryDefaults => new[] { "Eco", "Quiet", "Balanced", "Performance", "Turbo" }
             .All(name => FactoryDefaults != null && FactoryDefaults.TryGetValue(name, out var profile)
-                && profile != null && profile.CpuPl1Watts is >= 5 and <= 300
-                && profile.CpuPl2Watts is >= 5 and <= 300 && profile.CpuPl2Watts >= profile.CpuPl1Watts
-                && profile.TauSeconds is >= 0 and <= 449
-                && profile.GpuDeltaWatts is >= 0 and <= Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
+                && profile != null && HasValidFactoryCpu(profile) && HasValidFactoryGpuOrNone(profile));
+
+        /// <summary>True when factory capture included ERM4 GPU offsets for every mode.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasFactoryGpuProfiles => HasFactoryDefaults
+            && FactoryDefaults.Values.All(p => p.HasGpuLimitValues);
+
+        private static bool HasValidFactoryCpu(ModeTuningConfig profile) =>
+            profile.CpuPl1Watts is >= 5 and <= 300
+            && profile.CpuPl2Watts is >= 5 and <= 300 && profile.CpuPl2Watts >= profile.CpuPl1Watts
+            && profile.TauSeconds is >= 0 and <= 449;
+
+        private static bool HasValidFactoryGpuOrNone(ModeTuningConfig profile)
+        {
+            bool any = profile.GpuDeltaWatts.HasValue || profile.GpuDynamicBoostWatts.HasValue
+                || profile.PlatformPowerOffsetWatts.HasValue;
+            if (!any) return true;
+            return profile.GpuDeltaWatts is >= 0 and <= Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
                 && profile.GpuDeltaWatts % 5 == 0
                 && profile.GpuDynamicBoostWatts is int db
                 && Hardware.DriverFactoryCalibration.IsLegalGpuDynamicBoost(db)
-                && profile.PlatformPowerOffsetWatts is >= 0 and <= 100 && profile.PlatformPowerOffsetWatts % 5 == 0);
+                && profile.PlatformPowerOffsetWatts is >= 0 and <= 100 && profile.PlatformPowerOffsetWatts % 5 == 0;
+        }
 
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasFactoryStaticCpuLimits =>
@@ -129,22 +166,28 @@ namespace PreySense.Core.Configuration
             && FactoryStaticCpuPl2Watts is >= 5 and <= 300
             && FactoryStaticCpuPl2Watts >= FactoryStaticCpuPl1Watts;
 
-        /// <summary>Global or active CPU boost mode (0 = Disabled, 1 = Enabled).</summary>
-        public int CpuBoostMode { get; set; } = 1;
-
+        [JsonPropertyOrder(2)]
         public ModeTuningConfig Quiet { get; set; } = new();
 
+        [JsonPropertyOrder(3)]
         public ModeTuningConfig Eco { get; set; } = new();
 
+        [JsonPropertyOrder(4)]
         public ModeTuningConfig Balanced { get; set; } = new();
 
+        [JsonPropertyOrder(5)]
         public ModeTuningConfig Performance { get; set; } = new();
 
+        [JsonPropertyOrder(6)]
         public ModeTuningConfig Turbo { get; set; } = new();
     }
 
     public sealed class ModeTuningConfig
     {
+        /// <summary>Preserves unrecognized settings when a newer file is edited by this build.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, System.Text.Json.JsonElement>? AdditionalSettings { get; set; }
+
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasCpuLimitValues => CpuPl1Watts.HasValue && CpuPl2Watts.HasValue && TauSeconds.HasValue;
 
@@ -168,41 +211,52 @@ namespace PreySense.Core.Configuration
             : null;
 
         /// <summary>CPU Long-term power limit (PL1) in Watts.</summary>
+        [JsonPropertyOrder(1)]
         public int? CpuPl1Watts { get; set; }
 
         /// <summary>CPU Short-term burst power limit (PL2) in Watts.</summary>
+        [JsonPropertyOrder(2)]
         public int? CpuPl2Watts { get; set; }
 
         /// <summary>CPU Tau burst duration in seconds (0-449).</summary>
+        [JsonPropertyName("CpuTurboTimeLimitSeconds")]
+        [JsonPropertyOrder(3)]
         public int? TauSeconds { get; set; }
 
         /// <summary>Legacy on/off boost flag. Prefer <see cref="CpuBoostMode"/>.</summary>
+        [JsonPropertyOrder(5)]
         public bool? CpuBoost { get; set; }
 
         /// <summary>Per-mode Windows PERFBOOSTMODE (0 Disabled … 6 Efficient Aggressive At Guaranteed).</summary>
+        [JsonPropertyOrder(4)]
         public int? CpuBoostMode { get; set; }
 
-        /// <summary>Target GPU Total Power limit in Watts.</summary>
+        /// <summary>Nominal GPU power reference from a verified baseline and offsets; not an enforced limit.</summary>
+        [JsonPropertyName("GpuNominalPowerWatts")]
+        [JsonPropertyOrder(10)]
         public int? GpuWatts { get; set; }
 
 
         /// <summary>GPU NVPCF base offset in Watts.</summary>
+        [JsonPropertyName("GpuPowerOffsetWatts")]
+        [JsonPropertyOrder(7)]
         public int? GpuDeltaWatts { get; set; }
 
         /// <summary>GPU NVPCF dynamic boost offset in Watts.</summary>
+        [JsonPropertyOrder(8)]
         public int? GpuDynamicBoostWatts { get; set; }
 
         /// <summary>ERM4 platform power offset (CP) in Watts.</summary>
+        [JsonPropertyOrder(9)]
         public int? PlatformPowerOffsetWatts { get; set; }
 
         /// <summary>Apply CPU limits flag for this profile.</summary>
+        [JsonPropertyOrder(0)]
         public bool ApplyCpuLimits { get; set; } = false;
 
         /// <summary>Apply GPU limits flag for this profile.</summary>
+        [JsonPropertyOrder(6)]
         public bool ApplyGpuLimits { get; set; } = false;
-
-        /// <summary>Apply fan curve flag for this profile.</summary>
-        public bool ApplyFanCurve { get; set; } = false;
     }
 
     public sealed class FanConfig
@@ -336,9 +390,11 @@ namespace PreySense.Core.Configuration
         public int ScalePercent { get; set; } = 100;
 
         /// <summary>Background opacity percent (0-100%).</summary>
+        [JsonPropertyName("BackgroundOpacityPercent")]
         public int BackgroundAlphaPercent { get; set; } = 50;
 
         /// <summary>Text opacity percent (0-100%).</summary>
+        [JsonPropertyName("TextOpacityPercent")]
         public int TextAlphaPercent { get; set; } = 100;
 
         /// <summary>Horizontal position preset ('Left', 'Center', 'Right').</summary>

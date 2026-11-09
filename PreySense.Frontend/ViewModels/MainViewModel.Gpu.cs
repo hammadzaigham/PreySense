@@ -25,9 +25,6 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _gpuPowerTargetMax = GpuPowerLimitConfiguration.MaximumPowerLimitWatts;
         [ObservableProperty] private int? _gpuBasePowerWatts = GpuPowerBaseline.ReadWatts();
 
-        partial void OnGpuBasePowerWattsChanged(int? value)
-        {
-        }
         [ObservableProperty] private int _customQuietGpuWatts = 85;
         [ObservableProperty] private int _customEcoGpuWatts = 85;
         [ObservableProperty] private int _customBalancedGpuWatts = 115;
@@ -257,8 +254,8 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task ApplyGpuClocksAsync()
         {
-            var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode), GpuPowerTargetWatts);
-            if (offsets is null) { DiagnosticMessage = "GPU offsets: N/A. Choose tuning values before applying."; return; }
+            var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode));
+            if (offsets is null) { DiagnosticMessage = "Set GPU offsets before applying."; return; }
             await ApplyTuningProfileAsync(ActivePowerMode, Pl1Watts, Pl2Watts,
                 TauForMode(ActivePowerMode), offsets, persist: false);
         }
@@ -295,12 +292,12 @@ namespace PreySense.Frontend.ViewModels
         {
             if (System.Threading.Interlocked.CompareExchange(ref _gpuSwitchInProgress, 1, 0) != 0)
             {
-                DiagnosticMessage = "A GPU mode change is already in progress.";
+                DiagnosticMessage = "GPU mode switch already in progress.";
                 return;
             }
             bool leavingIgpuOnly = IsGpuIgpuOnlyActive;
             System.Threading.Interlocked.Increment(ref _gpuDisplayRevision);
-            DiagnosticMessage = $"Switching GPU Mode to {GetGpuModeName(muxVal)}...";
+            DiagnosticMessage = $"Switching GPU mode to {GetGpuModeName(muxVal)}...";
             IsBusy = true;
             try
             {
@@ -308,9 +305,9 @@ namespace PreySense.Frontend.ViewModels
                 if (leavingIgpuOnly)
                 {
                     bool enabled = await Task.Run(() => _hw.EnableDiscreteGpu());
-                    if (!enabled) { DiagnosticMessage = "GPU switch failed: NVIDIA adapter could not be enabled."; return; }
+                    if (!enabled) { DiagnosticMessage = "Could not enable the NVIDIA GPU."; return; }
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
-                    if (IsGpuIgpuOnlyActive) { DiagnosticMessage = "GPU switch failed: Windows still reports the NVIDIA adapter disabled."; return; }
+                    if (IsGpuIgpuOnlyActive) { DiagnosticMessage = "Windows still shows the NVIDIA GPU as disabled."; return; }
                 }
                 bool available = false;
                 for (int attempt = 0; attempt < (leavingIgpuOnly ? 8 : 1); attempt++)
@@ -321,7 +318,7 @@ namespace PreySense.Frontend.ViewModels
                 }
                 if (!available)
                 {
-                    DiagnosticMessage = "GPU Mode change failed: NVIDIA Advanced Optimus is not available.";
+                    DiagnosticMessage = "NVIDIA Advanced Optimus is not available.";
                     return;
                 }
                 var targetDdsMode = (DdsDisplayMode)muxVal;
@@ -336,7 +333,7 @@ namespace PreySense.Frontend.ViewModels
                     if (!ok)
                     {
                         ApplyDdsStatus(await Task.Run(() => _hw.GetDdsStatus()));
-                        DiagnosticMessage = $"GPU switch failed: {msg}";
+                        DiagnosticMessage = $"Could not switch GPU mode: {msg}";
                         return;
                     }
                     DdsStatus? confirmed = null;
@@ -351,21 +348,21 @@ namespace PreySense.Frontend.ViewModels
                     {
                         bool blocked = await Task.Run(() => _hw.HasDdsBlockers());
                         DiagnosticMessage = blocked
-                            ? "GPU switch blocked by an application or display hook. Close it and retry."
-                            : "NVIDIA accepted the request but did not confirm the requested display mode.";
+                            ? "GPU switch blocked by an app. Close it and try again."
+                            : "GPU mode change was not confirmed.";
                         return;
                     }
                     // Adapter handles acquired before re-enable may still be invalid.
                     await Task.Run(_hw.RefreshGpuAdapter);
                     if (persistPreference)
                         SaveGpuModePreference(muxVal);
-                    DiagnosticMessage = $"GPU Mode set to {GetGpuModeName(muxVal)} (confirmed)";
+                    DiagnosticMessage = $"GPU mode set to {GetGpuModeName(muxVal)}.";
                     var display = await Task.Run(() => (_hw.GetSupportedRefreshRates(), _hw.GetDisplayRefreshRate()));
                     ApplyRefreshRateOptions(display.Item1, display.Item2);
                 }
                 finally { System.Windows.Media.RenderOptions.ProcessRenderMode = prevRenderMode; }
             }
-            catch (Exception ex) { DiagnosticMessage = $"GPU Mode error: {ex.Message}"; }
+            catch (Exception ex) { DiagnosticMessage = $"GPU mode error: {ex.Message}"; }
             finally
             {
                 IsBusy = false;
@@ -399,17 +396,17 @@ namespace PreySense.Frontend.ViewModels
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: true);
                     if (!IsGpuIgpuOnlyActive)
                     {
-                        DiagnosticMessage = "NVIDIA dGPU disable was not confirmed by Windows.";
+                        DiagnosticMessage = "Windows did not confirm disabling the NVIDIA GPU.";
                         return;
                     }
-                    DiagnosticMessage = "GPU Mode set to iGPU Only";
+                    DiagnosticMessage = "GPU mode set to iGPU Only.";
                 }
                 else
                 {
-                    DiagnosticMessage = "Could not disable the NVIDIA dGPU.";
+                    DiagnosticMessage = "Could not disable the NVIDIA GPU.";
                 }
             }
-            catch (Exception ex) { DiagnosticMessage = $"GPU Mode error: {ex.Message}"; }
+            catch (Exception ex) { DiagnosticMessage = $"GPU mode error: {ex.Message}"; }
             finally
             {
                 IsBusy = false;
@@ -431,6 +428,7 @@ namespace PreySense.Frontend.ViewModels
                 bool? result = false;
                 void Show()
                 {
+                    bool previousAutoHideSuppression = App.SuppressAutoHide;
                     App.SuppressAutoHide = true;
                     try
                     {
@@ -450,7 +448,7 @@ namespace PreySense.Frontend.ViewModels
                     }
                     finally
                     {
-                        App.SuppressAutoHide = false;
+                        App.SuppressAutoHide = previousAutoHideSuppression;
                     }
                 }
 
@@ -508,7 +506,7 @@ namespace PreySense.Frontend.ViewModels
             }
             catch (Exception ex)
             {
-                DiagnosticMessage = $"dGPU restart error: {ex.Message}";
+                DiagnosticMessage = $"Could not restart the NVIDIA GPU: {ex.Message}";
             }
             finally
             {
@@ -548,12 +546,12 @@ namespace PreySense.Frontend.ViewModels
                 }
                 else
                 {
-                    DiagnosticMessage = "Failed to set the GPU mode via Acer driver.";
+                    DiagnosticMessage = "Could not set the GPU mode.";
                 }
             }
             catch (Exception ex)
             {
-                DiagnosticMessage = $"GPU MUX error: {ex.Message}";
+                DiagnosticMessage = $"GPU mode error: {ex.Message}";
             }
             finally
             {
@@ -569,6 +567,7 @@ namespace PreySense.Frontend.ViewModels
             bool? dialogResult = false;
             void Show()
             {
+                bool previousAutoHideSuppression = App.SuppressAutoHide;
                 App.SuppressAutoHide = true;
                 try
                 {
@@ -584,7 +583,7 @@ namespace PreySense.Frontend.ViewModels
                 }
                 finally
                 {
-                    App.SuppressAutoHide = false;
+                    App.SuppressAutoHide = previousAutoHideSuppression;
                 }
             }
 

@@ -101,52 +101,46 @@ namespace PreySense.Frontend.Views
 		}
 	}
 
-	private void LoadSettings()
-	{
-		bool value = AppConfig.IsOverlay();
-		bool value2 = AppConfig.Get("overlay_show_fps", 1) == 1;
-		int num = AppConfig.Get("overlay_scale_percent", 100);
-		int value3 = (int)Math.Round((double)num / 5.0) * 5;
-		value3 = Math.Clamp(value3, 50, 200);
-		int num2 = AppConfig.Get("overlay_alpha", 50);
-		int value4 = ((num2 <= 100) ? ((int)Math.Round((double)num2 / 10.0) * 10) : ((int)Math.Round((double)num2 / 255.0 * 10.0) * 10));
-		value4 = Math.Clamp(value4, 0, 100);
-		CheckEnableOverlay.IsChecked = value;
-		CheckShowFps.IsChecked = value2;
-		SliderHudScale.Value = value3;
-		SliderOpacity.Value = value4;
-		int num3 = AppConfig.Get("overlay_text_alpha", 100);
-		int value5 = ((num3 > 100) ? ((int)Math.Round((double)num3 / 255.0 * 10.0) * 10) : ((int)Math.Round((double)num3 / 10.0) * 10));
-		value5 = Math.Clamp(value5, 0, 100);
-		if (SliderTextOpacity != null)
-		{
-			SliderTextOpacity.Value = value5;
-		}
-		LabelHudScale.Text = $"{value3}%";
-		LabelOpacity.Text = $"{value4}%";
-		if (LabelTextOpacity != null)
-		{
-			LabelTextOpacity.Text = $"{value5}%";
-		}
-		DropdownHorizontalPos.ItemsSource = HorizontalPositions;
-		DropdownVerticalPos.ItemsSource = VerticalPositions;
-		string selectedItem = AppConfig.GetString("overlay_pos_horizontal", "Left");
-		string selectedItem2 = AppConfig.GetString("overlay_pos_vertical", "Top");
-		DropdownHorizontalPos.SelectedItem = selectedItem;
-		DropdownVerticalPos.SelectedItem = selectedItem2;
-	}
+    private void LoadSettings()
+    {
+        bool overlayEnabled = AppConfig.IsOverlay();
+        bool showFps = AppConfig.Get("overlay_show_fps", 1) == 1;
+        int savedScalePercent = AppConfig.Get("overlay_scale_percent", 100);
+        int scalePercent = Math.Clamp((int)Math.Round(savedScalePercent / 5.0) * 5, 50, 200);
+        int backgroundOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_alpha", 50));
+        int textOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_text_alpha", 100));
 
-	private void PositionDropdown_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
-	{
-		if (!_isInitializing)
-		{
-			string text = (DropdownHorizontalPos.SelectedItem as string) ?? "Left";
-			string text2 = (DropdownVerticalPos.SelectedItem as string) ?? "Top";
-			AppConfig.Set("overlay_pos_horizontal", text);
-			AppConfig.Set("overlay_pos_vertical", text2);
-			HardwareOverlayManager.Reposition(text, text2);
-		}
-	}
+        CheckEnableOverlay.IsChecked = overlayEnabled;
+        CheckShowFps.IsChecked = showFps;
+        SliderHudScale.Value = scalePercent;
+        SliderOpacity.Value = backgroundOpacityPercent;
+        SliderTextOpacity.Value = textOpacityPercent;
+        LabelHudScale.Text = $"{scalePercent}%";
+        LabelOpacity.Text = $"{backgroundOpacityPercent}%";
+        LabelTextOpacity.Text = $"{textOpacityPercent}%";
+        DropdownHorizontalPos.ItemsSource = HorizontalPositions;
+        DropdownVerticalPos.ItemsSource = VerticalPositions;
+        DropdownHorizontalPos.SelectedItem = AppConfig.GetString("overlay_pos_horizontal", "Left");
+        DropdownVerticalPos.SelectedItem = AppConfig.GetString("overlay_pos_vertical", "Top");
+    }
+
+    // Older preferences store opacity as an alpha byte; current preferences use percent.
+    private static int NormalizeSavedOpacity(int savedOpacity)
+    {
+        double percent = savedOpacity > 100 ? savedOpacity / 255.0 * 100 : savedOpacity;
+        return Math.Clamp((int)Math.Round(percent / 10) * 10, 0, 100);
+    }
+
+    private void PositionDropdown_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
+    {
+        if (_isInitializing) return;
+        if (DropdownHorizontalPos.SelectedItem is not string horizontalPosition ||
+            DropdownVerticalPos.SelectedItem is not string verticalPosition) return;
+
+        AppConfig.Set("overlay_pos_horizontal", horizontalPosition);
+        AppConfig.Set("overlay_pos_vertical", verticalPosition);
+        HardwareOverlayManager.Reposition(horizontalPosition, verticalPosition);
+    }
 
 	private void BuildColumnSlots()
 	{
@@ -162,8 +156,7 @@ namespace PreySense.Frontend.Views
 			textBlock.Foreground = (TryFindResource("TextMutedBrush") as Brush) ?? Brushes.Gray;
 			textBlock.Margin = new Thickness(0.0, 8.0, 0.0, 8.0);
 			textBlock.FontSize = fontSize;
-			TextBlock element = textBlock;
-			PanelColumnsContainer.Children.Add(element);
+			PanelColumnsContainer.Children.Add(textBlock);
 			return;
 		}
 		for (int i = 0; i < slots.Count; i++)
@@ -223,20 +216,15 @@ namespace PreySense.Frontend.Views
 				HorizontalAlignment = HorizontalAlignment.Right,
 				ClipToBounds = true
 			};
-			graphSwitch.Checked += (_, _) =>
-			{
-				if (_isInitializing) return;
-				slot.ShowGraph = true;
-				AppConfig.SaveOverlaySlots(slots);
-				HardwareOverlayManager.RefreshDisplayFlags();
-			};
-			graphSwitch.Unchecked += (_, _) =>
-			{
-				if (_isInitializing) return;
-				slot.ShowGraph = false;
-				AppConfig.SaveOverlaySlots(slots);
-				HardwareOverlayManager.RefreshDisplayFlags();
-			};
+            graphSwitch.Checked += (_, _) => SaveGraphVisibility();
+            graphSwitch.Unchecked += (_, _) => SaveGraphVisibility();
+            void SaveGraphVisibility()
+            {
+                if (_isInitializing) return;
+                slot.ShowGraph = graphSwitch.IsChecked == true;
+                AppConfig.SaveOverlaySlots(slots);
+                HardwareOverlayManager.RefreshDisplayFlags();
+            }
 
 			Button removeButton = new Button
 			{
@@ -315,8 +303,8 @@ namespace PreySense.Frontend.Views
 	{
 		if (!_isInitializing)
 		{
-			bool valueOrDefault = CheckShowFps.IsChecked == true;
-			AppConfig.Set("overlay_show_fps", valueOrDefault ? 1 : 0);
+			bool showFps = CheckShowFps.IsChecked == true;
+			AppConfig.Set("overlay_show_fps", showFps ? 1 : 0);
 			HardwareOverlayManager.RefreshDisplayFlags();
 		}
 	}

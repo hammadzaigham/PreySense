@@ -12,7 +12,7 @@ namespace PreySense.Frontend.ViewModels
                 || profile.CpuPl1Watts is null || profile.CpuPl2Watts is null || profile.TauSeconds is null
                 || profile.GpuDeltaWatts is null || profile.GpuDynamicBoostWatts is null || profile.PlatformPowerOffsetWatts is null)
             {
-                DiagnosticMessage = "Calibrate tuning before resetting factory defaults.";
+                DiagnosticMessage = "Capture factory defaults before resetting.";
                 return;
             }
             int pl1 = profile.CpuPl1Watts.Value, pl2 = profile.CpuPl2Watts.Value;
@@ -68,6 +68,7 @@ namespace PreySense.Frontend.ViewModels
 
         public void RefreshLocalizedText()
         {
+            OnPropertyChanged(nameof(ProchotActivationLabel));
             OnPropertyChanged(nameof(EcoOrQuietModeName));
             UpdateModeName(ActivePowerMode);
         }

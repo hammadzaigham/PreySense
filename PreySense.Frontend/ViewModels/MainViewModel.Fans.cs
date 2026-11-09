@@ -178,7 +178,7 @@ public partial class MainViewModel
         UpdateFanDemand();
         _sentCpuFan = _sentGpuFan = null;
         _sentMaxFanMode = false;
-        _dispatcher.InvokeAsync(() => DiagnosticMessage = "Fan update failed; automatic writes paused. Apply fan settings again to resume.");
+        _dispatcher.InvokeAsync(() => DiagnosticMessage = "Fan update failed. Apply fan settings again to resume.");
     }
     private void RestoreFanMode()
     {

@@ -25,9 +25,6 @@ public sealed class ThreadAffinityScope : IDisposable
     private static extern IntPtr GetCurrentThread();
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetThreadGroupAffinity(IntPtr hThread, ref GROUP_AFFINITY groupAffinity);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetThreadGroupAffinity(
         IntPtr hThread,
         ref GROUP_AFFINITY groupAffinity,

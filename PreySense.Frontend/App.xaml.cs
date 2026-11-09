@@ -25,26 +25,7 @@ namespace PreySense.Frontend
 
             Deactivated += (_, _) =>
             {
-                // Deactivated is application-wide, so moving between PreySense-owned
-                // windows does not trigger this. Wait until activation has settled.
-                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
-                {
-                    if (SuppressAutoHide)
-                    {
-                        return;
-                    }
-                    if (Windows.OfType<Window>().Any(window => window.IsActive))
-                    {
-                        return;
-                    }
-
-                    if (MainWindow is not MainWindow mainWindow || !mainWindow.IsVisible)
-                    {
-                        return;
-                    }
-
-                    mainWindow.HideApplicationWindowsForAutoHide();
-                });
+                if (MainWindow is MainWindow mainWindow) mainWindow.QueueAutoHide();
             };
 
             // Global crash exception logging

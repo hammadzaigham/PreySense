@@ -98,7 +98,6 @@ namespace PreySense.Mode
 
                 profile.ApplyCpuLimits = modeCfg.ApplyCpuLimits;
                 profile.ApplyGpuLimits = modeCfg.ApplyGpuLimits;
-                profile.ApplyFanCurve = modeCfg.ApplyFanCurve;
             }
             catch { }
 
@@ -124,7 +123,6 @@ namespace PreySense.Mode
 
                     modeCfg.ApplyCpuLimits = profile.ApplyCpuLimits;
                     modeCfg.ApplyGpuLimits = profile.ApplyGpuLimits;
-                    modeCfg.ApplyFanCurve = profile.ApplyFanCurve;
                 });
                 return true;
             }
@@ -153,7 +151,6 @@ namespace PreySense.Mode
                     modeCfg.PlatformPowerOffsetWatts = null;
                     modeCfg.ApplyCpuLimits = false;
                     modeCfg.ApplyGpuLimits = false;
-                    modeCfg.ApplyFanCurve = false;
                 });
             }
             catch (Exception ex)

@@ -61,6 +61,7 @@ namespace PreySense.Frontend.Views
         {
             if (DataContext is MainViewModel vm)
             {
+                vm.PropertyChanged -= OnTuningVmPropertyChanged;
                 vm.PropertyChanged += OnTuningVmPropertyChanged;
                 await vm.RefreshProchotLockStateAsync();
             }
@@ -168,8 +169,10 @@ namespace PreySense.Frontend.Views
                 SwitchProchotOffset.IsChecked = vm.IsProchotOffsetEnabled;
             if (SwitchApplyCpuLimits != null)
                 SwitchApplyCpuLimits.IsChecked = Draft.ApplyCpuLimits;
+            if (!vm.IsGpuProfileTuningAvailable)
+                Draft.ApplyGpuLimits = false;
             if (SwitchApplyGpuLimits != null)
-                SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits;
+                SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits && vm.IsGpuProfileTuningAvailable;
             UpdateGpuDraftLabels();
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
@@ -180,7 +183,8 @@ namespace PreySense.Frontend.Views
         {
             if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
-            Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
+            bool gpuOk = DataContext is MainViewModel { IsGpuProfileTuningAvailable: true };
+            Draft.ApplyGpuLimits = gpuOk && SwitchApplyGpuLimits?.IsChecked == true;
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
         }
@@ -199,8 +203,9 @@ namespace PreySense.Frontend.Views
         {
             if (CpuLimitsPanel != null)
                 CpuLimitsPanel.IsEnabled = SwitchApplyCpuLimits?.IsChecked == true;
+            bool gpuAvailable = DataContext is MainViewModel { IsGpuProfileTuningAvailable: true };
             if (GpuLimitsPanel != null)
-                GpuLimitsPanel.IsEnabled = SwitchApplyGpuLimits?.IsChecked == true;
+                GpuLimitsPanel.IsEnabled = gpuAvailable && SwitchApplyGpuLimits?.IsChecked == true;
         }
 
         private void UpdateActionButtonsEnabled()
@@ -379,8 +384,8 @@ namespace PreySense.Frontend.Views
             {
                 SetVerificationText(
                     vm.IsBusy
-                        ? Services.LocalizationService.Translate("Tuning is busy; wait for the current operation.")
-                        : Services.LocalizationService.Translate("Enable Hardware Tuning before applying settings."),
+                        ? Services.LocalizationService.Translate("Tuning is busy. Try again in a moment.")
+                        : Services.LocalizationService.Translate("Turn on Hardware Tuning first."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -419,16 +424,16 @@ namespace PreySense.Frontend.Views
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
                     ReadGpuOffsets(), persist: true, vm.ProchotOffsetCelsius, applyProchot,
-                    applyCpuLimits: true, applyGpuLimits: true, persistApplySwitches: false,
-                    restoreMsrToStaticFloor: true);
+                    applyCpuLimits: true, applyGpuLimits: vm.IsGpuProfileTuningAvailable,
+                    persistApplySwitches: false, restoreMsrToStaticFloor: true);
                 Draft.ApplyCpuLimits = false;
                 Draft.ApplyGpuLimits = false;
                 vm.IsProchotOffsetEnabled = false;
                 LoadModeData();
                 string message = verified
-                    ? Services.LocalizationService.Translate("Applied and readback successfully.")
+                    ? Services.LocalizationService.Translate("Applied successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
-                        ? Services.LocalizationService.Translate("Apply failed.")
+                        ? Services.LocalizationService.Translate("Could not apply.")
                         : vm.DiagnosticMessage);
                 SetVerificationText(message, verified
                     ? TryFindResource("SuccessTextBrush") as Brush ?? Brushes.LightGreen
@@ -455,8 +460,8 @@ namespace PreySense.Frontend.Views
             {
                 SetVerificationText(
                     vm.IsBusy
-                        ? Services.LocalizationService.Translate("Tuning is busy; wait for the current operation.")
-                        : Services.LocalizationService.Translate("Enable Hardware Tuning before applying settings."),
+                        ? Services.LocalizationService.Translate("Tuning is busy. Try again in a moment.")
+                        : Services.LocalizationService.Translate("Turn on Hardware Tuning first."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -466,7 +471,7 @@ namespace PreySense.Frontend.Views
             bool applyProchot = SwitchProchotOffset?.IsChecked == true;
             vm.IsProchotOffsetEnabled = applyProchot;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
-            Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
+            Draft.ApplyGpuLimits = vm.IsGpuProfileTuningAvailable && SwitchApplyGpuLimits?.IsChecked == true;
             Draft.CpuPl1Watts = double.IsFinite(RowPl1.Value) ? (int)RowPl1.Value : null;
             Draft.CpuPl2Watts = double.IsFinite(RowPl2.Value) ? (int)RowPl2.Value : null;
             Draft.TauSeconds = ReadTauSeconds();
@@ -475,25 +480,25 @@ namespace PreySense.Frontend.Views
             Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value);
             if (applyProchot && vm.ProchotOffsetCelsius is null)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Enter a PROCHOT offset or turn its switch off."),
+                SetVerificationText(Services.LocalizationService.Translate("Enter a PROCHOT offset, or turn its switch off."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
             if (!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, or PROCHOT offset before applying."),
+                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, or PROCHOT first."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
             if (Draft.ApplyCpuLimits && !Draft.HasCpuLimitValues)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Choose CPU limits and time limit before applying."),
+                SetVerificationText(Services.LocalizationService.Translate("Set CPU limits and time limit before applying."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
             if (Draft.ApplyGpuLimits && !Draft.HasGpuLimitValues)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Choose GPU offsets and platform power offset before applying."),
+                SetVerificationText(Services.LocalizationService.Translate("Set GPU offsets before applying."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -507,9 +512,9 @@ namespace PreySense.Frontend.Views
                     ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, applyProchot,
                     Draft.ApplyCpuLimits, Draft.ApplyGpuLimits);
                 string message = verified
-                    ? Services.LocalizationService.Translate("Applied and readback successfully.")
+                    ? Services.LocalizationService.Translate("Applied successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
-                        ? Services.LocalizationService.Translate("Apply failed.")
+                        ? Services.LocalizationService.Translate("Could not apply.")
                         : vm.DiagnosticMessage);
                 SetVerificationText(message, verified
                     ? TryFindResource("SuccessTextBrush") as Brush ?? Brushes.LightGreen

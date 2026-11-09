@@ -40,6 +40,7 @@ public class CpuTelemetryReaderTests
         }
 
         public bool WritePhysicalDword(ulong physicalAddress, uint value) => false;
+        public bool TryReadMchbar(out ulong address) { address = 0; return false; }
 
         public void Dispose() { }
     }

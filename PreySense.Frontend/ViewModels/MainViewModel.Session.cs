@@ -109,8 +109,6 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed) return;
             _ = ApplyStartupLightingAsync();
             if (_disposed) return;
-            if (_disposed) return;
-            if (_disposed) return;
             await RestoreSessionSettingsAsync("startup");
             if (_disposed)
                 return;
@@ -211,7 +209,7 @@ namespace PreySense.Frontend.ViewModels
                         ? "Saved settings applied."
                         : "Saved settings reapplied after wake.";
                     if (!string.IsNullOrEmpty(restoreWarning))
-                        DiagnosticMessage = "Settings partially applied: " + restoreWarning;
+                        DiagnosticMessage = "Some settings could not be restored: " + restoreWarning;
                 });
             }
             catch (Exception ex)
@@ -219,7 +217,7 @@ namespace PreySense.Frontend.ViewModels
                 AppLogger.Log($"RestoreSessionSettingsAsync ({reason}): {ex.Message}");
                 await _dispatcher.InvokeAsync(() =>
                 {
-                    if (!_disposed) DiagnosticMessage = $"Settings restore failed: {ex.Message}";
+                    if (!_disposed) DiagnosticMessage = $"Could not restore settings: {ex.Message}";
                 });
             }
             finally

@@ -13,6 +13,8 @@ public class TuningCalibrationTests
             new ModeTuningConfig { CpuPl1Watts = 45, CpuPl2Watts = 80, TauSeconds = 56,
                 GpuDeltaWatts = 20, GpuDynamicBoostWatts = 15, PlatformPowerOffsetWatts = 10, GpuWatts = 120, CpuBoost = true });
 
+    private static MainViewModel.FactoryDefaultsCapture Capture() => new(Defaults(), 55, 80);
+
     private string _directory = null!;
     private MainViewModel _vm = null!;
     private ConfigurationService _store = null!;
@@ -30,9 +32,87 @@ public class TuningCalibrationTests
     [TestCleanup] public void Cleanup() => Directory.Delete(_directory, recursive: true);
 
     [TestMethod]
+    public async Task EnableWithMissingStaticLimits_RemainsOffWithoutStartingCapture()
+    {
+        _store.Update(cfg => cfg.Tuning.FactoryDefaults = Defaults());
+        _vm.CaptureTuningDefaults = () => throw new AssertFailedException("Enable must not initiate capture.");
+        _vm.IsHardwareTuningEnabled = true;
+        await _vm.TuningEnableTask;
+        Assert.IsFalse(_vm.IsHardwareTuningEnabled);
+        Assert.IsFalse(_store.Reload().General.HardwareTuningEnabled);
+    }
+
+    [TestMethod]
+    public async Task ConcurrentCaptureRequests_ShareOneOperation()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        int captures = 0;
+        _vm.CaptureTuningDefaults = () =>
+        {
+            Interlocked.Increment(ref captures);
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+            return Capture();
+        };
+        Task first = _vm.CaptureMissingFactoryDefaultsAsync();
+        try
+        {
+            Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10)));
+            Assert.IsTrue(_vm.IsBusy);
+            Task second = _vm.CaptureMissingFactoryDefaultsAsync();
+            Assert.AreSame(first, second);
+        }
+        finally { release.Set(); await first; }
+        Assert.AreEqual(1, captures);
+        Assert.IsFalse(_vm.IsBusy);
+        Assert.IsTrue(_store.Reload().Tuning.HasFactoryStaticCpuLimits);
+    }
+
+    [TestMethod]
+    public async Task CaptureFailure_ReleasesModeGateAndBusyStateWithoutSaving()
+    {
+        _vm.CaptureTuningDefaults = () => throw new InvalidOperationException("read failed");
+        await _vm.CaptureMissingFactoryDefaultsAsync();
+        Assert.IsFalse(_vm.IsBusy);
+        Assert.IsFalse(_vm.IsHardwareTuningEnabled);
+        var gate = (SemaphoreSlim)typeof(MainViewModel).GetField("_modeSwitchGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_vm)!;
+        Assert.AreEqual(1, gate.CurrentCount);
+        Assert.IsEmpty(_store.GetCurrent().Tuning.FactoryDefaults);
+        Assert.Contains("read failed", _vm.DiagnosticMessage);
+    }
+
+    [TestMethod]
+    public async Task IncompleteSavedCapture_IsReplacedRatherThanMerged()
+    {
+        _store.Update(cfg =>
+        {
+            cfg.Tuning.FactoryDefaults = Defaults();
+            cfg.Tuning.FactoryDefaults["Turbo"].CpuPl1Watts = 70;
+            cfg.Tuning.FactoryProchotOffsetCelsius = 9;
+            cfg.Tuning.FactoryTjMaxCelsius = 100;
+        });
+        _vm.CaptureTuningDefaults = Capture;
+        await _vm.CaptureMissingFactoryDefaultsAsync();
+        var saved = _store.Reload().Tuning;
+        Assert.AreEqual(45, saved.FactoryDefaults["Turbo"].CpuPl1Watts);
+        Assert.IsNull(saved.FactoryProchotOffsetCelsius);
+        Assert.IsNull(saved.FactoryTjMaxCelsius);
+    }
+
+    [TestMethod]
+    public async Task InvalidStaticLimits_DoNotCommitAProfileCapture()
+    {
+        _vm.CaptureTuningDefaults = () => new(Defaults(), 200, 80);
+        await _vm.CaptureMissingFactoryDefaultsAsync();
+        Assert.IsEmpty(_store.Reload().Tuning.FactoryDefaults);
+        Assert.IsFalse(_vm.IsBusy);
+    }
+
+    [TestMethod]
     public async Task StartupCapture_SavesDefaultsWithoutEnablingTuning()
     {
-        _vm.CaptureTuningDefaults = Defaults;
+        _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
         Assert.IsTrue(_store.Reload().Tuning.HasFactoryDefaults);
         Assert.IsFalse(_vm.IsHardwareTuningEnabled);
@@ -44,16 +124,21 @@ public class TuningCalibrationTests
     [TestMethod]
     public async Task StartupCaptureFailure_DoesNotSavePartialDefaults()
     {
-        _vm.CaptureTuningDefaults = () => new() { ["Eco"] = Defaults()["Eco"] };
+        _vm.CaptureTuningDefaults = () => new(new() { ["Eco"] = Defaults()["Eco"] }, 55, 80);
         await _vm.CaptureMissingFactoryDefaultsAsync();
         Assert.IsEmpty(_store.Reload().Tuning.FactoryDefaults);
-        Assert.Contains("Factory defaults capture failed", _vm.DiagnosticMessage);
+        Assert.Contains("Could not capture factory defaults", _vm.DiagnosticMessage);
     }
 
     [TestMethod]
     public async Task EnableTuning_RequiresExistingFactoryDefaults()
     {
-        _store.Update(cfg => cfg.Tuning.FactoryDefaults = Defaults());
+        _store.Update(cfg =>
+        {
+            cfg.Tuning.FactoryDefaults = Defaults();
+            cfg.Tuning.FactoryStaticCpuPl1Watts = 55;
+            cfg.Tuning.FactoryStaticCpuPl2Watts = 80;
+        });
         _vm.CaptureTuningDefaults = () => throw new AssertFailedException("Enabling must not calibrate.");
         _vm.IsHardwareTuningEnabled = true;
         await _vm.TuningEnableTask;
@@ -77,7 +162,7 @@ public class TuningCalibrationTests
         Assert.IsFalse(_vm.IsHardwareTuningEnabled);
         Assert.IsFalse(_store.Reload().General.HardwareTuningEnabled);
         Assert.IsEmpty(_store.GetCurrent().Tuning.FactoryDefaults);
-        Assert.Contains("Factory defaults are not available", _vm.DiagnosticMessage);
+        Assert.Contains("factory defaults are ready", _vm.DiagnosticMessage);
     }
 
     [TestMethod]
@@ -151,7 +236,12 @@ public class TuningCalibrationTests
     [TestMethod]
     public async Task EnableWhileBusy_StillSucceedsWhenDefaultsExist()
     {
-        _store.Update(cfg => cfg.Tuning.FactoryDefaults = Defaults());
+        _store.Update(cfg =>
+        {
+            cfg.Tuning.FactoryDefaults = Defaults();
+            cfg.Tuning.FactoryStaticCpuPl1Watts = 55;
+            cfg.Tuning.FactoryStaticCpuPl2Watts = 80;
+        });
         _vm.IsBusy = true;
         _vm.CaptureTuningDefaults = () => throw new AssertFailedException("Existing defaults must not trigger recalibration.");
         _vm.IsHardwareTuningEnabled = true;
@@ -160,7 +250,7 @@ public class TuningCalibrationTests
         Assert.IsTrue(_store.GetCurrent().General.HardwareTuningEnabled);
         Assert.IsFalse(string.IsNullOrEmpty(_vm.DiagnosticMessage));
         Assert.DoesNotContain("Calibration failed", _vm.DiagnosticMessage);
-        Assert.DoesNotContain("remains off", _vm.DiagnosticMessage);
+        Assert.DoesNotContain("stays off", _vm.DiagnosticMessage);
     }
 
     [TestMethod]
@@ -169,7 +259,7 @@ public class TuningCalibrationTests
         _store.Update(cfg => cfg.General.HardwareTuningEnabled = true);
         Assert.IsFalse(_store.GetCurrent().Tuning.HasFactoryDefaults);
         Assert.IsFalse(_vm.IsHardwareTuningEnabled);
-        _vm.CaptureTuningDefaults = Defaults;
+        _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
         Assert.IsTrue(_store.Reload().Tuning.HasFactoryDefaults);
         Assert.IsTrue(_vm.IsHardwareTuningEnabled);
@@ -177,28 +267,28 @@ public class TuningCalibrationTests
     }
 
     [TestMethod]
-    public async Task StartupCapture_PreservesExistingFactoryProchotLockWhenNewReadIsNull()
+    public async Task StartupCapture_DoesNotReuseSavedProchotMetadata()
     {
         _store.Update(cfg =>
         {
             cfg.Tuning.FactoryProchotOffsetCelsius = 12;
             cfg.Tuning.FactoryProchotOffsetLocked = true;
         });
-        _vm.CaptureTuningDefaults = Defaults;
+        _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
         var saved = _store.Reload().Tuning;
         Assert.IsTrue(saved.HasFactoryDefaults);
-        Assert.AreEqual(12, saved.FactoryProchotOffsetCelsius);
-        Assert.IsTrue(saved.FactoryProchotOffsetLocked);
+        Assert.IsNull(saved.FactoryProchotOffsetCelsius);
+        Assert.IsNull(saved.FactoryProchotOffsetLocked);
     }
 
     [TestMethod]
-    public async Task StartupCapture_PreservesExistingFactoryProchotWhenNewReadIsNull()
+    public async Task StartupCapture_MissingProchotReadStaysNull()
     {
         _store.Update(cfg => cfg.Tuning.FactoryProchotOffsetCelsius = 12);
-        _vm.CaptureTuningDefaults = Defaults;
+        _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
-        Assert.AreEqual(12, _store.Reload().Tuning.FactoryProchotOffsetCelsius);
+        Assert.IsNull(_store.Reload().Tuning.FactoryProchotOffsetCelsius);
     }
 
     [TestMethod]

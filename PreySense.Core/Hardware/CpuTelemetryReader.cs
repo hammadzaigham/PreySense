@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
 using PreySense.Mode;
@@ -37,16 +36,24 @@ public sealed class CpuTelemetryReader : IDisposable
     private double? _referenceClockMhz;
 
     // Per-processor state for APERF/MPERF/TSC tracking
-    private sealed class ProcessorPerfState
+    private sealed class ProcessorFrequencyState
     {
         public ulong LastAperf;
         public ulong LastMperf;
         public ulong LastTsc;
         public long LastTimestamp;
+
+        public void Update(ulong aperf, ulong mperf, ulong tsc, long timestamp)
+        {
+            LastAperf = aperf;
+            LastMperf = mperf;
+            LastTsc = tsc;
+            LastTimestamp = timestamp;
+        }
     }
 
-    private readonly ConcurrentDictionary<int, ProcessorPerfState> _perProcessorState = new();
-    private readonly ProcessorPerfState _packagePerfState = new();
+    private readonly Dictionary<int, ProcessorFrequencyState> _perProcessorState = new();
+    private readonly ProcessorFrequencyState _currentProcessorState = new();
 
     public readonly record struct FrequencySample(
         int ActiveFrequencyMhz,
@@ -314,16 +321,17 @@ public sealed class CpuTelemetryReader : IDisposable
                 _backend.ReadMsr(MSR_IA32_TIME_STAMP_COUNTER, out tsc);
             }
 
-            var state = logicalProcessorIndex.HasValue
-                ? _perProcessorState.GetOrAdd(logicalProcessorIndex.Value, _ => new ProcessorPerfState())
-                : _packagePerfState;
+            // All state access is protected by _syncLock, so no concurrent collection is needed.
+            var state = _currentProcessorState;
+            if (logicalProcessorIndex is int processorIndex && !_perProcessorState.TryGetValue(processorIndex, out state))
+            {
+                state = new ProcessorFrequencyState();
+                _perProcessorState.Add(processorIndex, state);
+            }
 
             if (state.LastTimestamp == 0)
             {
-                state.LastAperf = aperf;
-                state.LastMperf = mperf;
-                state.LastTsc = tsc;
-                state.LastTimestamp = now;
+                state.Update(aperf, mperf, tsc, now);
                 return null;
             }
 
@@ -334,20 +342,14 @@ public sealed class CpuTelemetryReader : IDisposable
             // Detect sleep/suspend or massive gap
             if (elapsedSec > 30.0)
             {
-                state.LastAperf = aperf;
-                state.LastMperf = mperf;
-                state.LastTsc = tsc;
-                state.LastTimestamp = now;
+                state.Update(aperf, mperf, tsc, now);
                 return null;
             }
 
             // Check for counter reset / rollover (both APERF and MPERF reset to 0 simultaneously per Intel SDM)
             if (aperf < state.LastAperf || mperf < state.LastMperf)
             {
-                state.LastAperf = aperf;
-                state.LastMperf = mperf;
-                state.LastTsc = tsc;
-                state.LastTimestamp = now;
+                state.Update(aperf, mperf, tsc, now);
                 return null;
             }
 
@@ -356,10 +358,7 @@ public sealed class CpuTelemetryReader : IDisposable
 
             ulong deltaTsc = (tsc >= state.LastTsc && state.LastTsc > 0) ? (tsc - state.LastTsc) : 0;
 
-            state.LastAperf = aperf;
-            state.LastMperf = mperf;
-            state.LastTsc = tsc;
-            state.LastTimestamp = now;
+            state.Update(aperf, mperf, tsc, now);
 
             return ComputeFrequencySample(deltaAperf, deltaMperf, deltaTsc, elapsedSec, refClock);
         }
@@ -420,15 +419,6 @@ public sealed class CpuTelemetryReader : IDisposable
     }
 
     /// <summary>
-    /// Backward-compatible method returning active frequency or effective frequency in MHz.
-    /// </summary>
-    public int? SampleEffectiveFrequencyMhz(int? logicalProcessorIndex = null)
-    {
-        var sample = SampleFrequency(logicalProcessorIndex);
-        return sample?.EffectiveFrequencyMhz;
-    }
-
-    /// <summary>
     /// Samples all logical cores with processor affinity pinning and aggregates distinct
     /// Performance-core (P-Core) and Efficiency-core (E-Core) active and wall-time effective clocks.
     /// Returns (PCoreActiveMhz, ECoreActiveMhz, PCoreEffectiveMhz, ECoreEffectiveMhz).
@@ -440,9 +430,9 @@ public sealed class CpuTelemetryReader : IDisposable
             if (!_backend.IsInitialized || _isECore.Length == 0)
                 return (null, null, null, null);
 
-            int pMaxActive = 0, pMaxEffective = 0;
-            int eMaxActive = 0, eMaxEffective = 0;
-            bool foundP = false, foundE = false;
+            int performanceActiveMaximum = 0, performanceEffectiveMaximum = 0;
+            int efficiencyActiveMaximum = 0, efficiencyEffectiveMaximum = 0;
+            bool hasPerformanceSample = false, hasEfficiencySample = false;
 
             for (int core = 0; core < _isECore.Length; core++)
             {
@@ -452,23 +442,23 @@ public sealed class CpuTelemetryReader : IDisposable
                 bool isEfficiency = _isECore[core];
                 if (isEfficiency)
                 {
-                    foundE = true;
-                    if (sample.Value.ActiveFrequencyMhz > eMaxActive) eMaxActive = sample.Value.ActiveFrequencyMhz;
-                    if (sample.Value.EffectiveFrequencyMhz > eMaxEffective) eMaxEffective = sample.Value.EffectiveFrequencyMhz;
+                    hasEfficiencySample = true;
+                    if (sample.Value.ActiveFrequencyMhz > efficiencyActiveMaximum) efficiencyActiveMaximum = sample.Value.ActiveFrequencyMhz;
+                    if (sample.Value.EffectiveFrequencyMhz > efficiencyEffectiveMaximum) efficiencyEffectiveMaximum = sample.Value.EffectiveFrequencyMhz;
                 }
                 else
                 {
-                    foundP = true;
-                    if (sample.Value.ActiveFrequencyMhz > pMaxActive) pMaxActive = sample.Value.ActiveFrequencyMhz;
-                    if (sample.Value.EffectiveFrequencyMhz > pMaxEffective) pMaxEffective = sample.Value.EffectiveFrequencyMhz;
+                    hasPerformanceSample = true;
+                    if (sample.Value.ActiveFrequencyMhz > performanceActiveMaximum) performanceActiveMaximum = sample.Value.ActiveFrequencyMhz;
+                    if (sample.Value.EffectiveFrequencyMhz > performanceEffectiveMaximum) performanceEffectiveMaximum = sample.Value.EffectiveFrequencyMhz;
                 }
             }
 
             return (
-                foundP ? pMaxActive : null,
-                foundE ? eMaxActive : null,
-                foundP ? pMaxEffective : null,
-                foundE ? eMaxEffective : null
+                hasPerformanceSample ? performanceActiveMaximum : null,
+                hasEfficiencySample ? efficiencyActiveMaximum : null,
+                hasPerformanceSample ? performanceEffectiveMaximum : null,
+                hasEfficiencySample ? efficiencyEffectiveMaximum : null
             );
         }
     }
@@ -561,7 +551,7 @@ public sealed class CpuTelemetryReader : IDisposable
             _raplInitialized = false;
             _lastEnergyTimestamp = 0;
             _perProcessorState.Clear();
-            _packagePerfState.LastTimestamp = 0;
+            _currentProcessorState.LastTimestamp = 0;
         }
     }
 }

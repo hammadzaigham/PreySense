@@ -1,5 +1,4 @@
 using System;
-using PreySense.Helpers;
 
 namespace PreySense.Overlay
 {
@@ -17,11 +16,6 @@ namespace PreySense.Overlay
             {
                 return _overlay ??= new HardwareOverlay();
             }
-        }
-
-        public static void SetWmiProvider(Func<WmiController?> provider)
-        {
-            HardwareControl.WmiProvider = provider;
         }
 
         public static void Toggle()

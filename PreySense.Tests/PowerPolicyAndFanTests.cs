@@ -152,7 +152,7 @@ namespace PreySense.Tests
             var def = FanCurveProfile.CreateDefault(1);
             Assert.AreEqual(FanControlMode.Auto, def.ControlMode);
             Assert.AreEqual(0, def.RampUpSeconds);
-            Assert.AreEqual(FanCurveProfile.StageCount, def.Stages.Length);
+            Assert.HasCount(FanCurveProfile.StageCount, def.Stages);
             Assert.AreEqual(1800, def.Stages[1].CpuTargetRpm);
         }
 

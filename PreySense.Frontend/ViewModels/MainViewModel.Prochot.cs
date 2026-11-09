@@ -20,6 +20,7 @@ public partial class MainViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditProchotOffset))]
     [NotifyPropertyChangedFor(nameof(CanToggleProchotOffset))]
+    [NotifyPropertyChangedFor(nameof(ProchotActivationLabel))]
     private bool _isProchotOffsetLocked;
 
     [ObservableProperty]
@@ -30,13 +31,19 @@ public partial class MainViewModel
     public bool CanToggleProchotOffset => IsProchotOffsetAvailable && !IsProchotOffsetLocked;
     public bool CanEditProchotOffset => CanToggleProchotOffset && IsProchotOffsetEnabled;
 
-    public string ProchotActivationLabel =>
-        ResolveTjMaxCelsius() is int tjMax
-            ? $"PROCHOT {tjMax - (ProchotOffsetCelsius ?? TuningStore.GetCurrent().Tuning.FactoryProchotOffsetCelsius ?? 0)}°C"
-            : string.Empty;
+    public string ProchotActivationLabel
+    {
+        get
+        {
+            string label = ResolveTjMaxCelsius() is int tjMaxCelsius && TuningEditorProchotOffset is int offsetCelsius
+                ? $"PROCHOT {tjMaxCelsius - offsetCelsius}°C"
+                : "PROCHOT N/A";
+            return IsProchotOffsetLocked ? $"{label} - {Services.LocalizationService.Translate("Locked")}" : label;
+        }
+    }
 
     public string TjMaxLabel =>
-        ResolveTjMaxCelsius() is int tjMax ? $"TjMax {tjMax}°C" : string.Empty;
+        ResolveTjMaxCelsius() is int tjMaxCelsius ? $"Tj-Max {tjMaxCelsius}°C" : string.Empty;
 
     private int? ResolveTjMaxCelsius() =>
         TjMaxCelsius ?? TuningStore.GetCurrent().Tuning.FactoryTjMaxCelsius;

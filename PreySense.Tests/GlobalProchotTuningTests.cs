@@ -20,6 +20,31 @@ public class GlobalProchotTuningTests
     }
 
     [TestMethod]
+    public void ActivationLabel_RequiresAnOffsetAndPreservesExplicitZero()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "PreySenseProchotLabel-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var store = new ConfigurationService(Path.Combine(directory, "preysense.json"));
+            var vm = Create(new());
+            vm.TuningConfigurationStore = store;
+            vm.TjMaxCelsius = 100;
+            Assert.AreEqual("PROCHOT N/A", vm.ProchotActivationLabel);
+            vm.ProchotOffsetCelsius = 0;
+            Assert.AreEqual("PROCHOT 100°C", vm.ProchotActivationLabel);
+            vm.ProchotOffsetCelsius = null;
+            store.Update(config => config.Tuning.FactoryProchotOffsetCelsius = 7);
+            Assert.AreEqual("PROCHOT 93°C", vm.ProchotActivationLabel);
+            vm.IsProchotOffsetLocked = true;
+            Assert.AreEqual("PROCHOT 93°C - Locked", vm.ProchotActivationLabel);
+            vm.IsProchotOffsetLocked = false;
+            Assert.AreEqual("PROCHOT 93°C", vm.ProchotActivationLabel);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
     public void UnreadableProchotState_DisablesBothControls()
     {
         var vm = Create(new());

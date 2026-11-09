@@ -1,23 +1,9 @@
-using System;
-using System.Diagnostics;
-using System.Management;
-using System.Threading.Tasks;
-using System.Text.RegularExpressions;
-using PreySense.Gpu;
-using PreySense.Helpers;
-using System.Runtime.InteropServices;
 using PreySense.Core.Services;
 
 namespace PreySense.Overlay
 {
     public static class HardwareControl
     {
-        public static Func<WmiController?>? WmiProvider { get; set; }
-        public static IGpuControl? GpuControl;
-        public static string CpuName { get; private set; } = "";
-        public static string CpuShortName { get; private set; } = "";
-        public static string GpuShortName { get; private set; } = "";
-
         public static float? cpuTemp;
         public static float? gpuTemp;
         public static float? gpuHotspotTemp;
@@ -47,71 +33,6 @@ namespace PreySense.Overlay
         public static int?   ramSpeedMhz;
         public static int?   vramSpeedMhz;
         public static ulong? gpuThrottleReasons;
-
-
-
-        static HardwareControl()
-        {
-            try
-            {
-                GpuControl = NvidiaGpuControl.Shared;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"HardwareControl GpuControl init failed: {ex.Message}");
-            }
-
-            CpuName = ReadCpuName();
-            CpuShortName = ShortCpuName(CpuName);
-            RefreshGpuName();
-        }
-
-        public static void RefreshGpuName() => GpuShortName = ShortGpuName(GpuControl?.FullName);
-
-        private static string ReadCpuName()
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
-                return key?.GetValue("ProcessorNameString")?.ToString()?.Trim() ?? "";
-            }
-            catch
-            {
-                return "";
-            }
-        }
-
-        private static string ShortGpuName(string? full)
-        {
-            if (string.IsNullOrEmpty(full)) return "";
-            foreach (string tag in new[] { "RTX", "GTX", "RX", "Arc" })
-            {
-                int i = full.IndexOf(tag, StringComparison.OrdinalIgnoreCase);
-                if (i < 0) continue;
-                string[] p = full[i..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                return p.Length >= 2 ? p[0] + " " + p[1] : p[0];
-            }
-            return full;
-        }
-
-        private static string ShortCpuName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return "";
-
-            var m = Regex.Match(name, @"i[3579]-\w+");
-            if (m.Success) return m.Value;
-
-            m = Regex.Match(name, @"Ultra\s+\d+\s+(\w*\d\w*)");
-            if (m.Success) return "Ultra " + m.Groups[1].Value;
-
-            if (name.Contains("Ryzen", StringComparison.OrdinalIgnoreCase))
-            {
-                m = Regex.Match(name, @"(?:[A-Z]{2,}\s+)?\d{3,}\w*");
-                return m.Success ? "Ryzen " + m.Value : "Ryzen";
-            }
-
-            return name.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } t ? t[0] : "";
-        }
 
         public static void ResetMetrics()
         {

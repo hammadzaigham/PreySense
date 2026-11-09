@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using PreySense.Core.Driver;
 using PreySense.Core.Configuration;
@@ -19,94 +20,122 @@ public partial class MainViewModel
         finally { _updatingTuningEnabled = false; }
     }
 
-    private int? _factoryProchotOffset;
-    private bool? _factoryProchotOffsetLocked;
-    private int? _factoryTjMaxCelsius;
-    private int? _factoryStaticCpuPl1;
-    private int? _factoryStaticCpuPl2;
-    internal Task TuningEnableTask { get; private set; } = Task.CompletedTask;
-    internal Func<Dictionary<string, ModeTuningConfig>>? CaptureTuningDefaults { get; set; }
+    internal sealed record FactoryDefaultsCapture(
+        Dictionary<string, ModeTuningConfig> Profiles,
+        int? StaticCpuPl1Watts,
+        int? StaticCpuPl2Watts,
+        int? ProchotOffsetCelsius = null,
+        bool? ProchotOffsetLocked = null,
+        int? TjMaxCelsius = null,
+        int? GpuBaselineWatts = null);
 
-    internal async Task CaptureMissingFactoryDefaultsAsync()
+    private object? _factoryCaptureSync;
+    private Task? _factoryCaptureTask;
+    internal Task TuningEnableTask { get; private set; } = Task.CompletedTask;
+    internal Func<FactoryDefaultsCapture>? CaptureTuningDefaults { get; set; }
+
+    internal Task CaptureMissingFactoryDefaultsAsync()
     {
-        var tuning = TuningStore.GetCurrent().Tuning;
-        // Re-capture when mode defaults or global static MSR floors are missing so Delta/static stay accurate.
-        if ((tuning.HasFactoryDefaults && tuning.HasFactoryStaticCpuLimits) || _disposed) return;
+        lock (LazyInitializer.EnsureInitialized(ref _factoryCaptureSync))
+        {
+            // Startup and other callers share one capture, including its failure result.
+            if (_factoryCaptureTask is { IsCompleted: false }) return _factoryCaptureTask;
+            return _factoryCaptureTask = CaptureMissingFactoryDefaultsCoreAsync();
+        }
+    }
+
+    private static bool HasCompleteFactoryDefaults(TuningConfig tuning) =>
+        tuning.HasFactoryDefaults && tuning.HasFactoryStaticCpuLimits;
+
+    private async Task CaptureMissingFactoryDefaultsCoreAsync()
+    {
+        if (_disposed || HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning)) return;
         bool gateHeld = false;
+        bool busyChanged = false;
+        bool wasBusy = IsBusy;
         try
         {
             await _modeSwitchGate.WaitAsync();
             gateHeld = true;
-            tuning = TuningStore.GetCurrent().Tuning;
-            if ((tuning.HasFactoryDefaults && tuning.HasFactoryStaticCpuLimits) || _disposed) return;
-            var defaults = await Task.Run(CaptureDefaultsWithDriver);
+            if (_disposed || HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning)) return;
+            wasBusy = IsBusy;
+            IsBusy = true;
+            busyChanged = true;
+            CancelPendingModeSwitch();
+            var capture = await Task.Run(CaptureDefaultsWithDriver);
             if (_disposed) return;
-            if (!new TuningConfig
-                {
-                    FactoryDefaults = defaults,
-                    FactoryStaticCpuPl1Watts = _factoryStaticCpuPl1,
-                    FactoryStaticCpuPl2Watts = _factoryStaticCpuPl2
-                }.HasFactoryDefaults
-                || _factoryStaticCpuPl1 is null || _factoryStaticCpuPl2 is null)
-                throw new InvalidOperationException("Calibration did not capture valid defaults for all five modes.");
+            var capturedTuning = new TuningConfig
+            {
+                FactoryDefaults = capture.Profiles,
+                FactoryStaticCpuPl1Watts = capture.StaticCpuPl1Watts,
+                FactoryStaticCpuPl2Watts = capture.StaticCpuPl2Watts
+            };
+            if (!HasCompleteFactoryDefaults(capturedTuning))
+                throw new InvalidOperationException("Factory defaults are incomplete.");
+            // Commit the complete fresh capture together. Missing optional readings stay null,
+            // rather than inheriting metadata from an earlier capture.
             TuningStore.Update(cfg =>
             {
-                cfg.Tuning.FactoryDefaults = defaults;
-                cfg.Tuning.FactoryStaticCpuPl1Watts = _factoryStaticCpuPl1;
-                cfg.Tuning.FactoryStaticCpuPl2Watts = _factoryStaticCpuPl2;
-                if (_factoryProchotOffset.HasValue) cfg.Tuning.FactoryProchotOffsetCelsius = _factoryProchotOffset;
-                if (_factoryProchotOffsetLocked.HasValue) cfg.Tuning.FactoryProchotOffsetLocked = _factoryProchotOffsetLocked;
-                if (_factoryTjMaxCelsius.HasValue) cfg.Tuning.FactoryTjMaxCelsius = _factoryTjMaxCelsius;
+                cfg.Tuning.FactoryDefaults = capture.Profiles;
+                cfg.Tuning.FactoryStaticCpuPl1Watts = capture.StaticCpuPl1Watts;
+                cfg.Tuning.FactoryStaticCpuPl2Watts = capture.StaticCpuPl2Watts;
+                cfg.Tuning.FactoryProchotOffsetCelsius = capture.ProchotOffsetCelsius;
+                cfg.Tuning.FactoryProchotOffsetLocked = capture.ProchotOffsetLocked;
+                cfg.Tuning.FactoryTjMaxCelsius = capture.TjMaxCelsius;
             });
-            // Constructor may have left the switch off when defaults were missing at startup.
-            if (TuningStore.GetCurrent().General.HardwareTuningEnabled
-                && TuningStore.GetCurrent().Tuning.HasFactoryDefaults)
+            if (capture.GpuBaselineWatts.HasValue) GpuBasePowerWatts = capture.GpuBaselineWatts;
+            OnPropertyChanged(nameof(IsGpuProfileTuningAvailable));
+            OnPropertyChanged(nameof(ProchotActivationLabel));
+            OnPropertyChanged(nameof(TjMaxLabel));
+            var saved = TuningStore.GetCurrent();
+            if (saved.General.HardwareTuningEnabled && HasCompleteFactoryDefaults(saved.Tuning))
                 SetTuningEnabledState(true);
         }
         catch (Exception ex)
         {
-            DiagnosticMessage = $"Factory defaults capture failed: {ex.Message}";
+            SetTuningEnabledState(false);
+            DiagnosticMessage = $"Could not capture factory defaults: {ex.Message}";
         }
-        finally { if (gateHeld) _modeSwitchGate.Release(); }
+        finally
+        {
+            if (gateHeld)
+            {
+                if (busyChanged) IsBusy = wasBusy;
+                _modeSwitchGate.Release();
+            }
+        }
     }
 
     private async Task InitializeTuningAndSessionAsync()
     {
+        string? captureFailure = null;
         if (_hw is not MockHardwareService)
         {
             await RefreshProchotLockStateAsync();
             await CaptureMissingFactoryDefaultsAsync();
+            if (!HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning))
+                captureFailure = DiagnosticMessage;
         }
-        if (!_disposed) await InitializeSessionAsync();
+        if (_disposed) return;
+        await InitializeSessionAsync();
+        if (!_disposed && !string.IsNullOrEmpty(captureFailure))
+            DiagnosticMessage = $"{DiagnosticMessage} {captureFailure}".Trim();
     }
 
-    private Dictionary<string, ModeTuningConfig> CaptureDefaultsWithDriver()
+    private FactoryDefaultsCapture CaptureDefaultsWithDriver()
     {
-        if (CaptureTuningDefaults is not null)
-        {
-            // Tests inject profiles only; supply static MSR floors so capture persistence stays complete.
-            _factoryStaticCpuPl1 ??= 55;
-            _factoryStaticCpuPl2 ??= 80;
-            return CaptureTuningDefaults();
-        }
-        if (!GpuBasePowerWatts.HasValue)
+        if (CaptureTuningDefaults is not null) return CaptureTuningDefaults();
+        int? gpuBaselineWatts = GpuBasePowerWatts;
+        if (!gpuBaselineWatts.HasValue)
         {
             int? detectedGpu = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
-            if (detectedGpu.HasValue)
-            {
-                int? saved = GpuPowerBaseline.SaveOnce(detectedGpu.Value);
-                if (saved.HasValue) GpuBasePowerWatts = saved.Value;
-            }
+            if (detectedGpu.HasValue) gpuBaselineWatts = GpuPowerBaseline.SaveOnce(detectedGpu.Value);
         }
         var backend = CpuDriverRuntime.Backend ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var calibration = new DriverFactoryCalibration(backend, backend);
-        var profiles = calibration.Capture(GpuBasePowerWatts);
-        _factoryProchotOffset = calibration.ProchotOffsetCelsius;
-        _factoryProchotOffsetLocked = calibration.ProchotOffsetLocked;
-        _factoryTjMaxCelsius = calibration.TjMaxCelsius;
-        _factoryStaticCpuPl1 = calibration.StaticCpuPl1Watts;
-        _factoryStaticCpuPl2 = calibration.StaticCpuPl2Watts;
-        return profiles;
+        var profiles = calibration.Capture(gpuBaselineWatts, new TuningModeController(this));
+        return new(profiles, calibration.StaticCpuPl1Watts, calibration.StaticCpuPl2Watts,
+            calibration.ProchotOffsetCelsius, calibration.ProchotOffsetLocked, calibration.TjMaxCelsius, gpuBaselineWatts);
     }
 
     private async Task EnableTuningAsync()
@@ -122,16 +151,15 @@ public partial class MainViewModel
             {
                 SetTuningEnabledState(false);
                 try { TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = false); } catch { }
-                DiagnosticMessage = "Tuning remains off. PreySense is shutting down.";
+                DiagnosticMessage = "Tuning stays off — PreySense is shutting down.";
                 return;
             }
 
-            IsBusy = true;
-            if (!TuningStore.GetCurrent().Tuning.HasFactoryDefaults)
+            if (!HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning))
             {
                 SetTuningEnabledState(false);
                 try { TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = false); } catch { }
-                DiagnosticMessage = "Tuning remains off. Factory defaults are not available yet.";
+                DiagnosticMessage = "Tuning stays off until factory defaults are ready.";
                 return;
             }
             TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = true);
@@ -142,11 +170,11 @@ public partial class MainViewModel
         {
             SetTuningEnabledState(false);
             try { TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = false); } catch { }
-            DiagnosticMessage = $"Tuning remains off. {ex.Message}";
+            DiagnosticMessage = $"Tuning stays off: {ex.Message}";
         }
         finally
         {
-            if (gateHeld) { IsBusy = false; _modeSwitchGate.Release(); }
+            if (gateHeld) _modeSwitchGate.Release();
             _tuningEnablePending = false;
         }
     }
@@ -180,8 +208,7 @@ public partial class MainViewModel
             GpuDynamicBoostWatts = saved.GpuDynamicBoostWatts ?? factory?.GpuDynamicBoostWatts,
             PlatformPowerOffsetWatts = saved.PlatformPowerOffsetWatts ?? factory?.PlatformPowerOffsetWatts,
             ApplyCpuLimits = saved.ApplyCpuLimits,
-            ApplyGpuLimits = saved.ApplyGpuLimits,
-            ApplyFanCurve = saved.ApplyFanCurve
+            ApplyGpuLimits = saved.ApplyGpuLimits
         };
     }
 
@@ -190,4 +217,8 @@ public partial class MainViewModel
 
     internal ModeTuningConfig? FactoryTuningMode(int index) =>
         TuningStore.GetCurrent().Tuning.FactoryDefaults.GetValueOrDefault(TuningModeName(index));
+
+    /// <summary>ERM4 GPU offsets were captured; otherwise GPU apply stays unavailable (CPU/PROCHOT only).</summary>
+    public bool IsGpuProfileTuningAvailable =>
+        TuningStore.GetCurrent().Tuning.HasFactoryGpuProfiles;
 }

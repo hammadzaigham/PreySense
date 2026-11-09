@@ -27,6 +27,7 @@ public class CpuProchotControllerTests
         }
         public bool ReadPhysicalDword(ulong address, out uint value) => throw new AssertFailedException("PROCHOT must not read power-limit MMIO.");
         public bool WritePhysicalDword(ulong address, uint value) => throw new AssertFailedException("PROCHOT must not write power-limit MMIO.");
+        public bool TryReadMchbar(out ulong address) { address = 0; return false; }
         public void Dispose() { }
     }
 

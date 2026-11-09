@@ -95,7 +95,7 @@ namespace PreySense.TestTools
 
         private const int DwmwaExtendedFrameBounds = 9;
         private const int SrcCopy = 0x00CC0020;
-        // PreySense WindowShadowEffect (BlurRadius 18) flattens to ~10px black fringe under PrintWindow.
+        // Legacy WPF WindowShadowEffect fringe; app windows now use DWM system shadow (no WPF effect).
         private const int ShadowLumaThreshold = 8;
 
         /// <summary>Drop-shadow insets around the solid window chrome.</summary>

@@ -164,6 +164,9 @@ namespace PreySense.Core.Services
             var services = GetAllAcerServiceNames();
             foreach (var name in services)
             {
+                if (!IsServiceInstalled(name))
+                    continue; // Not present — silent on disable; nothing to stop.
+
                 try
                 {
                     SetServiceStartMode(name, "disabled");
@@ -339,6 +342,13 @@ namespace PreySense.Core.Services
             var services = GetAllAcerServiceNames();
             foreach (var name in services)
             {
+                if (!IsServiceInstalled(name))
+                {
+                    allSucceeded = false;
+                    AppLogger.Log($"AcerServiceDebloater: Service not found while enabling: {name}");
+                    continue;
+                }
+
                 try
                 {
                     SetServiceStartMode(name, "auto");
@@ -359,6 +369,20 @@ namespace PreySense.Core.Services
 
             SaveState(isDebloated: false);
             return allSucceeded;
+        }
+
+        private static bool IsServiceInstalled(string serviceName)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(
+                    $@"SYSTEM\CurrentControlSet\Services\{serviceName}");
+                return key != null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static void SaveState(bool isDebloated)

@@ -36,16 +36,16 @@ public sealed class CpuProchotController(ICpuDriverBackend backend)
         status = string.Empty;
         if (offset is < 0 or > 63) { status = "PROCHOT offset must be between 0 and 63°C."; return false; }
         if (!backend.IsInitialized || !backend.ReadMsr(PlatformInfoMsr, out ulong platform) || (platform & (1UL << 30)) == 0)
-        { status = "This CPU does not report programmable PROCHOT offset support."; return false; }
+        { status = "This CPU does not support a PROCHOT offset."; return false; }
         if (!backend.ReadMsr(TemperatureTargetMsr, out raw))
-        { status = "The CPU temperature target could not be read."; return false; }
+        { status = "Could not read PROCHOT settings."; return false; }
         int target = (int)((raw >> 16) & 0xFF);
         if ((raw & (1UL << 30)) != 0)
-        { status = "The CPU reports an offset outside the supported 0–63°C range."; return false; }
+        { status = "PROCHOT offset must be between 0 and 63°C."; return false; }
         if (target is < 40 or > 125 || offset >= target)
-        { status = "The CPU temperature target is unavailable or incompatible with this offset."; return false; }
+        { status = "PROCHOT offset is too high for this CPU."; return false; }
         if ((raw & LockBit) != 0 && (int)((raw & OffsetMask) >> 24) != offset)
-        { status = "The BIOS has locked the PROCHOT offset."; return false; }
+        { status = "PROCHOT is locked in BIOS."; return false; }
         return true;
     }
 
@@ -55,11 +55,11 @@ public sealed class CpuProchotController(ICpuDriverBackend backend)
         {
             if (!Prepare(offset, out ulong original, out status)) return false;
             ulong desired = (original & ~OffsetMask) | ((ulong)offset << 24);
-            if (desired == original) { status = $"PROCHOT offset verified: {offset}°C."; return true; }
+            if (desired == original) { status = $"PROCHOT offset set to {offset}°C."; return true; }
             bool written = backend.WriteMsr(TemperatureTargetMsr, desired);
             if (written && backend.ReadMsr(TemperatureTargetMsr, out ulong actual) && actual == desired)
             {
-                status = $"PROCHOT offset verified: {offset}°C (throttling at {(original >> 16 & 0xFF) - (ulong)offset}°C).";
+                status = $"PROCHOT offset set to {offset}°C (activates at {(original >> 16 & 0xFF) - (ulong)offset}°C).";
                 return true;
             }
             // A rejected write may still have changed the register. Restore just the original offset.
@@ -69,7 +69,9 @@ public sealed class CpuProchotController(ICpuDriverBackend backend)
                         (current & ~OffsetMask) | (original & OffsetMask)));
             restored = restored && backend.ReadMsr(TemperatureTargetMsr, out ulong rollback)
                 && (rollback & OffsetMask) == (original & OffsetMask);
-            status = $"PROCHOT offset write/readback failed. Original offset {(restored ? "restored" : "could not be restored")}.";
+            status = restored
+                ? "Could not change PROCHOT. Previous value was restored."
+                : "Could not change PROCHOT, and the previous value was not restored.";
             return false;
         }
     }

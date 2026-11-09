@@ -126,20 +126,27 @@ public sealed class CpuPowerLimitController
         int pl2Watts,
         bool pl2Enable,
         double tauSeconds,
-        out string status)
+        out string status) =>
+        TrySetMsrPowerLimits(pl1Watts, pl2Watts, pl2Enable, tauSeconds, out status, out _, out _);
+
+    private bool TrySetMsrPowerLimits(
+        int pl1Watts, int pl2Watts, bool pl2Enable, double tauSeconds,
+        out string status, out bool rollbackAttempted, out bool rollbackSucceeded)
     {
+        rollbackAttempted = false;
+        rollbackSucceeded = true;
         status = string.Empty;
 
         if (!_backend.IsInitialized)
         {
-            status = "Driver backend is not initialized.";
+            status = "CPU driver is not ready.";
             return false;
         }
 
         // Tau 0 means shortest RAPL window (EncodeTau → 0x01); only reject negatives.
-        if (pl1Watts <= 0 || pl2Watts <= 0 || tauSeconds < 0)
+        if (pl1Watts <= 0 || pl2Watts <= 0 || !double.IsFinite(tauSeconds) || tauSeconds < 0)
         {
-            status = $"Invalid power or tau parameters: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s.";
+            status = $"CPU limits are invalid (PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s).";
             return false;
         }
 
@@ -147,14 +154,14 @@ public sealed class CpuPowerLimitController
         if (!_backend.ReadMsr(MSR_RAPL_POWER_UNIT, out ulong units) ||
             !_backend.ReadMsr(MSR_PKG_POWER_LIMIT, out ulong originalMsr))
         {
-            status = "Failed to read MSR 0x606 or 0x610.";
+            status = "Could not read CPU power limits.";
             return false;
         }
 
         // 2. Check PL_LOCK bit 63
         if ((originalMsr & MSR_610_LOCK_BIT) != 0)
         {
-            status = "MSR 0x610 is locked by BIOS firmware (bit 63 PL_LOCK set). MSR writes cannot take effect until reboot/unlock.";
+            status = "CPU power limits are locked in BIOS.";
             return false;
         }
 
@@ -167,7 +174,7 @@ public sealed class CpuPowerLimitController
 
         if (pl1Raw < 0 || pl1Raw > MAX_15BIT_RAW_LIMIT || pl2Raw < 0 || pl2Raw > MAX_15BIT_RAW_LIMIT)
         {
-            status = $"Requested limits (PL1={pl1Watts}W [raw={pl1Raw}], PL2={pl2Watts}W [raw={pl2Raw}]) exceed 15-bit MSR field limits (max {MAX_15BIT_RAW_LIMIT}).";
+            status = $"CPU limits are too high (PL1={pl1Watts}W, PL2={pl2Watts}W).";
             return false;
         }
 
@@ -192,42 +199,53 @@ public sealed class CpuPowerLimitController
         // 5. Perform the write
         if (!_backend.WriteMsr(MSR_PKG_POWER_LIMIT, targetMsr))
         {
-            status = "Driver write to MSR 0x610 failed.";
+            rollbackAttempted = true;
+            rollbackSucceeded = RollbackMsrVerified(originalMsr);
+            status = rollbackSucceeded
+                ? "Could not write CPU power limits. Previous values were restored."
+                : "Could not write CPU power limits, and previous values were not restored.";
             return false;
         }
 
         // 6. Verify via immediate readback
         if (!_backend.ReadMsr(MSR_PKG_POWER_LIMIT, out ulong readback))
         {
-            bool rbOk = RollbackMsrVerified(originalMsr);
+            rollbackAttempted = true;
+            bool rbOk = rollbackSucceeded = RollbackMsrVerified(originalMsr);
             status = rbOk
-                ? "Failed to read back MSR 0x610 after write. Rollback verified successfully."
-                : "CRITICAL: Failed to read back MSR 0x610 after write and rollback verification FAILED.";
+                ? "Could not verify CPU power limits. Previous values were restored."
+                : "Could not verify CPU power limits, and previous values were not restored.";
             return false;
         }
 
         bool matched = (readback & MSR_610_WRITABLE_MASK) == (targetMsr & MSR_610_WRITABLE_MASK);
         if (!matched)
         {
-            bool rbOk = RollbackMsrVerified(originalMsr);
+            rollbackAttempted = true;
+            bool rbOk = rollbackSucceeded = RollbackMsrVerified(originalMsr);
             status = rbOk
-                ? $"MSR 0x610 readback mismatch (Wrote: 0x{targetMsr:X16}, Read: 0x{readback:X16}). Firmware may have rejected or clamped values. Rollback verified successfully."
-                : $"CRITICAL: MSR 0x610 readback mismatch (Wrote: 0x{targetMsr:X16}, Read: 0x{readback:X16}) and rollback verification FAILED.";
+                ? "CPU power limits did not stick. Previous values were restored."
+                : "CPU power limits did not stick, and previous values were not restored.";
             return false;
         }
 
-        status = $"MSR 0x610 limits verified: PL1={pl1Watts}W, PL2={pl2Watts}W (Tau={tauSeconds}s/0x{tau:X2}).";
+        status = $"CPU power limits set: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s.";
         return true;
     }
 
     /// <summary>
     /// Reads MMIO power limits directly from MCHBAR space if MCHBAR base address is provided.
     /// </summary>
-    public bool TryReadMmioPowerLimits(ulong mchbarBase, out uint pl1Mw, out uint pl2Mw, out bool isLocked)
+    public bool TryReadMmioPowerLimits(ulong mchbarBase, out uint pl1Mw, out uint pl2Mw, out bool isLocked) =>
+        TryReadMmioPowerLimits(mchbarBase, out pl1Mw, out pl2Mw, out isLocked, out _);
+
+    public bool TryReadMmioPowerLimits(
+        ulong mchbarBase, out uint pl1Mw, out uint pl2Mw, out bool isLocked, out byte pl1TauEncoded)
     {
         pl1Mw = 0;
         pl2Mw = 0;
         isLocked = false;
+        pl1TauEncoded = 0;
 
         if (mchbarBase == 0 || !_backend.IsInitialized)
             return false;
@@ -246,6 +264,7 @@ public sealed class CpuPowerLimitController
 
         pl1Mw = pl1Raw * MMIO_STEP_MW;
         pl2Mw = pl2Raw * MMIO_STEP_MW;
+        pl1TauEncoded = (byte)((reg1 & MMIO_TIME_MASK) >> (int)MMIO_TIME_SHIFT);
         return true;
     }
 
@@ -254,26 +273,33 @@ public sealed class CpuPowerLimitController
     /// matching the former ACPI PREYDEV method: PPL = mW/125, set PL1E/PL2E, optional PL1T,
     /// preserve clamp/lock/reserved bits, then verify readback.
     /// </summary>
-    public bool TrySetMmioPowerLimits(ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, out string status)
+    public bool TrySetMmioPowerLimits(ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, out string status) =>
+        TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out status, out _, out _);
+
+    private bool TrySetMmioPowerLimits(
+        ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded,
+        out string status, out bool rollbackAttempted, out bool rollbackSucceeded)
     {
+        rollbackAttempted = false;
+        rollbackSucceeded = true;
         status = string.Empty;
 
         if (mchbarBase == 0 || !_backend.IsInitialized)
         {
-            status = "Invalid MCHBAR base or backend not initialized.";
+            status = "CPU power registers are unavailable.";
             return false;
         }
 
         // ACPI CPWR units: 1 register unit = 125 mW (1/8 W). Same as PREYDEV LocalN / 0x7D.
         if (pl1Mw == 0 || pl2Mw == 0)
         {
-            status = $"Invalid MMIO power limits (PL1={pl1Mw}mW, PL2={pl2Mw}mW). Limits must be greater than 0.";
+            status = $"CPU limits are invalid (PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W).";
             return false;
         }
 
         if (pl1Mw > MMIO_MAX_MW || pl2Mw > MMIO_MAX_MW)
         {
-            status = $"Requested MMIO limits (PL1={pl1Mw}mW, PL2={pl2Mw}mW) exceed maximum 15-bit range ({MMIO_MAX_MW}mW).";
+            status = $"CPU limits are too high (PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W).";
             return false;
         }
 
@@ -282,20 +308,20 @@ public sealed class CpuPowerLimitController
 
         if (pl1Raw > MAX_15BIT_RAW_LIMIT || pl2Raw > MAX_15BIT_RAW_LIMIT)
         {
-            status = $"Calculated MMIO raw units exceed 15-bit field (PL1 raw={pl1Raw}, PL2 raw={pl2Raw}).";
+            status = $"CPU limits are too high (PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W).";
             return false;
         }
 
         if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint orig1) ||
             !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint orig2))
         {
-            status = "Failed to read MMIO registers at MCHBAR + 0x59A0/0x59A4.";
+            status = "Could not read CPU power registers.";
             return false;
         }
 
         if ((orig2 & MMIO_PL_LOCK_BIT) != 0)
         {
-            status = "MMIO power limits are hardware-locked (bit 31 at MCHBAR+0x59A4). MMIO writes blocked.";
+            status = "CPU power limits are locked in hardware.";
             return false;
         }
 
@@ -316,20 +342,22 @@ public sealed class CpuPowerLimitController
         if (!_backend.WritePhysicalDword(mchbarBase + MMIO_PL1_OFFSET, new1) ||
             !_backend.WritePhysicalDword(mchbarBase + MMIO_PL2_OFFSET, new2))
         {
-            bool rbOk = RollbackMmioVerified(mchbarBase, orig1, orig2);
+            rollbackAttempted = true;
+            bool rbOk = rollbackSucceeded = RollbackMmioVerified(mchbarBase, orig1, orig2);
             status = rbOk
-                ? "Failed to write MMIO registers. Rollback verified successfully."
-                : "CRITICAL: Failed to write MMIO registers and rollback verification FAILED.";
+                ? "Could not write CPU power registers. Previous values were restored."
+                : "Could not write CPU power registers, and previous values were not restored.";
             return false;
         }
 
         if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint verify1) ||
             !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint verify2))
         {
-            bool rbOk = RollbackMmioVerified(mchbarBase, orig1, orig2);
+            rollbackAttempted = true;
+            bool rbOk = rollbackSucceeded = RollbackMmioVerified(mchbarBase, orig1, orig2);
             status = rbOk
-                ? "Failed to verify MMIO registers after write. Rollback verified successfully."
-                : "CRITICAL: Failed to verify MMIO registers after write and rollback verification FAILED.";
+                ? "Could not verify CPU power registers. Previous values were restored."
+                : "Could not verify CPU power registers, and previous values were not restored.";
             return false;
         }
 
@@ -340,14 +368,15 @@ public sealed class CpuPowerLimitController
             && (verify2 & MMIO_ENABLE_BIT) != 0;
         if (!match1 || !match2)
         {
-            bool rbOk = RollbackMmioVerified(mchbarBase, orig1, orig2);
+            rollbackAttempted = true;
+            bool rbOk = rollbackSucceeded = RollbackMmioVerified(mchbarBase, orig1, orig2);
             status = rbOk
-                ? $"MMIO readback differed from ACPI CPWR targets (PL1 read=0x{verify1:X8}, PL2 read=0x{verify2:X8}). Rollback verified successfully."
-                : "CRITICAL: MMIO readback differed from target values and rollback verification FAILED.";
+                ? "CPU power limits did not stick. Previous values were restored."
+                : "CPU power limits did not stick, and previous values were not restored.";
             return false;
         }
 
-        status = $"ACPI CPWR MMIO verified: PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W.";
+        status = $"CPU power limits set: PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W.";
         return true;
     }
 
@@ -377,11 +406,11 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: "Backend is not initialized.");
+                Status: "CPU driver is not ready.");
         }
 
         // Tau 0 means shortest RAPL window (EncodeTau → 0x01); only reject negatives.
-        if (pl1Watts <= 0 || pl2Watts <= 0 || tauSeconds < 0)
+        if (pl1Watts <= 0 || pl2Watts <= 0 || !double.IsFinite(tauSeconds) || tauSeconds < 0)
         {
             return new CombinedTransactionResult(
                 Success: false,
@@ -389,13 +418,13 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: $"Invalid parameters: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s.");
+                Status: $"CPU limits are invalid (PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s).");
         }
 
         // Validate MMIO range before any action
-        uint pl1Mw = (uint)pl1Watts * 1000U;
-        uint pl2Mw = (uint)pl2Watts * 1000U;
-        if (pl1Mw > MMIO_MAX_MW || pl2Mw > MMIO_MAX_MW)
+        ulong pl1Milliwatts = (ulong)pl1Watts * 1000;
+        ulong pl2Milliwatts = (ulong)pl2Watts * 1000;
+        if (pl1Milliwatts > MMIO_MAX_MW || pl2Milliwatts > MMIO_MAX_MW)
         {
             return new CombinedTransactionResult(
                 Success: false,
@@ -403,8 +432,11 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: $"Requested limits exceed maximum 15-bit hardware range ({MMIO_MAX_MW}mW).");
+                Status: $"CPU limits are too high (PL1={pl1Watts}W, PL2={pl2Watts}W).");
         }
+
+        uint pl1Mw = (uint)pl1Milliwatts;
+        uint pl2Mw = (uint)pl2Milliwatts;
 
         bool belowStaticFloor = staticPl1FloorWatts is int floorPl1
             && staticPl2FloorWatts is int floorPl2
@@ -421,7 +453,7 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: "Failed to read initial MSR state.");
+                Status: "Could not read CPU power limits.");
         }
 
         bool restoreMsrToFloor = false;
@@ -447,7 +479,7 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: "MSR 0x610 is locked by BIOS (bit 63). Transaction aborted.");
+                Status: "CPU power limits are locked in BIOS.");
         }
 
         // 2. Snapshot original MMIO state
@@ -460,7 +492,7 @@ public sealed class CpuPowerLimitController
                 MmioUpdated: false,
                 RollbackAttempted: false,
                 RollbackSucceeded: true,
-                Status: "Static MSR floors skip MSR writes, but MCHBAR/MMIO is unavailable.");
+                Status: "Could not find CPU power registers.");
         }
 
         uint origMmio1 = 0;
@@ -477,7 +509,7 @@ public sealed class CpuPowerLimitController
                     MmioUpdated: false,
                     RollbackAttempted: false,
                     RollbackSucceeded: true,
-                    Status: "Failed to read initial MMIO registers.");
+                    Status: "Could not read CPU power registers.");
             }
 
             if ((origMmio2 & MMIO_PL_LOCK_BIT) != 0)
@@ -488,7 +520,7 @@ public sealed class CpuPowerLimitController
                     MmioUpdated: false,
                     RollbackAttempted: false,
                     RollbackSucceeded: true,
-                    Status: "MMIO registers are locked (bit 31). Transaction aborted.");
+                    Status: "CPU power limits are locked in hardware.");
             }
         }
 
@@ -497,39 +529,37 @@ public sealed class CpuPowerLimitController
         // 3. Apply MSR when raising above floors, or restoring floors on Reset.
         if (!skipMsr)
         {
-            if (!TrySetMsrPowerLimits(msrPl1Watts, msrPl2Watts, pl2Enable, tauSeconds, out string msrStatus))
+            if (!TrySetMsrPowerLimits(msrPl1Watts, msrPl2Watts, pl2Enable, tauSeconds, out string msrStatus, out bool msrRollbackAttempted, out bool msrRollbackSucceeded))
             {
                 return new CombinedTransactionResult(
                     Success: false,
                     MsrUpdated: false,
                     MmioUpdated: false,
-                    RollbackAttempted: true,
-                    RollbackSucceeded: msrStatus.Contains("Rollback verified successfully"),
-                    Status: $"MSR update failed: {msrStatus}");
+                    RollbackAttempted: msrRollbackAttempted,
+                    RollbackSucceeded: msrRollbackSucceeded,
+                    Status: msrStatus);
             }
         }
 
         // 4. If MMIO is configured, apply MMIO power limits
         if (mmioRequested)
         {
-            if (!TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out string mmioStatus))
+            if (!TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out string mmioStatus, out bool mmioRollbackAttempted, out bool mmioRollbackSucceeded))
             {
                 // MMIO failed -> coordinated rollback: restore MSR when it was written
                 bool msrRollbackOk = skipMsr || RollbackMsrVerified(origMsr);
-                bool mmioRollbackOk = mmioStatus.Contains("Rollback verified successfully")
-                    || mmioStatus.Contains("Failed to write MMIO registers. Rollback verified successfully.")
-                    || !mmioStatus.Contains("CRITICAL");
+                bool mmioRollbackOk = mmioRollbackSucceeded;
                 bool totalRollbackOk = msrRollbackOk && mmioRollbackOk;
 
                 return new CombinedTransactionResult(
                     Success: false,
                     MsrUpdated: false,
                     MmioUpdated: false,
-                    RollbackAttempted: true,
+                    RollbackAttempted: !skipMsr || mmioRollbackAttempted,
                     RollbackSucceeded: totalRollbackOk,
                     Status: totalRollbackOk
-                        ? $"MMIO update failed ({mmioStatus}). Coordinated rollback verified successfully."
-                        : $"CRITICAL: MMIO update failed ({mmioStatus}). Coordinated rollback FAILED (MSR rb: {msrRollbackOk}, MMIO rb: {mmioRollbackOk}).");
+                        ? "Could not apply CPU power limits. Previous values were restored."
+                        : $"Could not apply CPU power limits ({mmioStatus}).");
             }
         }
 
@@ -539,13 +569,7 @@ public sealed class CpuPowerLimitController
             MmioUpdated: mmioRequested,
             RollbackAttempted: false,
             RollbackSucceeded: true,
-            Status: skipMsr
-                ? $"MMIO limits applied (MSR unchanged at/below static floors): PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                : restoreMsrToFloor
-                    ? $"MSR restored to static floors ({msrPl1Watts}/{msrPl2Watts}W); MMIO PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                    : mmioRequested
-                        ? $"Combined MSR and MMIO limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s."
-                        : $"MSR limits applied and verified: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s (MMIO bypassed).");
+            Status: $"CPU power limits set: PL1={pl1Watts}W, PL2={pl2Watts}W, Tau={tauSeconds}s.");
     }
 
     /// <summary>

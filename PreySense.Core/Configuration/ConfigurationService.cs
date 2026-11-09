@@ -16,6 +16,8 @@ namespace PreySense.Core.Configuration
         private static readonly JsonSerializerOptions SerializerOptions = new()
         {
             WriteIndented = true,
+            IndentSize = 2,
+            NewLine = "\n",
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.Never
         };
@@ -83,7 +85,7 @@ namespace PreySense.Core.Configuration
                 }
 
                 string tempFile = Path.Combine(dir, $"{ConfigFileName}.{Guid.NewGuid():N}.tmp");
-                string json = JsonSerializer.Serialize(config, SerializerOptions);
+                string json = SerializeForFile(config);
 
                 try
                 {
@@ -145,13 +147,14 @@ namespace PreySense.Core.Configuration
         /// </summary>
         public static void Validate(PreySenseConfig config)
         {
-            if (config.SchemaVersion <= 0)
-                throw new ArgumentOutOfRangeException(nameof(config.SchemaVersion), "SchemaVersion must be greater than 0.");
+            if (config.SchemaVersion != PreySenseConfig.CurrentSchemaVersion)
+                throw new ArgumentOutOfRangeException(nameof(config.SchemaVersion),
+                    $"This build requires SchemaVersion {PreySenseConfig.CurrentSchemaVersion}; older and newer configuration files are not migrated.");
 
             if (config.Tuning.ProchotOffsetCelsius is < 0 or > 63 || config.Tuning.FactoryProchotOffsetCelsius is < 0 or > 63)
                 throw new ArgumentOutOfRangeException("Tuning.ProchotOffsetCelsius", "PROCHOT offset must be between 0 and 63°C.");
             if (config.Tuning.ApplyProchotOffset && config.Tuning.ProchotOffsetCelsius is null)
-                throw new ArgumentException("Enter a global PROCHOT offset before enabling it.");
+                throw new ArgumentException("Enter a PROCHOT offset, or turn its switch off.");
 
             // Tuning validation
             ValidateModeTuning("Quiet", config.Tuning.Quiet);
@@ -159,12 +162,13 @@ namespace PreySense.Core.Configuration
             ValidateModeTuning("Balanced", config.Tuning.Balanced);
             ValidateModeTuning("Performance", config.Tuning.Performance);
             ValidateModeTuning("Turbo", config.Tuning.Turbo);
+            config.Tuning.FactoryDefaults ??= new();
             if (config.Tuning.FactoryDefaults is { Count: > 0 })
             {
                 foreach (var entry in config.Tuning.FactoryDefaults)
                     NormalizeModeTuning(entry.Value);
                 if (!config.Tuning.HasFactoryDefaults)
-                    throw new ArgumentException("Factory calibration must contain valid defaults for all five modes.");
+                    throw new ArgumentException("Factory defaults are incomplete for one or more modes.");
                 foreach (var entry in config.Tuning.FactoryDefaults)
                     ValidateModeTuning("FactoryDefaults." + entry.Key, entry.Value);
             }
@@ -173,9 +177,6 @@ namespace PreySense.Core.Configuration
                 if (!config.Tuning.HasFactoryStaticCpuLimits)
                     throw new ArgumentException("FactoryStaticCpuPl1Watts/FactoryStaticCpuPl2Watts must both be valid PL1/PL2 watts.");
             }
-
-            if (config.Tuning.CpuBoostMode is < 0 or > 6)
-                throw new ArgumentOutOfRangeException(nameof(config.Tuning.CpuBoostMode), "CpuBoostMode must be between 0 and 6.");
 
             // Session validation
             if (config.Session.ActivePowerMode is not (0 or 1 or 4 or 5 or 6))
@@ -287,6 +288,11 @@ namespace PreySense.Core.Configuration
             try
             {
                 string json = File.ReadAllText(_configFilePath);
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty(nameof(PreySenseConfig.SchemaVersion), out var version) ||
+                    !version.TryGetInt32(out int schemaVersion) || schemaVersion != PreySenseConfig.CurrentSchemaVersion)
+                    throw new InvalidDataException($"This build requires an explicit SchemaVersion {PreySenseConfig.CurrentSchemaVersion}; existing files are not migrated.");
                 var loaded = JsonSerializer.Deserialize<PreySenseConfig>(json, SerializerOptions);
                 if (loaded == null)
                     throw new InvalidDataException("Deserialized configuration was null.");
@@ -323,6 +329,8 @@ namespace PreySense.Core.Configuration
                     foreach (var entry in loaded.Tuning.FactoryDefaults.Values)
                         NormalizeModeTuning(entry);
                 }
+                // Drop retired root Tuning.CpuBoostMode; boost is per-mode only.
+                loaded.Tuning.AdditionalSettings?.Remove("CpuBoostMode");
 
                 Validate(loaded);
                 return loaded;
@@ -331,6 +339,17 @@ namespace PreySense.Core.Configuration
             {
                 throw new InvalidOperationException($"Failed to load configuration file '{_configFilePath}': {ex.Message}", ex);
             }
+        }
+
+        private static string SerializeForFile(PreySenseConfig config)
+        {
+            var saved = Clone(config);
+            string[] modeOrder = ["Quiet", "Eco", "Balanced", "Performance", "Turbo"];
+            var defaults = saved.Tuning.FactoryDefaults;
+            saved.Tuning.FactoryDefaults = modeOrder.Where(defaults.ContainsKey)
+                .Concat(defaults.Keys.Except(modeOrder).Order(StringComparer.Ordinal))
+                .ToDictionary(mode => mode, mode => defaults[mode]);
+            return JsonSerializer.Serialize(saved, SerializerOptions);
         }
 
         private static PreySenseConfig Clone(PreySenseConfig source)

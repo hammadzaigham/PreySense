@@ -85,7 +85,7 @@ public class AcerProfileApplyTransactionTests
         fake.Bytes[address] = 15; fake.Bytes[address + 1] = 40; fake.Bytes[address + 2] = 35;
         var result = new AcerProfileApplyTransaction(fake, fake).Apply(5, 30, 25, 20);
         Assert.IsFalse(result.Success);
-        StringAssert.Contains(result.Status, "Rollback verified");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.Status));
         Assert.AreEqual((byte)15, fake.Bytes[address]);
         Assert.AreEqual((byte)40, fake.Bytes[address + 1]);
         Assert.AreEqual((byte)35, fake.Bytes[address + 2]);

@@ -64,8 +64,7 @@ is needed on an affected machine before claiming an audio fix. See Microsoft's
 Per-mode fan curves persist under `Fans.{Quiet|Eco|Balanced|Performance|Turbo}` in
 `preysense.json` as `ControlMode`, `RampUpSeconds`, and `Stages` of
 `{ CpuTempC, GpuTempC, CpuDutyPercent, GpuDutyPercent }` (stored per sensor; both fans apply the higher duty).
-`ControlMode` stores Auto (0), Max (1), or Custom (2). `Tuning.*.ApplyFanCurve`
-lives beside the CPU/GPU tuning profiles.
+`ControlMode` stores Auto (0), Max (1), or Custom (2).
 Reset supplies the selected mode's app preset. Existing saved curves take priority.
 
 Custom presets start from recovered ZBJ-KQ EC 1.08 stage tables. Quiet and Eco share

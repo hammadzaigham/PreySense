@@ -10,11 +10,8 @@
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{DynamicResource AppFontFamily}"
-        WindowStyle="None"
-        AllowsTransparency="True"
         ResizeMode="NoResize">
 
     <Window.Resources>
@@ -31,10 +28,7 @@
 
     <Border Style="{DynamicResource AppWindowShellStyle}"
             TextElement.Foreground="{DynamicResource TextPrimaryBrush}"
-            TextElement.FontFamily="{DynamicResource AppFontFamily}"
-            BorderBrush="{DynamicResource BorderMainBrush}"
-            BorderThickness="1"
-            CornerRadius="4">
+            TextElement.FontFamily="{DynamicResource AppFontFamily}">
 
         <Grid>
             <Grid.RowDefinitions>

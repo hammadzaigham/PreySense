@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Threading;
 using PreySense.Core.Services;
 using PreySense.Frontend.Services;
 using PreySense.Frontend.ViewModels;
@@ -17,13 +14,22 @@ namespace PreySense.Frontend
         private Services.TrayIconManager? _trayIconManager;
         private Services.HidDeviceArrivalWatcher? _hidArrivalWatcher;
         private bool _isExplicitExit = false;
-        private readonly List<Window> _autoHiddenWindows = new();
-        private Window? _autoHiddenActiveWindow;
-        private Views.FanCurveWindow? _fanCurveWindow;
+        private readonly WindowVisibilitySession<Window> _visibilitySession = new();
+        private readonly Dictionary<Type, Window> _toolWindows = new();
+        private Window? _lastActiveWindow;
+        private ForegroundWindowEvents? _windowActivityEvents;
 
         public MainWindow()
         {
             InitializeComponent();
+            Activated += (_, _) => _lastActiveWindow = this;
+            IsVisibleChanged += (_, _) =>
+            {
+                _windowActivityEvents?.Dispose();
+                _windowActivityEvents = IsVisible
+                    ? new ForegroundWindowEvents(_ => QueueAutoHide())
+                    : null;
+            };
 
             var helper = new System.Windows.Interop.WindowInteropHelper(this);
             IntPtr hWnd = helper.EnsureHandle();
@@ -48,7 +54,6 @@ namespace PreySense.Frontend
             DataContext = vm;
             ApplyResponsivePercentageSize();
 
-            OverlayBridge.Configure(() => (hw as ProductionHardwareService)?.Wmi);
             // Setup Predator Sense Key & Combos
             try
             {
@@ -108,6 +113,8 @@ namespace PreySense.Frontend
 
             Closed += (s, e) =>
             {
+                _windowActivityEvents?.Dispose();
+                _windowActivityEvents = null;
                 _hidArrivalWatcher?.Dispose();
                 _hidArrivalWatcher = null;
                 _keyboardHook?.Dispose();
@@ -125,179 +132,6 @@ namespace PreySense.Frontend
                 action();
             else
                 _ = Dispatcher.BeginInvoke(action);
-        }
-
-        public void ShowAndRestore()
-        {
-            RunOnUi(() =>
-            {
-                // Ignore click-away hide while we are bringing the app forward.
-                App.SuppressAutoHide = true;
-                try
-                {
-                    ShowInTaskbar = false;
-                    if (WindowState == WindowState.Minimized)
-                        WindowState = WindowState.Normal;
-                    if (!IsVisible)
-                        Show();
-
-                    if (_autoHiddenWindows.Count > 0)
-                    {
-                        foreach (Window window in _autoHiddenWindows.ToArray())
-                        {
-                            try
-                            {
-                                window.ShowInTaskbar = false;
-                                if (window.WindowState == WindowState.Minimized)
-                                    window.WindowState = WindowState.Normal;
-                                if (!window.IsVisible)
-                                    window.Show();
-                            }
-                            catch (InvalidOperationException)
-                            {
-                                // A window that was closed while hidden cannot be shown again.
-                            }
-                        }
-                    }
-
-                    Window activationTarget = _autoHiddenActiveWindow is { IsLoaded: true, IsVisible: true } target
-                        && new WindowInteropHelper(target).Handle != IntPtr.Zero
-                            ? target
-                            : this;
-                    _autoHiddenWindows.Clear();
-                    _autoHiddenActiveWindow = null;
-
-                    ForceToForeground(activationTarget);
-                }
-                finally
-                {
-                    // Defer clear so startup/activation focus churn cannot instantly re-hide.
-                    Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
-                    {
-                        App.SuppressAutoHide = false;
-                    });
-                }
-            });
-        }
-
-        private static void ForceToForeground(Window window)
-        {
-            if (!window.Dispatcher.CheckAccess())
-            {
-                window.Dispatcher.BeginInvoke(() => ForceToForeground(window));
-                return;
-            }
-
-            if (!window.IsVisible)
-            {
-                window.Show();
-            }
-            if (window.WindowState == WindowState.Minimized)
-            {
-                window.WindowState = WindowState.Normal;
-            }
-
-            IntPtr hwnd = new WindowInteropHelper(window).EnsureHandle();
-
-            ShowWindow(hwnd, SwRestore);
-            BringWindowToTop(hwnd);
-
-            // 1. Primary activation path: standard OS foreground request and WPF activation
-            SetForegroundWindow(hwnd);
-            window.Activate();
-
-            // 2. Fallback: If the window is not yet foreground, try guarded thread input attachment
-            if (GetForegroundWindow() != hwnd)
-            {
-                IntPtr foreground = GetForegroundWindow();
-                uint targetThread = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
-                if (targetThread == 0)
-                {
-                    targetThread = GetCurrentThreadId();
-                }
-
-                uint foregroundThread = foreground != IntPtr.Zero ? GetWindowThreadProcessId(foreground, IntPtr.Zero) : 0;
-
-                if (foregroundThread != 0 && foregroundThread != targetThread)
-                {
-                    if (AttachThreadInput(targetThread, foregroundThread, true))
-                    {
-                        try
-                        {
-                            BringWindowToTop(hwnd);
-                            SetForegroundWindow(hwnd);
-                            window.Activate();
-                        }
-                        finally
-                        {
-                            AttachThreadInput(targetThread, foregroundThread, false);
-                        }
-                    }
-                }
-            }
-
-            // Windows may keep focus on shell UI (e.g. ShellExperienceHost); that is expected and not an error.
-        }
-
-        private const int SwRestore = 9;
-
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool BringWindowToTop(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
-
-        [DllImport("user32.dll")]
-        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
-        [DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
-
-        public void HideApplicationWindowsForAutoHide()
-        {
-            RunOnUi(() =>
-            {
-                _autoHiddenWindows.Clear();
-                _autoHiddenActiveWindow = Application.Current.Windows
-                    .OfType<Window>()
-                    .FirstOrDefault(window => window.IsActive && window is not Views.ModeToastWindow);
-
-                foreach (Window window in Application.Current.Windows.OfType<Window>().ToArray())
-                {
-                    if (!window.IsVisible)
-                        continue;
-                    if (window is Views.ModeToastWindow)
-                    {
-                        window.Hide();
-                        continue;
-                    }
-                    if (window != this)
-                        _autoHiddenWindows.Add(window);
-                }
-
-                foreach (Window window in _autoHiddenWindows)
-                {
-                    window.ShowInTaskbar = false;
-                    if (window.WindowState == WindowState.Minimized)
-                        window.WindowState = WindowState.Normal;
-                    window.Hide();
-                }
-
-                // Tray-only: never leave a minimized taskbar button behind.
-                ShowInTaskbar = false;
-                if (WindowState == WindowState.Minimized)
-                    WindowState = WindowState.Normal;
-                Hide();
-            });
         }
 
         public void QuitApplication()
@@ -321,53 +155,6 @@ namespace PreySense.Frontend
             base.OnClosing(e);
         }
 
-        public void ToggleAppVisibility()
-        {
-            RunOnUi(() =>
-            {
-                if (IsApplicationActive())
-                    HideApplicationWindowsForAutoHide();
-                else
-                    ShowAndRestore();
-            });
-        }
-
-        private static bool IsApplicationHwnd(IntPtr hwnd)
-        {
-            if (hwnd == IntPtr.Zero || Application.Current == null) return false;
-
-            foreach (Window window in Application.Current.Windows.OfType<Window>())
-            {
-                if (window is Views.ModeToastWindow) continue;
-                if (!window.IsVisible) continue;
-
-                IntPtr handle = new WindowInteropHelper(window).Handle;
-                if (handle != IntPtr.Zero && handle == hwnd)
-                    return true;
-            }
-            return false;
-        }
-
-        private static bool IsApplicationActive()
-        {
-            if (Application.Current == null) return false;
-
-            IntPtr foreground = GetForegroundWindow();
-
-            // Authoritative Win32 check: Does the OS foreground window belong to a visible PreySense window?
-            if (IsApplicationHwnd(foreground))
-                return true;
-
-            // Secondary fallback: WPF window activation state
-            foreach (Window window in Application.Current.Windows.OfType<Window>())
-            {
-                if (window is Views.ModeToastWindow) continue;
-                if (window.IsVisible && window.IsActive)
-                    return true;
-            }
-
-            return false;
-        }
         private void ApplyResponsivePercentageSize()
         {
             var workArea = SystemParameters.WorkArea;
@@ -384,7 +171,7 @@ namespace PreySense.Frontend
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            ShowDialog<Views.SettingsWindow>();
+            ShowToolWindow<Views.SettingsWindow>();
         }
 
         private void ModeSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -395,55 +182,34 @@ namespace PreySense.Frontend
             ShowModeSettingsWindow();
         }
 
-        private void FansButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_fanCurveWindow is { } existing)
-            {
-                if (!existing.IsVisible) existing.Show();
-                if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
-                existing.Activate();
-                return;
-            }
-            var window = new Views.FanCurveWindow { Owner = this, DataContext = DataContext };
-            _fanCurveWindow = window;
-            window.Closed += (_, _) => _fanCurveWindow = null;
-            window.ShowDialog();
-        }
+        private void FansButton_Click(object sender, RoutedEventArgs e) =>
+            ShowToolWindow<Views.FanCurveWindow>();
 
-        private Views.ModeSettingsWindow CreateModeSettingsWindow()
-        {
-            return new Views.ModeSettingsWindow
-            {
-                Owner = this,
-                DataContext = DataContext,
-                ShowInTaskbar = false
-            };
-        }
-
-        private void ShowModeSettingsWindow()
-        {
-            var dialog = CreateModeSettingsWindow();
-            dialog.ShowDialog();
-        }
+        private void ShowModeSettingsWindow() => ShowToolWindow<Views.ModeSettingsWindow>();
 
         private void KeyboardButton_Click(object sender, RoutedEventArgs e)
         {
-            ShowDialog<Views.KeyboardWindow>();
+            ShowToolWindow<Views.KeyboardWindow>();
         }
 
         private void MetricsButton_Click(object sender, RoutedEventArgs e)
         {
-            ShowDialog<Views.MetricsWindow>();
+            ShowToolWindow<Views.MetricsWindow>();
         }
 
-        private void ShowDialog<TWindow>() where TWindow : Window, new()
+        private void ShowToolWindow<TWindow>() where TWindow : Window, new()
         {
-            var window = new TWindow
+            if (_isExplicitExit) return;
+            if (!_toolWindows.TryGetValue(typeof(TWindow), out Window? window))
             {
-                Owner = this,
-                DataContext = DataContext
-            };
-            window.ShowDialog();
+                window = new TWindow { Owner = this, DataContext = DataContext, ShowInTaskbar = false };
+                _toolWindows.Add(typeof(TWindow), window);
+                window.Activated += (_, _) => _lastActiveWindow = window;
+                window.Closed += (_, _) => _toolWindows.Remove(typeof(TWindow));
+            }
+            window.Topmost = true;
+            if (!window.IsVisible) window.Show();
+            ForceToForeground(window);
         }
 
         private void QuitButton_Click(object sender, RoutedEventArgs e)

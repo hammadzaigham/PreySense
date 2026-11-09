@@ -58,7 +58,7 @@ public class RefreshRateReadbackTests
         await vm.SetRefreshRateAsync(120);
         Assert.AreEqual(240, vm.CurrentRefreshRate);
         Assert.AreEqual("240 Hz", vm.SelectedRefreshRateOption);
-        Assert.Contains("failed", vm.DiagnosticMessage);
+        Assert.Contains("Could not change refresh rate", vm.DiagnosticMessage);
     }
 
     private sealed class DisplayHardware : MockHardwareService, IHardwareService

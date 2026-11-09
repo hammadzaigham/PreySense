@@ -169,7 +169,7 @@ namespace PreySense.Frontend.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    DiagnosticMessage = $"Automatic tuning failed: {ex.Message}";
+                    DiagnosticMessage = $"Could not apply automatic tuning: {ex.Message}";
                     if (_hw.TryGetPowerMode(out byte actual)) ActivePowerMode = actual;
                     UpdateModeName(ActivePowerMode);
                     NotifyModeSelectionsChanged();
@@ -180,11 +180,11 @@ namespace PreySense.Frontend.ViewModels
             else
             {
                 bool changed = await Task.Run(() => _hw.SetPowerMode(mode));
-                if (!changed) { DiagnosticMessage = "The requested Acer mode could not be activated."; return; }
+                if (!changed) { DiagnosticMessage = "Could not switch Acer mode."; return; }
             }
             ActivePowerMode = mode;
             if (!ApplyCpuBoostForMode(mode))
-                DiagnosticMessage = "Mode selected, but CPU boost could not be applied. See debug.log.";
+                DiagnosticMessage = "Mode selected, but CPU boost failed.";
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
             PersistSessionSettings();
@@ -295,7 +295,26 @@ namespace PreySense.Frontend.ViewModels
             if (!int.TryParse(boostModeStr, out int boostVal))
                 return;
             int index = ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 };
-            SetCpuBoostForModeIndex(index, boostVal);
+            int boost = Math.Clamp(boostVal, 0, 6);
+            SetCpuBoostForModeIndex(index, boost);
+            try
+            {
+                TuningStore.Update(cfg =>
+                {
+                    var profile = ActivePowerMode switch
+                    {
+                        0 => cfg.Tuning.Quiet,
+                        1 => cfg.Tuning.Balanced,
+                        4 => cfg.Tuning.Performance,
+                        5 => cfg.Tuning.Turbo,
+                        6 => cfg.Tuning.Eco,
+                        _ => cfg.Tuning.Balanced
+                    };
+                    profile.CpuBoostMode = boost;
+                    profile.CpuBoost = boost > 0;
+                });
+            }
+            catch { }
             ApplyCpuBoostForMode(ActivePowerMode);
         }
 
@@ -309,15 +328,7 @@ namespace PreySense.Frontend.ViewModels
             bool applied = PowerLimitController.SetCpuBoost(boost);
             _lastCpuBoostApplySucceeded = applied;
             DiagnosticMessage = applied ? $"CPU Boost set to: {CpuBoostModeName}"
-                : "Windows rejected the CPU boost change. See debug.log.";
-            try
-            {
-                PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
-                {
-                    cfg.Tuning.CpuBoostMode = boost;
-                });
-            }
-            catch { }
+                : "Could not apply CPU boost.";
         }
     }
 }

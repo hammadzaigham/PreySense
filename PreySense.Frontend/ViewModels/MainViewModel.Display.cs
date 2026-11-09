@@ -255,15 +255,15 @@ namespace PreySense.Frontend.ViewModels
                 if (_disposed) return;
                 UpdateLiveRefreshRate(result.actual > 0 ? result.actual : CurrentRefreshRate);
                 DiagnosticMessage = !result.applied
-                    ? $"Display rejected {hz}Hz; current rate is {CurrentRefreshRate}Hz."
+                    ? $"Display rejected {hz}Hz. Still at {CurrentRefreshRate}Hz."
                     : result.actual != hz
-                        ? $"Requested {hz}Hz was not confirmed; current rate is {CurrentRefreshRate}Hz."
+                        ? $"{hz}Hz was not confirmed. Still at {CurrentRefreshRate}Hz."
                         : $"Display: {hz}Hz";
             }
             catch (Exception ex)
             {
                 if (!_disposed) UpdateLiveRefreshRate(CurrentRefreshRate);
-                DiagnosticMessage = $"Refresh rate change failed: {ex.Message}";
+                DiagnosticMessage = $"Could not change refresh rate: {ex.Message}";
             }
         }
 

@@ -46,7 +46,6 @@ public partial class HardwareOverlay
     }
 
     private static int S(float sc, int v) => (int)(v * sc);
-    private static double D(object? v) { try { return v is null ? 0.0 : Convert.ToDouble(v); } catch { return 0.0; } }
     private static string FmtTemp(double? t) => TelemetryText.Format(t, "°C", allowZero: false);
     private static string FmtPow(double? p) => TelemetryText.Format(p, "W", 1);
 

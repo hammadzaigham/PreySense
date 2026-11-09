@@ -76,7 +76,12 @@ public class AutomaticDriverTuningTests
             typeof(MainViewModel).GetField("_modeSwitchDebounceLock", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(vm, new object());
             vm.TuningConfigurationStore = new ConfigurationService(path);
-            vm.TuningConfigurationStore.Update(cfg => cfg.Tuning.FactoryDefaults = TuningCalibrationTests.Defaults());
+            vm.TuningConfigurationStore.Update(cfg =>
+            {
+                cfg.Tuning.FactoryDefaults = TuningCalibrationTests.Defaults();
+                cfg.Tuning.FactoryStaticCpuPl1Watts = 55;
+                cfg.Tuning.FactoryStaticCpuPl2Watts = 140;
+            });
             vm.IsHardwareTuningEnabled = true;
             await vm.TuningEnableTask;
             Assert.IsTrue(new ConfigurationService(path).GetCurrent().General.HardwareTuningEnabled);
@@ -124,7 +129,7 @@ public class AutomaticDriverTuningTests
         vm.DriverTuningExecutor = _ => throw new AssertFailedException("Invalid tuning must not reach the driver.");
         var result = vm.ApplySavedDriverTuning(5);
         Assert.IsFalse(result.Success);
-        Assert.Contains("nothing was written", result.Status);
+        Assert.Contains("out of range", result.Status);
     }
 
     [TestMethod]

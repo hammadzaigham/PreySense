@@ -44,4 +44,9 @@ public interface ICpuDriverBackend : IDisposable
     /// <param name="value">32-bit value to write.</param>
     /// <returns>True if the write succeeded; otherwise false.</returns>
     bool WritePhysicalDword(ulong physicalAddress, uint value);
+
+    /// <summary>
+    /// Discovers the package RAPL MMIO base (MCHBAR) used for PL1/PL2/Tau.
+    /// </summary>
+    bool TryReadMchbar(out ulong address);
 }

@@ -1,8 +1,6 @@
-using System;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace PreySense.Frontend.Controls
 {
@@ -39,19 +37,6 @@ namespace PreySense.Frontend.Controls
         {
             get => (string)GetValue(OffTextProperty);
             set => SetValue(OffTextProperty, value);
-        }
-
-        public static readonly DependencyProperty ActiveBrushProperty =
-            DependencyProperty.Register(
-                nameof(ActiveBrush),
-                typeof(Brush),
-                typeof(RectangularSwitch),
-                new PropertyMetadata(null));
-
-        public Brush? ActiveBrush
-        {
-            get => (Brush?)GetValue(ActiveBrushProperty);
-            set => SetValue(ActiveBrushProperty, value);
         }
 
         protected override void OnToggle()

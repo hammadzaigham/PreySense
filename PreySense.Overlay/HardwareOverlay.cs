@@ -38,7 +38,6 @@ namespace PreySense.Overlay
         private const int MarginFromEdge = 10;
         private const int BaseInnerPadX = 3;
         private const int BaseInnerPadY = 2;
-        private const int BaseSectionGap = 1;
         private static readonly Color DefaultGpuColor = Color.White;
         private static readonly Color DefaultCpuColor = Color.White;
         private static readonly Color OverlayTopGlowColor = Color.FromArgb(8, 255, 255, 255);
@@ -63,13 +62,11 @@ namespace PreySense.Overlay
         private Font? _rpmFont;
         private Font? _unitFont;
         private Font? _fpsBold;
-        private Pen? _totalPen;
         private Pen? _axPen;
 
         private readonly PointF[] _basePts = new PointF[HistoryLength];
         private readonly PointF[] _cpuPts  = new PointF[HistoryLength];
         private readonly PointF[] _gpuPts  = new PointF[HistoryLength];
-        private readonly PointF[] _polyPts = new PointF[HistoryLength * 2];
 
         private const int HistoryLength = 60;
         private int _historyHead = 0;
@@ -463,7 +460,6 @@ namespace PreySense.Overlay
                 _rpmFont?.Dispose();  _rpmFont  = new Font("Bahnschrift", BaseRpmFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
                 _unitFont?.Dispose(); _unitFont = new Font("Bahnschrift SemiBold", (BaseFontSize - 1f) * sc, FontStyle.Regular, GraphicsUnit.Pixel);
                 _fpsBold?.Dispose();  _fpsBold  = new Font("Bahnschrift", innerH / 1.15f, FontStyle.Bold, GraphicsUnit.Pixel);
-                _totalPen?.Dispose(); _totalPen = new Pen(Color.FromArgb(255, 170, 170, 170), sc * 0.75f);
                 _axPen?.Dispose();    _axPen    = new Pen(Color.FromArgb(255, 60, 60, 60), sc * 0.5f);
             }
 
@@ -509,7 +505,7 @@ namespace PreySense.Overlay
                 {
                     int graphGap = S(sc, 6);
                     int graphW = S(sc, 72);
-                    OverlayChartRenderer.DrawStackedChart(g, colCursor + graphGap, topY, graphW, graphH, sc, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _polyPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, _totalPen!, _axPen!, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
+                    OverlayChartRenderer.DrawHistoryChart(g, colCursor + graphGap, topY, graphW, graphH, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, _axPen!, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
                     colCursor += graphGap + graphW + colGap;
                 }
             }

@@ -65,7 +65,7 @@ public partial class MainViewModel
         {
             _lastCpuBoostApplySucceeded = PowerLimitController.SetCpuBoost(boost);
             if (!_lastCpuBoostApplySucceeded)
-                DiagnosticMessage = "CPU boost preference could not be applied by Windows. See debug.log.";
+                DiagnosticMessage = "Could not apply CPU boost.";
         }
         return _lastCpuBoostApplySucceeded;
     }

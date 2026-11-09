@@ -73,7 +73,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, s
 2. Choose a mode, set CPU/GPU values, then **Apply** or **Save**.
 3. Switch modes as usual; saved profiles follow automatically.
 
-Details: [driver tuning](docs/driver_tuning.md) · [v3.0.3](docs/releases/v3.0.3.md) · [v3.0.2](docs/releases/v3.0.2.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
+Details: [driver tuning](docs/driver_tuning.md) · [v3.0.4](docs/releases/v3.0.4.md) · [v3.0.3](docs/releases/v3.0.3.md) · [v3.0.2](docs/releases/v3.0.2.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
 
 ## Build
 

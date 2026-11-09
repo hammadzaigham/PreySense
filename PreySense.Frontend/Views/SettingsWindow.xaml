@@ -6,14 +6,11 @@
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
         mc:Ignorable="d"
         Title="PreySense • Settings"
-        Width="540"
+        Width="480"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{StaticResource AppFontFamily}"
-        WindowStyle="None"
-        AllowsTransparency="True"
         ResizeMode="NoResize">
 
     <Border Style="{DynamicResource AppWindowShellStyle}">

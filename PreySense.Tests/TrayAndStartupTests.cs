@@ -93,7 +93,8 @@ namespace PreySense.Tests
         {
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
             string xaml = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml"));
-            string cs = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"));
+            string cs = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"))
+                + System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.Visibility.cs"));
             Assert.Contains("BtnNavQuit", xaml);
             Assert.Contains("Click=\"QuitButton_Click\"", xaml);
             Assert.Contains("QuitButton_Click", cs);
@@ -125,12 +126,14 @@ namespace PreySense.Tests
         public void MainWindow_PredatorKeyActivation_UsesCleanForegroundAndFocusArchitecture()
         {
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-            string cs = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"));
+            string cs = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"))
+                + System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "MainWindow.Visibility.cs"));
             Assert.Contains("SetForegroundWindow(hwnd)", cs);
             Assert.Contains("window.Activate()", cs);
             Assert.Contains("AttachThreadInput(targetThread, foregroundThread, true)", cs);
             Assert.Contains("AttachThreadInput(targetThread, foregroundThread, false)", cs);
-            Assert.Contains("IsApplicationActive()", cs);
+            Assert.Contains("IsApplicationForeground(GetForegroundWindow())", cs);
+            Assert.Contains("processId == (uint)Environment.ProcessId", cs);
 
             // Verify no forced Keyboard.Focus or window.Focus overriding control focus scopes
             Assert.DoesNotContain("Keyboard.Focus", cs);

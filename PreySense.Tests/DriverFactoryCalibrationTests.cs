@@ -51,7 +51,145 @@ public class DriverFactoryCalibrationTests
         public bool WriteMsr(uint msr, ulong value) => throw new AssertFailedException("Calibration must not write CPU limits.");
         public bool WritePhysicalDword(ulong address, uint value) => throw new AssertFailedException("Calibration must not write CPU limits.");
         public bool WritePhysicalByte(ulong address, byte value) => throw new AssertFailedException("Calibration must not write GPU limits.");
+        public bool TryReadMchbar(out ulong address) { address = 0; return false; }
         public void Dispose() { }
+    }
+
+    private sealed class LiveHardware : ICpuDriverBackend, IPhysicalMemoryByteAccess, IAcerPowerModeController
+    {
+        public const ulong Mchbar = 0xFED10000UL;
+        public byte CurrentMode = 0x01;
+        public Dictionary<byte, (int Pl1, int Pl2, byte TauEnc)> ModeLimits = new()
+        {
+            [6] = (45, 70, 0x6F),
+            [0] = (50, 75, 0x6F),
+            [1] = (85, 115, 0x6F),
+            [4] = (95, 130, 0x6F),
+            [5] = (115, 157, 0x6F),
+        };
+
+        public bool FailRestore;
+        public bool IgnoreFirstSwitch;
+        public bool FailAnyRestore;
+        public bool LimitsLocked;
+        private int _modeSwitchCount;
+        public bool IsInitialized => true;
+        public bool TryGetAcerPowerMode(out byte mode) { mode = CurrentMode; return true; }
+        public bool SetAcerPowerMode(byte mode)
+        {
+            _modeSwitchCount++;
+            if (FailRestore && _modeSwitchCount > 5 || FailAnyRestore && _modeSwitchCount > 1 && mode == 1) return false;
+            if (!(IgnoreFirstSwitch && _modeSwitchCount == 1)) CurrentMode = mode;
+            return ModeLimits.ContainsKey(mode);
+        }
+        public bool TryReadMchbar(out ulong address) { address = Mchbar; return true; }
+        public bool ReadMsr(uint msr, out ulong value)
+        {
+            if (msr == 0x1A2) { value = (100UL << 16) | (7UL << 24); return true; }
+            if (msr == CpuPowerLimitController.MSR_RAPL_POWER_UNIT) { value = 0x000A0E03UL; return true; }
+            if (msr == CpuPowerLimitController.MSR_PKG_POWER_LIMIT)
+            {
+                value = 440UL | (1UL << 15) | (1120UL << 32) | (1UL << 47);
+                return true;
+            }
+            if (msr == 0x1A0) { value = 0; return true; }
+            value = 0;
+            return true;
+        }
+        public bool ReadPhysicalDword(ulong address, out uint value)
+        {
+            value = 0;
+            if (!ModeLimits.TryGetValue(CurrentMode, out var lim)) return false;
+            uint pl1Raw = (uint)(lim.Pl1 * 1000 / 125);
+            uint pl2Raw = (uint)(lim.Pl2 * 1000 / 125);
+            if (address == Mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET)
+            {
+                value = pl1Raw | CpuPowerLimitController.MMIO_ENABLE_BIT
+                    | ((uint)lim.TauEnc << (int)CpuPowerLimitController.MMIO_TIME_SHIFT);
+                return true;
+            }
+            if (address == Mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET)
+            {
+                value = pl2Raw | CpuPowerLimitController.MMIO_ENABLE_BIT
+                    | (LimitsLocked ? CpuPowerLimitController.MMIO_PL_LOCK_BIT : 0);
+                return true;
+            }
+            return false;
+        }
+        public bool ReadPhysicalByte(ulong address, out byte value) { value = 0; return false; }
+        public bool WriteMsr(uint msr, ulong value) => throw new AssertFailedException("live capture must not write MSR");
+        public bool WritePhysicalDword(ulong address, uint value) => throw new AssertFailedException("live capture must not write MMIO");
+        public bool WritePhysicalByte(ulong address, byte value) => throw new AssertFailedException("live capture must not write bytes");
+        public void Dispose() { }
+    }
+
+    [TestMethod]
+    public void LiveCapture_UsesEncodedZeroTauAndAcceptsReadOnlyLimits()
+    {
+        AcerErm4Table.Reset();
+        int previousSettle = DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds;
+        DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = 0;
+        try
+        {
+            var backend = new LiveHardware { LimitsLocked = true };
+            foreach (byte mode in backend.ModeLimits.Keys.ToArray())
+            {
+                var limits = backend.ModeLimits[mode];
+                backend.ModeLimits[mode] = (limits.Pl1, limits.Pl2, 0);
+            }
+            var profiles = new DriverFactoryCalibration(backend, backend).Capture(null, backend);
+            Assert.AreEqual(0, profiles["Turbo"].TauSeconds);
+            Assert.AreEqual((byte)1, backend.CurrentMode);
+        }
+        finally { DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = previousSettle; }
+    }
+
+    [TestMethod]
+    public void LiveCapture_RejectsUnverifiedModeSelection()
+    {
+        AcerErm4Table.Reset();
+        int previousSettle = DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds;
+        DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = 0;
+        try
+        {
+            var backend = new LiveHardware { IgnoreFirstSwitch = true };
+            var error = Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(backend, backend).Capture(null, backend));
+            Assert.Contains("did not stick after switching", error.Message);
+            Assert.AreEqual((byte)1, backend.CurrentMode);
+        }
+        finally { DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = previousSettle; }
+    }
+
+    [TestMethod]
+    public void LiveCapture_RejectsUnverifiedOriginalModeRestoration()
+    {
+        AcerErm4Table.Reset();
+        int previousSettle = DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds;
+        DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = 0;
+        try
+        {
+            var backend = new LiveHardware { FailRestore = true };
+            var error = Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(backend, backend).Capture(null, backend));
+            Assert.Contains("Could not restore the original Acer mode after capture", error.Message);
+        }
+        finally { DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = previousSettle; }
+    }
+
+    [TestMethod]
+    public void LiveCapture_PreservesCaptureFailureWhenRestorationAlsoFails()
+    {
+        AcerErm4Table.Reset();
+        int previousSettle = DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds;
+        DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = 0;
+        try
+        {
+            var backend = new LiveHardware { IgnoreFirstSwitch = true, FailAnyRestore = true };
+            var error = Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(backend, backend).Capture(null, backend));
+            Assert.Contains("Could not restore the original Acer mode after capture", error.Message);
+            Assert.IsNotNull(error.InnerException);
+            Assert.Contains("did not stick after switching", error.InnerException.Message);
+        }
+        finally { DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = previousSettle; }
     }
 
     [TestMethod]
@@ -94,13 +232,42 @@ public class DriverFactoryCalibrationTests
     }
 
     [TestMethod]
-    public void MissingSignature_RejectsCapture()
+    public void MissingSignature_WithoutModeController_RejectsCapture()
     {
         AcerErm4Table.Reset();
         var hw = new Hardware();
         hw.Memory[AcerErm4Table.Phn16s71Base] = 0;
         AcerErm4Table.Reset();
         Assert.Throws<InvalidOperationException>(() => new DriverFactoryCalibration(hw, hw).Capture(85));
+    }
+
+    [TestMethod]
+    public void MissingErm4_CapturesCpuOnlyFromLiveMmio()
+    {
+        AcerErm4Table.Reset();
+        int previousSettle = DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds;
+        DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = 0;
+        try
+        {
+            var hw = new LiveHardware();
+            var calibration = new DriverFactoryCalibration(hw, hw);
+            // Force no ERM4 by leaving memory empty (no Predator signature).
+            var profiles = calibration.Capture(85, hw);
+            Assert.IsFalse(calibration.CapturedGpuProfiles);
+            Assert.IsTrue(new PreySense.Core.Configuration.TuningConfig { FactoryDefaults = profiles }.HasFactoryDefaults);
+            Assert.IsFalse(new PreySense.Core.Configuration.TuningConfig { FactoryDefaults = profiles }.HasFactoryGpuProfiles);
+            Assert.AreEqual(115, profiles["Turbo"].CpuPl1Watts);
+            Assert.AreEqual(157, profiles["Turbo"].CpuPl2Watts);
+            Assert.AreEqual(85, profiles["Balanced"].CpuPl1Watts);
+            Assert.IsNull(profiles["Turbo"].GpuDeltaWatts);
+            Assert.IsNull(profiles["Turbo"].GpuWatts);
+            Assert.AreEqual(0x01, hw.CurrentMode, "Capture must restore the original Acer mode.");
+        }
+        finally
+        {
+            DriverFactoryCalibration.LiveModeSettleOverrideMilliseconds = previousSettle;
+            AcerErm4Table.Reset();
+        }
     }
 
     [TestMethod]

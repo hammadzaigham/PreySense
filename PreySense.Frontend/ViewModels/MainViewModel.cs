@@ -155,7 +155,16 @@ namespace PreySense.Frontend.ViewModels
                 var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
                 _isHardwareTuningEnabled = cfg.General.HardwareTuningEnabled && cfg.Tuning.HasFactoryDefaults;
 
-                CpuBoostMode = cfg.Tuning.CpuBoostMode > 0 ? 1 : 0;
+                var boostProfile = cfg.Session.ActivePowerMode switch
+                {
+                    0 => cfg.Tuning.Quiet,
+                    1 => cfg.Tuning.Balanced,
+                    4 => cfg.Tuning.Performance,
+                    5 => cfg.Tuning.Turbo,
+                    6 => cfg.Tuning.Eco,
+                    _ => cfg.Tuning.Balanced
+                };
+                CpuBoostMode = boostProfile.EffectiveCpuBoostMode ?? 1;
                 CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
 
                 // JSON preference paints the UI immediately; reconcile against live

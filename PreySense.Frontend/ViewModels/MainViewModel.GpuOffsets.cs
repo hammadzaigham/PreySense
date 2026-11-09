@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using PreySense.Core.Driver;
-using PreySense.Helpers;
 
 namespace PreySense.Frontend.ViewModels;
 
@@ -16,27 +15,22 @@ public partial class MainViewModel
 
     internal bool IsGpuHardwareModeActive(byte mode) => _hw.CurrentPowerMode == mode;
 
-    public GpuPowerOffsets? GpuOffsetsForMode(int index, int targetWatts)
+    public GpuPowerOffsets? GpuOffsetsForMode(int modeIndex)
     {
-        if (_gpuOffsets.TryGetValue(index, out var draft)) return draft;
+        if (_gpuOffsets.TryGetValue(modeIndex, out var draft)) return draft;
         var tuning = (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
-        var profile = index switch
+        var profile = modeIndex switch
         {
             0 => tuning.Eco, 1 => tuning.Quiet, 2 => tuning.Balanced,
-            3 => tuning.Performance, 4 => tuning.Turbo, _ => throw new ArgumentOutOfRangeException(nameof(index))
+            3 => tuning.Performance, 4 => tuning.Turbo, _ => throw new ArgumentOutOfRangeException(nameof(modeIndex))
         };
         return profile.GpuDeltaWatts.HasValue && profile.GpuDynamicBoostWatts.HasValue && profile.PlatformPowerOffsetWatts.HasValue
             ? new(profile.GpuDeltaWatts.Value, profile.GpuDynamicBoostWatts.Value, profile.PlatformPowerOffsetWatts.Value) : null;
     }
 
-
-    public void StoreGpuOffsets(int index, GpuPowerOffsets offsets)
+    public void StoreGpuOffsets(int modeIndex, GpuPowerOffsets offsets)
     {
         if (!offsets.IsValid) throw new ArgumentOutOfRangeException(nameof(offsets));
-        _gpuOffsets[index] = offsets;
+        _gpuOffsets[modeIndex] = offsets;
     }
-
-
-
-
 }

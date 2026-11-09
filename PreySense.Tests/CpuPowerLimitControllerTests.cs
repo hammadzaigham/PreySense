@@ -78,6 +78,8 @@ public class CpuPowerLimitControllerTests
             return PhysicalDwords.TryGetValue(physicalAddress, out value);
         }
 
+        public bool TryReadMchbar(out ulong address) { address = 0; return false; }
+
         public bool WritePhysicalDword(ulong physicalAddress, uint value)
         {
             WritePhysicalCallCount++;
@@ -91,6 +93,55 @@ public class CpuPowerLimitControllerTests
         }
 
         public void Dispose() { }
+    }
+
+    [TestMethod]
+    public void FailedMsrWriteThatChangesHardware_RollsBackAndReportsFacts()
+    {
+        var backend = new MockCpuDriverBackend();
+        backend.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits();
+        const ulong original = 0x0000820800008168UL;
+        backend.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = original;
+        backend.WriteCallback = () =>
+        {
+            if (backend.WriteMsrCallCount != 1) return true;
+            backend.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = 123;
+            return false;
+        };
+        var result = new CpuPowerLimitController(backend).ExecuteCombinedTransaction(0, 45, 65, true, 28);
+        Assert.IsFalse(result.Success);
+        Assert.IsTrue(result.RollbackAttempted);
+        Assert.IsTrue(result.RollbackSucceeded);
+        Assert.AreEqual(original, backend.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT]);
+        Assert.AreEqual(2, backend.WriteMsrCallCount);
+    }
+
+    [TestMethod]
+    public void CombinedLimits_RejectOverflowBeforeReadingOrWritingHardware()
+    {
+        var backend = new MockCpuDriverBackend();
+        var result = new CpuPowerLimitController(backend).ExecuteCombinedTransaction(
+            0xFED10000, 4_294_968, 4_294_968, true, 28,
+            staticPl1FloorWatts: int.MaxValue, staticPl2FloorWatts: int.MaxValue);
+        Assert.IsFalse(result.Success);
+        Assert.IsFalse(result.RollbackAttempted);
+        Assert.AreEqual(0, backend.ReadMsrCallCount);
+        Assert.AreEqual(0, backend.WriteMsrCallCount);
+        Assert.AreEqual(0, backend.WritePhysicalCallCount);
+    }
+
+    [TestMethod]
+    [DataRow(double.NaN)]
+    [DataRow(double.PositiveInfinity)]
+    [DataRow(double.NegativeInfinity)]
+    public void NonFiniteTau_IsRejectedBeforeHardwareAccess(double seconds)
+    {
+        var backend = new MockCpuDriverBackend();
+        var controller = new CpuPowerLimitController(backend);
+        Assert.IsFalse(controller.TrySetMsrPowerLimits(45, 65, true, seconds, out _));
+        Assert.IsFalse(controller.ExecuteCombinedTransaction(0, 45, 65, true, seconds).Success);
+        Assert.AreEqual(0, backend.ReadMsrCallCount);
+        Assert.AreEqual(0, backend.WriteMsrCallCount);
     }
 
     // Helper to create RAPL unit register value
@@ -199,7 +250,7 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         bool success = controller.TrySetMsrPowerLimits(5000, 100, true, 28, out string status);
 
         Assert.IsFalse(success);
-        Assert.Contains("exceed 15-bit MSR field limits", status, status);
+        Assert.Contains("too high", status, status);
         Assert.AreEqual(0, mock.WriteMsrCallCount, "No MSR write should occur when validation fails");
     }
 
@@ -220,7 +271,7 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         bool success = controller.TrySetMmioPowerLimits(mchbar, 5000000U, 45000U, 0, out string status);
 
         Assert.IsFalse(success);
-        Assert.Contains("exceed maximum 15-bit range", status, status);
+        Assert.Contains("too high", status, status);
         Assert.AreEqual(0, mock.WritePhysicalCallCount, "No MMIO write should occur when validation fails");
     }
 
@@ -305,7 +356,7 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         bool success = controller.TrySetMsrPowerLimits(45, 65, true, 28, out string status);
 
         Assert.IsFalse(success);
-        Assert.Contains("Rollback verified successfully", status, status);
+        Assert.Contains("Previous values were restored", status, status);
     }
 
     [TestMethod]
@@ -339,7 +390,7 @@ actualError, $"Tau encoding for {seconds}s (TU={timeUnitExp}) selected 0x{encode
         bool success = controller.TrySetMsrPowerLimits(45, 65, true, 28, out string status);
 
         Assert.IsFalse(success);
-        Assert.IsTrue(status.Contains("CRITICAL") && status.Contains("rollback verification FAILED"), status);
+        Assert.Contains("were not restored", status, status);
     }
 
     [TestMethod]

@@ -9,11 +9,8 @@
         Width="500"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{StaticResource AppFontFamily}"
-        WindowStyle="None"
-        AllowsTransparency="True"
         ResizeMode="NoResize">
 
     <Border Style="{DynamicResource AppWindowShellStyle}">
@@ -178,6 +175,7 @@
                                     </StackPanel>
                                     <controls:RectangularSwitch x:Name="SwitchApplyGpuLimits" Grid.Column="1"
                                         Width="56" Height="28" VerticalAlignment="Center"
+                                        IsEnabled="{Binding IsGpuProfileTuningAvailable}"
                                         AutomationProperties.AutomationId="EnableGpuPowerLimits"
                                         AutomationProperties.Name="Apply GPU power limits"
                                         Checked="ApplyLimitsToggle_Changed" Unchecked="ApplyLimitsToggle_Changed"/>

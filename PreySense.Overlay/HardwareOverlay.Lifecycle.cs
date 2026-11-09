@@ -126,7 +126,7 @@ public partial class HardwareOverlay
         ClearGraphHistory();
         _dragModeActive = false; _dragging = false; _fps?.Dispose(); _fps = null; ResetFpsDisplayState();
         _font?.Dispose(); _font = null; _rpmFont?.Dispose(); _rpmFont = null; _unitFont?.Dispose(); _unitFont = null;
-        _fpsBold?.Dispose(); _fpsBold = null; _totalPen?.Dispose(); _totalPen = null; _axPen?.Dispose(); _axPen = null;
+        _fpsBold?.Dispose(); _fpsBold = null; _axPen?.Dispose(); _axPen = null;
         _lastScale = 0f; base.Hide();
     }
 }

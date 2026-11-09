@@ -184,9 +184,9 @@ internal static class UiText
         ["VRAM Data Rate (MHz)"] = "显存速率 (MHz)",
         ["GPU Fan (RPM)"] = "GPU 风扇 (RPM)",
         ["+ Add Slot"] = "+ 添加栏",
-        ["Applied and readback successfully."] = "已应用并回读成功。",
+        ["Applied successfully."] = "已应用成功。",
         ["Applied."] = "已应用。",
-        ["Apply failed."] = "应用失败。",
+        ["Could not apply."] = "无法应用。",
         ["Bio Hazard"] = "生化危机",
         ["CPU Fall"] = "CPU 下降",
         ["CPU PROCHOT Offset"] = "CPU PROCHOT 偏移",
@@ -228,6 +228,7 @@ internal static class UiText
         ["Solar Flare"] = "太阳耀斑",
         ["Stage Change Delay"] = "档位切换延迟",
         ["Turbo Time Limit [Tau]"] = "睿频时间限制 [Tau]",
+        ["Locked"] = "已锁定",
     };
 
 private static readonly Dictionary<string, string> Hindi = new(StringComparer.Ordinal)
@@ -399,9 +400,9 @@ private static readonly Dictionary<string, string> Hindi = new(StringComparer.Or
         ["VRAM Data Rate (MHz)"] = "VRAM डेटा दर (MHz)",
         ["GPU Fan (RPM)"] = "GPU पंखा (RPM)",
         ["+ Add Slot"] = "+ स्लॉट जोड़ें",
-        ["Applied and readback successfully."] = "लागू और रीडबैक सफल।",
+        ["Applied successfully."] = "सफलतापूर्वक लागू।",
         ["Applied."] = "लागू।",
-        ["Apply failed."] = "लागू नहीं हुआ।",
+        ["Could not apply."] = "लागू नहीं हो सका।",
         ["Bio Hazard"] = "बायो हैज़र्ड",
         ["CPU Fall"] = "CPU गिरावट",
         ["CPU PROCHOT Offset"] = "CPU PROCHOT ऑफ़सेट",
@@ -443,6 +444,7 @@ private static readonly Dictionary<string, string> Hindi = new(StringComparer.Or
         ["Solar Flare"] = "सौर ज्वाला",
         ["Stage Change Delay"] = "चरण परिवर्तन विलंब",
         ["Turbo Time Limit [Tau]"] = "टर्बो समय सीमा [Tau]",
+        ["Locked"] = "लॉक है",
     };
 
 private static readonly Dictionary<string, string> Spanish = new(StringComparer.Ordinal)
@@ -614,9 +616,9 @@ private static readonly Dictionary<string, string> Spanish = new(StringComparer.
         ["VRAM Data Rate (MHz)"] = "Tasa de datos VRAM (MHz)",
         ["GPU Fan (RPM)"] = "Ventilador de GPU (RPM)",
         ["+ Add Slot"] = "+ Añadir ranura",
-        ["Applied and readback successfully."] = "Aplicado y lectura de verificación correcta.",
+        ["Applied successfully."] = "Aplicado correctamente.",
         ["Applied."] = "Aplicado.",
-        ["Apply failed."] = "Error al aplicar.",
+        ["Could not apply."] = "No se pudo aplicar.",
         ["Bio Hazard"] = "Biohazard",
         ["CPU Fall"] = "Caída CPU",
         ["CPU PROCHOT Offset"] = "Desplazamiento PROCHOT de CPU",
@@ -658,6 +660,7 @@ private static readonly Dictionary<string, string> Spanish = new(StringComparer.
         ["Solar Flare"] = "Llamarada solar",
         ["Stage Change Delay"] = "Retraso de cambio de etapa",
         ["Turbo Time Limit [Tau]"] = "Límite de tiempo Turbo [Tau]",
+        ["Locked"] = "Bloqueado",
     };
 
 private static readonly Dictionary<string, string> French = new(StringComparer.Ordinal)
@@ -829,9 +832,9 @@ private static readonly Dictionary<string, string> French = new(StringComparer.O
         ["VRAM Data Rate (MHz)"] = "Débit VRAM (MHz)",
         ["GPU Fan (RPM)"] = "Ventilateur GPU (tr/min)",
         ["+ Add Slot"] = "+ Ajouter un emplacement",
-        ["Applied and readback successfully."] = "Appliqué et relu avec succès.",
+        ["Applied successfully."] = "Appliqué avec succès.",
         ["Applied."] = "Appliqué.",
-        ["Apply failed."] = "Échec de l’application.",
+        ["Could not apply."] = "Impossible d’appliquer.",
         ["Bio Hazard"] = "Biohazard",
         ["CPU Fall"] = "Descente CPU",
         ["CPU PROCHOT Offset"] = "Décalage PROCHOT CPU",
@@ -873,5 +876,6 @@ private static readonly Dictionary<string, string> French = new(StringComparer.O
         ["Solar Flare"] = "Éruption solaire",
         ["Stage Change Delay"] = "Délai de changement d’étage",
         ["Turbo Time Limit [Tau]"] = "Limite de temps Turbo [Tau]",
+        ["Locked"] = "Verrouillé",
     };
 }

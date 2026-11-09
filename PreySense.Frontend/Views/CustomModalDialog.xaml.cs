@@ -25,9 +25,15 @@ namespace PreySense.Frontend.Views
         /// </summary>
         public new bool? ShowDialog()
         {
-            _result = null;
-            base.ShowDialog();
-            return _result;
+            bool previousSuppression = App.SuppressAutoHide;
+            App.SuppressAutoHide = true;
+            try
+            {
+                _result = null;
+                base.ShowDialog();
+                return _result;
+            }
+            finally { App.SuppressAutoHide = previousSuppression; }
         }
 
         public string HeaderSubtitle

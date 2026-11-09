@@ -6,33 +6,21 @@ namespace PreySense.Overlay
 {
     public static class OverlayChartRenderer
     {
-        private static void FillArea(Graphics g, PointF[] polyPts, PointF[] topLine, PointF[] bottomLine, SolidBrush brush)
-        {
-            int n = topLine.Length;
-            topLine.CopyTo(polyPts, 0);
-            for (int i = 0; i < n; i++)
-                polyPts[n + i] = bottomLine[n - 1 - i];
-            g.FillPolygon(brush, polyPts);
-        }
-
-        public static void DrawStackedChart(
-            Graphics g,
-            int x, int y, int w, int h,
-            float sc,
+        public static void DrawHistoryChart(
+            Graphics graphics,
+            int x, int y, int width, int height,
             float[] cpuHistory,
             float[] gpuHistory,
             int historyHead,
             int historyLength,
-            PointF[] basePts,
-            PointF[] gpuPts,
-            PointF[] cpuPts,
-            PointF[] polyPts,
+            PointF[] baselinePoints,
+            PointF[] gpuPoints,
+            PointF[] cpuPoints,
             SolidBrush graphGpuBrush,
             Pen graphGpuPen,
             SolidBrush graphCpuBrush,
             Pen graphCpuPen,
-            Pen totalPen,
-            Pen axPen,
+            Pen axisPen,
             bool drawCpu = true,
             bool drawGpu = true)
         {
@@ -43,59 +31,59 @@ namespace PreySense.Overlay
                 if (drawGpu && float.IsFinite(gpuHistory[i]) && gpuHistory[i] > peak) peak = gpuHistory[i];
             }
 
-            float stepX = (float)w / (historyLength - 1);
-            int Idx(int i) => (historyHead + i) % historyLength;
+            float horizontalStep = (float)width / (historyLength - 1);
+            int HistoryIndex(int i) => (historyHead + i) % historyLength;
 
             for (int i = 0; i < historyLength; i++)
             {
-                int idx = Idx(i);
-                float px = x + i * stepX;
-                float cpuH = (cpuHistory[idx] / peak) * h;
-                float gpuH = (gpuHistory[idx] / peak) * h;
+                int historyIndex = HistoryIndex(i);
+                float pointX = x + i * horizontalStep;
+                float cpuHeight = (cpuHistory[historyIndex] / peak) * height;
+                float gpuHeight = (gpuHistory[historyIndex] / peak) * height;
 
-                basePts[i] = new PointF(px, y + h);
-                gpuPts[i]  = new PointF(px, y + h - gpuH);
-                cpuPts[i]  = new PointF(px, y + h - cpuH);
+                baselinePoints[i] = new PointF(pointX, y + height);
+                gpuPoints[i]  = new PointF(pointX, y + height - gpuHeight);
+                cpuPoints[i]  = new PointF(pointX, y + height - cpuHeight);
             }
 
-            var saved = g.Save();
-            g.SetClip(new RectangleF(x, y, w, h));
+            var graphicsState = graphics.Save();
+            graphics.SetClip(new RectangleF(x, y, width, height));
 
             void DrawSeries(float[] history, PointF[] points, SolidBrush brush, Pen pen)
             {
                 using var outline = new GraphicsPath();
                 using var area = new GraphicsPath();
-                int start = -1;
+                int segmentStart = -1;
                 for (int i = 0; i <= historyLength; i++)
                 {
-                    bool valid = i < historyLength && float.IsFinite(history[Idx(i)]) && history[Idx(i)] >= 0;
-                    if (valid)
+                    bool isValidSample = i < historyLength && float.IsFinite(history[HistoryIndex(i)]) && history[HistoryIndex(i)] >= 0;
+                    if (isValidSample)
                     {
-                        if (start < 0) start = i;
+                        if (segmentStart < 0) segmentStart = i;
                         continue;
                     }
-                    if (start >= 0 && i - start >= 2)
+                    if (segmentStart >= 0 && i - segmentStart >= 2)
                     {
                         outline.Reset(); area.Reset();
-                        area.AddLine(basePts[start], points[start]);
-                        for (int j = start + 1; j < i; j++)
+                        area.AddLine(baselinePoints[segmentStart], points[segmentStart]);
+                        for (int j = segmentStart + 1; j < i; j++)
                         {
                             outline.AddLine(points[j - 1], points[j]);
                             area.AddLine(points[j - 1], points[j]);
                         }
-                        area.AddLine(points[i - 1], basePts[i - 1]);
+                        area.AddLine(points[i - 1], baselinePoints[i - 1]);
                         area.CloseFigure();
-                        g.FillPath(brush, area);
-                        g.DrawPath(pen, outline);
+                        graphics.FillPath(brush, area);
+                        graphics.DrawPath(pen, outline);
                     }
-                    start = -1;
+                    segmentStart = -1;
                 }
             }
-            if (drawGpu) DrawSeries(gpuHistory, gpuPts, graphGpuBrush, graphGpuPen);
-            if (drawCpu) DrawSeries(cpuHistory, cpuPts, graphCpuBrush, graphCpuPen);
+            if (drawGpu) DrawSeries(gpuHistory, gpuPoints, graphGpuBrush, graphGpuPen);
+            if (drawCpu) DrawSeries(cpuHistory, cpuPoints, graphCpuBrush, graphCpuPen);
 
-            g.Restore(saved);
-            g.DrawLine(axPen, x, y + h, x + w, y + h);
+            graphics.Restore(graphicsState);
+            graphics.DrawLine(axisPen, x, y + height, x + width, y + height);
         }
 
     }

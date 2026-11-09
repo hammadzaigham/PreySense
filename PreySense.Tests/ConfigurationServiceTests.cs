@@ -191,7 +191,7 @@ namespace PreySense.Tests
         {
             // Minimal valid JSON containing only SchemaVersion and General
             string minimalJson = @"{
-                ""SchemaVersion"": 1,
+                ""SchemaVersion"": 2,
                 ""General"": {
                     ""Language"": ""zh-CN""
                 }

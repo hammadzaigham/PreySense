@@ -86,7 +86,7 @@ public class FanCurveFollowerTests
         // Quiet stage 5: CPU rise 127, GPU rise 80 — only GPU can advance to stage 6.
         follower.Evaluate(90, 75, quiet, 0, 0);
         var (_, _, stage) = follower.Evaluate(100, 75, quiet, 0, 1000);
-        Assert.IsTrue(stage <= 5);
+        Assert.IsLessThanOrEqualTo(5, stage);
         (_, _, stage) = follower.Evaluate(100, 80, quiet, 0, 2000);
         Assert.AreEqual(6, stage);
     }
@@ -95,7 +95,7 @@ public class FanCurveFollowerTests
     public void FactoryPresetsMatchEcRpmTargets()
     {
         var balanced = FanCurveProfile.CreateDefault(1);
-        Assert.AreEqual(12, balanced.Stages.Length);
+        Assert.HasCount(12, balanced.Stages);
         Assert.AreEqual(0, balanced.Stages[0].CpuTargetRpm);
         Assert.AreEqual(1800, balanced.Stages[1].CpuTargetRpm);
         Assert.AreEqual(2350, balanced.Stages[3].CpuTargetRpm);

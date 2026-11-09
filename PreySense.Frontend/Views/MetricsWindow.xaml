@@ -9,11 +9,8 @@
         Width="540"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        Background="Transparent"
         Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{StaticResource AppFontFamily}"
-        WindowStyle="None"
-        AllowsTransparency="True"
         ResizeMode="NoResize">
 
     <Border Style="{DynamicResource AppWindowShellStyle}">

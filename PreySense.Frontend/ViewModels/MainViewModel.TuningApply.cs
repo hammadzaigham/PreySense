@@ -78,30 +78,30 @@ public partial class MainViewModel
     private DriverTuningResult ExecuteDriverTuning(DriverTuningRequest request)
     {
         if (request.Mode is not (0 or 1 or 4 or 5 or 6))
-            return new(false, "Invalid tuning profile; nothing was written.");
+            return new(false, "Invalid power mode.");
         if (!request.ApplyCpuLimits && !request.ApplyGpuLimits && request.ProchotOffsetCelsius is null)
-            return new(false, "CPU/GPU power limits and PROCHOT are all off; nothing was written.");
+            return new(false, "Turn on CPU limits, GPU limits, or PROCHOT first.");
         if (request.ApplyCpuLimits &&
             (request.Pl1 is < 5 or > 300 || request.Pl2 < request.Pl1 || request.Pl2 > 300 || request.Tau is < 0 or > 449))
-            return new(false, "Invalid CPU power limits; nothing was written.");
+            return new(false, "CPU limits are out of range.");
         if (request.ApplyGpuLimits &&
             (request.Offsets.DeltaWatts is < 0
                 || request.Offsets.DeltaWatts > DriverFactoryCalibration.MaxGpuDeltaWatts
                 || request.Offsets.DeltaWatts % 5 != 0 ||
                 !DriverFactoryCalibration.IsLegalGpuDynamicBoost(request.Offsets.DynamicBoostWatts) ||
                 request.Offsets.PlatformOffsetWatts is < 0 or > 100 || request.Offsets.PlatformOffsetWatts % 5 != 0))
-            return new(false, "Invalid GPU power limits; nothing was written.");
+            return new(false, "GPU limits are out of range.");
         if (request.ProchotOffsetCelsius is < 0 or > 63)
-            return new(false, "Invalid PROCHOT offset; nothing was written.");
+            return new(false, "PROCHOT offset must be between 0 and 63°C.");
         if (DriverTuningExecutor is not null) return DriverTuningExecutor(request);
         var backend = CpuDriverRuntime.Backend ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var cpu = CpuDriverRuntime.PowerLimits ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var prochot = new CpuProchotController(backend);
         if (request.ProchotOffsetCelsius is int requestedOffset && !prochot.CanSetOffset(requestedOffset, out string preflight))
-            return new(false, preflight + " No tuning values were written.");
+            return new(false, preflight);
         ulong mchbar = 0;
         if (request.ApplyCpuLimits && !backend.TryReadMchbar(out mchbar))
-            return new(false, "Cannot discover the supported CPU MCHBAR; nothing was written.");
+            return new(false, "Could not find CPU power registers.");
 
         if (request.ApplyGpuLimits)
         {
@@ -120,15 +120,15 @@ public partial class MainViewModel
                 tuning.FactoryStaticCpuPl1Watts, tuning.FactoryStaticCpuPl2Watts,
                 restoreMsrToStaticFloor: request.RestoreMsrToStaticFloor);
             if (!result.Success)
-                return new(false, $"Apply failed: {result.Status}");
+                return new(false, result.Status);
         }
 
         if (request.ProchotOffsetCelsius is int offset)
         {
             if (!prochot.TrySetOffset(offset, out string prochotStatus))
-                return new(false, $"Apply failed: {prochotStatus}");
+                return new(false, prochotStatus);
         }
-        return new(true, "Applied and readback successfully.");
+        return new(true, "Applied successfully.");
     }
 
     internal DriverTuningResult ApplySavedDriverTuning(byte mode)
@@ -140,24 +140,25 @@ public partial class MainViewModel
             5 => tuning.Turbo, 6 => tuning.Eco, _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
         int? prochot = tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null;
-        if (!profile.ApplyCpuLimits && !profile.ApplyGpuLimits)
+        bool applyGpu = profile.ApplyGpuLimits && IsGpuProfileTuningAvailable;
+        if (!profile.ApplyCpuLimits && !applyGpu)
         {
             if (!_hw.SetPowerMode(mode))
-                return new(false, "The Acer mode could not be activated.");
+                return new(false, "Could not switch Acer mode.");
             if (prochot is null)
-                return new(true, "Acer mode selected; no custom profile is saved.");
+                return new(true, "Acer mode selected.");
             return ExecuteDriverTuning(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
         }
         if (!profile.HasValues)
-            return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected; no custom profile is saved.")
-                : new(false, "The Acer mode could not be activated.");
+            return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected.")
+                : new(false, "Could not switch Acer mode.");
         // GPU apply switches Acer mode itself; CPU/PROCHOT-only restores must switch first.
-        if (!profile.ApplyGpuLimits && !_hw.SetPowerMode(mode))
-            return new(false, "The Acer mode could not be activated.");
+        if (!applyGpu && !_hw.SetPowerMode(mode))
+            return new(false, "Could not switch Acer mode.");
         return ExecuteDriverTuning(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,
             new(profile.GpuDeltaWatts ?? 0, profile.GpuDynamicBoostWatts ?? 0, profile.PlatformPowerOffsetWatts ?? 0),
-            prochot, profile.ApplyCpuLimits, profile.ApplyGpuLimits));
+            prochot, profile.ApplyCpuLimits, applyGpu));
     }
 
     internal DriverTuningResult RestoreSavedPowerMode(byte mode)
@@ -166,7 +167,7 @@ public partial class MainViewModel
         {
             if (IsHardwareTuningEnabled) return ApplySavedDriverTuning(mode);
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode restored.")
-                : new(false, "The saved Acer mode could not be activated.");
+                : new(false, "Could not switch Acer mode.");
         }
         catch (Exception ex) { return new(false, ex.Message); }
     }
@@ -181,7 +182,7 @@ public partial class MainViewModel
                 ClearUserTuningProfilesKeepFactory();
                 TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = false);
             }
-            catch (Exception ex) { DiagnosticMessage = $"Could not save the tuning preference: {ex.Message}"; }
+            catch (Exception ex) { DiagnosticMessage = $"Could not save tuning setting: {ex.Message}"; }
             ResetAllTuningEditorsToFactory();
             DiagnosticMessage = "Tuning disabled.";
             return;
@@ -209,7 +210,6 @@ public partial class MainViewModel
                 profile.PlatformPowerOffsetWatts = null;
                 profile.ApplyCpuLimits = false;
                 profile.ApplyGpuLimits = false;
-                profile.ApplyFanCurve = false;
             }
             cfg.Tuning.ProchotOffsetCelsius = null;
             cfg.Tuning.ApplyProchotOffset = false;
@@ -234,17 +234,17 @@ public partial class MainViewModel
         applyProchotOffset &= !IsProchotOffsetLocked;
         if (applyProchotOffset && prochotOffsetCelsius is null)
         {
-            DiagnosticMessage = "Enter a global PROCHOT offset before applying.";
+            DiagnosticMessage = "Enter a PROCHOT offset, or turn its switch off.";
             return false;
         }
         if (!applyCpuLimits && !applyGpuLimits && !applyProchotOffset)
         {
-            DiagnosticMessage = "Turn on CPU limits, GPU limits, or PROCHOT offset before applying.";
+            DiagnosticMessage = "Turn on CPU limits, GPU limits, or PROCHOT first.";
             return false;
         }
         if (!IsHardwareTuningEnabled || IsBusy)
         {
-            DiagnosticMessage = IsBusy ? "Tuning is busy; wait for the current operation." : "Enable Hardware Tuning before applying settings.";
+            DiagnosticMessage = IsBusy ? "Tuning is busy. Try again in a moment." : "Turn on Hardware Tuning first.";
             AppLogger.Error($"[Tuning] {DiagnosticMessage}");
             return false;
         }
@@ -287,14 +287,16 @@ public partial class MainViewModel
                     IsProchotOffsetEnabled = false;
             }
             DiagnosticMessage = boostOk
-                ? (persist ? "Applied and saved." : "Applied and readback successfully.")
+                ? (persist ? "Applied and saved." : "Applied successfully.")
                 : "Applied, but CPU boost failed.";
             AppLogger.Log($"[Tuning] {DiagnosticMessage}");
             return boostOk;
         }
         catch (Exception ex)
         {
-            DiagnosticMessage = $"Apply failed: {ex.Message}";
+            DiagnosticMessage = ex.Message.StartsWith("Apply failed", StringComparison.OrdinalIgnoreCase)
+                ? ex.Message
+                : $"Could not apply: {ex.Message}";
             AppLogger.Error($"[Tuning] {ex}");
             try { ActivePowerMode = _hw.CurrentPowerMode; UpdateModeName(ActivePowerMode); NotifyModeSelectionsChanged(); } catch { }
             return false;

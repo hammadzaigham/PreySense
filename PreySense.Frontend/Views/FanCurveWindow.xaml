@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
         Title="PreySense • Fans" Width="560" SizeToContent="Height"
-        WindowStartupLocation="CenterOwner" WindowStyle="None" AllowsTransparency="True"
-        ResizeMode="NoResize" ShowInTaskbar="False" Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False"
         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource AppFontFamily}">
     <Border Style="{DynamicResource AppWindowShellStyle}">
         <StackPanel>

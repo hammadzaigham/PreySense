@@ -149,27 +149,44 @@ namespace PreySense.Tests
         [TestMethod]
         public void Test_CustomModalDialog_Initialization_And_Theme()
         {
+            Exception? failure = null;
             var thread = new System.Threading.Thread(() =>
             {
-                var dialog = new PreySense.Frontend.Views.CustomModalDialog
+                try
                 {
-                    Title = "PreySense • Hardware Discrete GPU",
-                    HeaderSubtitle = " • Hardware Display MUX",
-                    Message = "Would you like to switch to dGPU Only mode and restart now?",
-                    ConfirmText = "Apply & Restart Now"
-                };
-                Assert.IsNotNull(dialog);
-                Assert.AreEqual("PreySense • Hardware Discrete GPU", dialog.Title);
-                Assert.AreEqual(" • Hardware Display MUX", dialog.HeaderSubtitle);
-                Assert.AreEqual("Apply & Restart Now", dialog.ConfirmText);
-                Assert.IsFalse(dialog.ShowInTaskbar);
-                Assert.AreEqual(System.Windows.WindowStyle.None, dialog.WindowStyle);
-                Assert.IsTrue(dialog.AllowsTransparency);
-                dialog.Close();
+                    var dialog = new PreySense.Frontend.Views.CustomModalDialog
+                    {
+                        Title = "PreySense • Hardware Discrete GPU",
+                        HeaderSubtitle = " • Hardware Display MUX",
+                        Message = "Would you like to switch to dGPU Only mode and restart now?",
+                        ConfirmText = "Apply & Restart Now"
+                    };
+                    // Standalone test windows have no App resources. Apply the real shared
+                    // style instead of asserting framework defaults or duplicating its setters.
+                    string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+                    var app = System.Xml.Linq.XDocument.Load(Path.Combine(root, "PreySense.Frontend", "App.xaml"));
+                    System.Xml.Linq.XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+                    System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+                    var styleElement = new System.Xml.Linq.XElement(app.Descendants(presentation + "Style")
+                        .Single(element => (string?)element.Attribute(xaml + "Key") == "AppWindowRenderingStyle"));
+                    styleElement.Attribute(xaml + "Key")!.Remove();
+                    styleElement.SetAttributeValue(System.Xml.Linq.XNamespace.Xmlns + "x", xaml.NamespaceName);
+                    styleElement.SetAttributeValue(System.Xml.Linq.XNamespace.Xmlns + "services", "clr-namespace:PreySense.Frontend.Services;assembly=PreySense");
+                    dialog.Style = (System.Windows.Style)System.Windows.Markup.XamlReader.Parse(styleElement.ToString());
+                    Assert.AreEqual("PreySense • Hardware Discrete GPU", dialog.Title);
+                    Assert.AreEqual(" • Hardware Display MUX", dialog.HeaderSubtitle);
+                    Assert.AreEqual("Apply & Restart Now", dialog.ConfirmText);
+                    Assert.IsFalse(dialog.ShowInTaskbar);
+                    Assert.AreEqual(System.Windows.WindowStyle.None, dialog.WindowStyle);
+                    Assert.IsFalse(dialog.AllowsTransparency);
+                    dialog.Close();
+                }
+                catch (Exception ex) { failure = ex; }
             });
             thread.SetApartmentState(System.Threading.ApartmentState.STA);
             thread.Start();
             thread.Join();
+            if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         }
 
         [TestMethod]

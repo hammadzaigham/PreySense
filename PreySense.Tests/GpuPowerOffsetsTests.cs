@@ -24,13 +24,13 @@ public class GpuPowerOffsetsTests
                 cfg.Tuning.Balanced.GpuDynamicBoostWatts = 15;
                 cfg.Tuning.Balanced.PlatformPowerOffsetWatts = 5;
             });
-            Assert.AreEqual(new GpuPowerOffsets(10, 15, 5), vm.GpuOffsetsForMode(2, 130));
+            Assert.AreEqual(new GpuPowerOffsets(10, 15, 5), vm.GpuOffsetsForMode(2));
             store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 20);
-            Assert.AreEqual(new GpuPowerOffsets(20, 15, 5), vm.GpuOffsetsForMode(2, 130));
+            Assert.AreEqual(new GpuPowerOffsets(20, 15, 5), vm.GpuOffsetsForMode(2));
             vm.StoreGpuOffsets(2, new GpuPowerOffsets(30, 5, 10));
-            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2, 130));
+            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2));
             store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 40);
-            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2, 130), "Newly saved values must not overwrite an unsaved editor draft.");
+            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2), "Newly saved values must not overwrite an unsaved editor draft.");
         }
         finally
         {
