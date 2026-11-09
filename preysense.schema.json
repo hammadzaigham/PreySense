@@ -61,6 +61,13 @@
     "Battery": {
       "type": "object",
       "properties": {
+        "UsbPowerOffChargingCutoffPercent": {
+          "type": "integer",
+          "enum": [0, 10, 20, 30],
+          "default": 0,
+          "title": "USB Power-Off Charging Battery Cutoff",
+          "description": "0 disables USB charging while off. Otherwise charge attached devices until laptop battery reaches 10, 20 or 30 percent. Supported USB port only."
+        },
         "ChargeLimitEnabled": {
           "type": "boolean",
           "default": true,
@@ -413,11 +420,54 @@
           },
           "title": "Slots"
         },
-        "HideHeader": {
-          "default": false,
-          "description": "Hide CPU and GPU row headers.",
+        "BackgroundColorHex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#000000",
+          "description": "JSON-only RGB color; edit with PreySense closed."
+        },
+        "CpuTextColorHex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#FFFFFF",
+          "description": "JSON-only RGB color; edit with PreySense closed."
+        },
+        "GpuTextColorHex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#FFFFFF",
+          "description": "JSON-only RGB color; edit with PreySense closed."
+        },
+        "CpuGraphColorHex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#2C7CB4",
+          "description": "JSON-only RGB color; edit with PreySense closed."
+        },
+        "GpuGraphColorHex": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#3AAA54",
+          "description": "JSON-only RGB color; edit with PreySense closed."
+        },
+        "CornerRadiusPixels": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "default": 6,
+          "description": "JSON-only corner radius in base overlay pixels; 0 gives square corners. Scales with overlay size."
+        },
+        "GraphLineWidthPixels": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 4,
+          "default": 1.5,
+          "description": "JSON-only graph stroke width in screen pixels."
+        },
+        "ShowBackgroundShading": {
           "type": "boolean",
-          "title": "Hide Header"
+          "default": false,
+          "description": "JSON-only subtle top highlight and bottom shading."
         }
       },
       "title": "Overlay"
@@ -547,12 +597,13 @@
         },
         "Stages": {
           "type": "array",
-          "minItems": 12,
+          "minItems": 1,
           "maxItems": 12,
           "items": {
             "$ref": "#/definitions/FanStage"
           },
-          "title": "Stages"
+          "title": "Stages",
+          "description": "Only reachable stages are stored, including the final plateau; 127 disables that sensor transition."
         }
       }
     },

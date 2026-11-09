@@ -18,7 +18,7 @@ Writes go through a temporary file in the same directory and replace/move into p
 | --- | --- |
 | `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`), theme, Acer-service preference and tuning enable flag. |
 | `Display` | Automatic refresh-rate preference. |
-| `Battery` | Charge-limit and Windows Energy Saver preferences. |
+| `Battery` | Charge-limit, USB power-off charging and Windows Energy Saver preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |
 | `Tuning` | Optional global controls, per-mode user profiles and separately captured factory defaults. |
 | `Fans` | Per-mode Auto/Max/Custom fan control, stage values and ramp-up delay. |
@@ -26,6 +26,12 @@ Writes go through a temporary file in the same directory and replace/move into p
 | `Overlay` | Visibility, FPS, scale, opacity, position and selected metric slots. |
 
 A preference is a desired setting, not confirmation of a live hardware reading. The application verifies hardware operations separately.
+
+## USB power-off charging
+
+`Battery.UsbPowerOffChargingCutoffPercent` defaults to `0` (disabled). Choose `10`, `20` or `30` to keep the supported charging USB port powered while the laptop is shut down, until the laptop battery reaches that percentage. This can charge a phone or accessory without running the laptop, but uses laptop battery power. It does not change how the laptop battery itself charges. Firmware and a compatible USB charging port are required.
+
+The Settings slider uses 0 for Disabled and 10/20/30% for the cutoff. It applies the setting through Acer APGE WMI and verifies firmware readback before saving it. The saved preference is reapplied on startup/resume; unsupported or unconfirmed operations report N/A rather than claiming success. The dropdown displays the saved preference, not a live hardware reading. Apply or readback failures also show an inline `USB charging: N/A.` message. A successful verified write clears that message. The disabled flag is accepted only within recognized firmware response payloads; unknown packets remain unavailable.
 
 ## Tuning values
 
@@ -70,5 +76,19 @@ Example of an unset user profile (an excerpt, not a complete configuration):
 ## Overlay layout
 
 `ScalePercent` is 50–200. `BackgroundOpacityPercent` and `TextOpacityPercent` are 0–100, where 0 is transparent. Position presets use Left/Center/Right and Top/Center/Bottom. Each entry in `Slots` chooses `CpuMetric`, `GpuMetric` and `ShowGraph`. `None` requests no sensor for that column. Turning a graph off does not disable its numeric metric's collection. Missing sensor readings display N/A.
+
+
+Advanced appearance settings live only in `Overlay` in JSON; there are no corresponding UI controls. Close PreySense before editing the file, then restart it. Colors use `#RRGGBB` and opacity stays controlled by the existing opacity fields.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `BackgroundColorHex` | `#000000` | Background color. |
+| `CpuTextColorHex` / `GpuTextColorHex` | `#FFFFFF` / `#FFFFFF` | CPU and GPU row colors. |
+| `CpuGraphColorHex` / `GpuGraphColorHex` | `#2C7CB4` / `#3AAA54` | CPU and GPU graph colors, including their translucent fill. |
+| `CornerRadiusPixels` | `6` | Rounded corners, 0–16 base overlay pixels; scales with the overlay. Set 0 for square corners. |
+| `GraphLineWidthPixels` | `1.5` | Graph stroke width, 0.5–4 screen pixels. |
+| `ShowBackgroundShading` | `false` | Adds a subtle top highlight and bottom shading. |
+
+The overlay uses per-pixel transparency; pixels outside the rounded boundary remain transparent, including when dragging. Invalid colors or ranges are rejected rather than silently replaced.
 
 The accompanying `preysense.schema.json` lists supported fields, descriptive titles, units, nullability and validation ranges. It describes the canonical version 2 file format.

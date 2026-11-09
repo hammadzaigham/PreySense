@@ -34,7 +34,8 @@ namespace PreySense.Overlay
         private const int BasePadX = 3;
         private const int BasePadY = 2;
         private const int BaseFpsColWidth = 52;
-        private const int CornerRadius = 0;
+        private int _cornerRadius = 6;
+        private bool _showBackgroundShading;
         private const int MarginFromEdge = 10;
         private const int BaseInnerPadX = 3;
         private const int BaseInnerPadY = 2;
@@ -44,7 +45,7 @@ namespace PreySense.Overlay
         private static readonly Color OverlayBottomGlowColor = Color.FromArgb(20, 0, 0, 0);
 
         private const int DragMinAlpha = 110;
-        private static readonly SolidBrush _dragBgBrush = new(Color.FromArgb(DragMinAlpha, 0, 0, 0));
+        private readonly SolidBrush _dragBgBrush = new(Color.FromArgb(DragMinAlpha, 0, 0, 0));
         private static readonly SolidBrush _topGlowBrush = new(OverlayTopGlowColor);
         private static readonly SolidBrush _bottomGlowBrush = new(OverlayBottomGlowColor);
         private int _bgAlpha = 100;
@@ -52,10 +53,10 @@ namespace PreySense.Overlay
         private SolidBrush _bgBrush = new(Color.FromArgb(100, 0, 0, 0));
         private SolidBrush _gpuBrush = new(DefaultGpuColor);
         private SolidBrush _cpuBrush = new(DefaultCpuColor);
-        private static readonly Pen _graphCpuPen = new(Color.FromArgb(44, 124, 180), 1.5f);
-        private static readonly Pen _graphGpuPen = new(Color.FromArgb(58, 170, 84), 1.5f);
-        private static readonly SolidBrush _graphCpuBrush = new(Color.FromArgb(24, 44, 124, 180));
-        private static readonly SolidBrush _graphGpuBrush = new(Color.FromArgb(34, 58, 170, 84));
+        private readonly Pen _graphCpuPen = new(Color.FromArgb(44, 124, 180), 1.5f);
+        private readonly Pen _graphGpuPen = new(Color.FromArgb(58, 170, 84), 1.5f);
+        private readonly SolidBrush _graphCpuBrush = new(Color.FromArgb(24, 44, 124, 180));
+        private readonly SolidBrush _graphGpuBrush = new(Color.FromArgb(34, 58, 170, 84));
 
         private float _lastScale = 0f;
         private Font? _font;
@@ -322,6 +323,9 @@ namespace PreySense.Overlay
         {
             if (disposing)
             {
+                _bgBrush.Dispose(); _cpuBrush.Dispose(); _gpuBrush.Dispose(); _dragBgBrush.Dispose();
+                _graphCpuPen.Dispose(); _graphGpuPen.Dispose();
+                _graphCpuBrush.Dispose(); _graphGpuBrush.Dispose();
                 Microsoft.Win32.SystemEvents.PowerModeChanged -= OnOverlayPowerModeChanged;
                 StopForegroundEvents();
                 PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
@@ -383,7 +387,6 @@ namespace PreySense.Overlay
             int padY = S(sc, BasePadY);
             int lineH = S(sc, BaseLineHeight);
             int lineGap = S(sc, BaseLineSpacing);
-            int radius = S(sc, CornerRadius);
             int fpsColW = S(sc, BaseFpsColWidth);
             int innerPadX = S(sc, BaseInnerPadX);
             int innerPadY = S(sc, BaseInnerPadY);
@@ -423,6 +426,7 @@ namespace PreySense.Overlay
             if (Size.Width != width || Size.Height != totalH)
                 _size = new Size(width, totalH);
 
+            int radius = Math.Min(S(sc, _cornerRadius), Math.Min(width, totalH) / 2);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -443,14 +447,18 @@ namespace PreySense.Overlay
                     path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
                     path.CloseAllFigures();
                     g.SetClip(path);
-                    g.FillRectangle(_topGlowBrush, Bound.X + 1, Bound.Y + 1, Bound.Width - 2, Math.Max(1, Bound.Height / 3));
-                    g.FillRectangle(_bottomGlowBrush, Bound.X + 1, Bound.Bottom - Math.Max(2, Bound.Height / 4), Bound.Width - 2, Math.Max(2, Bound.Height / 4));
-                    g.ResetClip();
+                    // Keep the clip for all text and graphs: layered-window corner pixels stay transparent.
                 }
             }
             else
             {
                 g.FillRectangle(fillBrush, Bound);
+            }
+
+            if (_showBackgroundShading)
+            {
+                g.FillRectangle(_topGlowBrush, Bound.X + 1, Bound.Y + 1, Bound.Width - 2, Math.Max(1, Bound.Height / 3));
+                g.FillRectangle(_bottomGlowBrush, Bound.X + 1, Bound.Bottom - Math.Max(2, Bound.Height / 4), Bound.Width - 2, Math.Max(2, Bound.Height / 4));
             }
 
             if (sc != _lastScale)
@@ -837,29 +845,23 @@ namespace PreySense.Overlay
 
         private void ApplyColors()
         {
-
-
-            int rawAlpha = AppConfig.Get("overlay_alpha", 50);
-            if (rawAlpha <= 100)
-            {
-                _bgAlpha = (int)Math.Round(rawAlpha * 2.55);
-            }
-            else
-            {
-                _bgAlpha = Math.Clamp(rawAlpha, 0, 255);
-            }
-
-            int rawTextAlpha = AppConfig.Get("overlay_text_alpha", 100);
-            int textAlpha = rawTextAlpha <= 100
-                ? (int)Math.Round(rawTextAlpha * 2.55)
-                : Math.Clamp(rawTextAlpha, 0, 255);
-
-            Color gpu = Color.FromArgb(textAlpha, 255, 255, 255);
-            Color cpu = Color.FromArgb(textAlpha, 255, 255, 255);
-
-            _gpuBrush?.Dispose();     _gpuBrush = new SolidBrush(gpu);
-            _cpuBrush?.Dispose();     _cpuBrush = new SolidBrush(cpu);
-            _bgBrush?.Dispose();      _bgBrush = new SolidBrush(Color.FromArgb(_bgAlpha, 0, 0, 0));
+            var config = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Overlay;
+            _bgAlpha = (int)Math.Round(config.BackgroundAlphaPercent * 2.55);
+            int textAlpha = (int)Math.Round(config.TextAlphaPercent * 2.55);
+            _cornerRadius = config.CornerRadiusPixels;
+            _showBackgroundShading = config.ShowBackgroundShading;
+            Color background = ColorTranslator.FromHtml(config.BackgroundColorHex);
+            Color cpuGraph = ColorTranslator.FromHtml(config.CpuGraphColorHex);
+            Color gpuGraph = ColorTranslator.FromHtml(config.GpuGraphColorHex);
+            _cpuBrush.Color = Color.FromArgb(textAlpha, ColorTranslator.FromHtml(config.CpuTextColorHex));
+            _gpuBrush.Color = Color.FromArgb(textAlpha, ColorTranslator.FromHtml(config.GpuTextColorHex));
+            _bgBrush.Color = Color.FromArgb(_bgAlpha, background);
+            _dragBgBrush.Color = Color.FromArgb(DragMinAlpha, background);
+            _graphCpuPen.Color = cpuGraph;
+            _graphGpuPen.Color = gpuGraph;
+            _graphCpuPen.Width = _graphGpuPen.Width = config.GraphLineWidthPixels;
+            _graphCpuBrush.Color = Color.FromArgb(24, cpuGraph);
+            _graphGpuBrush.Color = Color.FromArgb(34, gpuGraph);
         }
 
         /// <summary>Called by MetricsWindow when the user changes settings while the overlay is running.</summary>

@@ -17,6 +17,9 @@ internal static class UiText
 
     private static readonly Dictionary<string, string> Chinese = new(StringComparer.Ordinal)
     {
+        ["USB charging: N/A."] = "USB 充电：N/A。",
+        ["USB Power-Off Charging"] = "USB 关机充电",
+        ["Charges devices from the supported USB port while the laptop is off. Stops at the selected laptop battery level. Uses battery power."] = "电脑关机时通过支持的 USB 端口为设备充电。当电脑电量降至所选水平时停止。这会消耗电池电量。",
         ["Performance Mode"] = "性能模式",
         ["Balanced"] = "均衡",
         ["Performance"] = "性能",
@@ -184,7 +187,7 @@ internal static class UiText
         ["VRAM Data Rate (MHz)"] = "显存速率 (MHz)",
         ["GPU Fan (RPM)"] = "GPU 风扇 (RPM)",
         ["+ Add Slot"] = "+ 添加栏",
-        ["Applied successfully."] = "已应用成功。",
+        ["Applied and read back successfully."] = "已成功应用并回读验证。",
         ["Applied."] = "已应用。",
         ["Could not apply."] = "无法应用。",
         ["Bio Hazard"] = "生化危机",
@@ -233,6 +236,9 @@ internal static class UiText
 
 private static readonly Dictionary<string, string> Hindi = new(StringComparer.Ordinal)
     {
+        ["USB charging: N/A."] = "USB चार्जिंग: N/A।",
+        ["USB Power-Off Charging"] = "बंद होने पर USB चार्जिंग",
+        ["Charges devices from the supported USB port while the laptop is off. Stops at the selected laptop battery level. Uses battery power."] = "लैपटॉप बंद होने पर समर्थित USB पोर्ट से उपकरण चार्ज करता है। लैपटॉप की बैटरी चुने हुए स्तर पर पहुँचने पर रुक जाता है। इससे बैटरी खर्च होती है।",
         ["Performance Mode"] = "प्रदर्शन मोड",
         ["Balanced"] = "संतुलित",
         ["Performance"] = "प्रदर्शन",
@@ -400,7 +406,7 @@ private static readonly Dictionary<string, string> Hindi = new(StringComparer.Or
         ["VRAM Data Rate (MHz)"] = "VRAM डेटा दर (MHz)",
         ["GPU Fan (RPM)"] = "GPU पंखा (RPM)",
         ["+ Add Slot"] = "+ स्लॉट जोड़ें",
-        ["Applied successfully."] = "सफलतापूर्वक लागू।",
+        ["Applied and read back successfully."] = "सफलतापूर्वक लागू किया और रीडबैक सत्यापित किया।",
         ["Applied."] = "लागू।",
         ["Could not apply."] = "लागू नहीं हो सका।",
         ["Bio Hazard"] = "बायो हैज़र्ड",
@@ -449,6 +455,9 @@ private static readonly Dictionary<string, string> Hindi = new(StringComparer.Or
 
 private static readonly Dictionary<string, string> Spanish = new(StringComparer.Ordinal)
     {
+        ["USB charging: N/A."] = "Carga USB: N/A.",
+        ["USB Power-Off Charging"] = "Carga USB con el equipo apagado",
+        ["Charges devices from the supported USB port while the laptop is off. Stops at the selected laptop battery level. Uses battery power."] = "Carga dispositivos desde el puerto USB compatible con el portátil apagado. Se detiene al llegar al nivel de batería elegido. Consume batería.",
         ["Performance Mode"] = "Modo de rendimiento",
         ["Balanced"] = "Equilibrado",
         ["Performance"] = "Rendimiento",
@@ -616,7 +625,7 @@ private static readonly Dictionary<string, string> Spanish = new(StringComparer.
         ["VRAM Data Rate (MHz)"] = "Tasa de datos VRAM (MHz)",
         ["GPU Fan (RPM)"] = "Ventilador de GPU (RPM)",
         ["+ Add Slot"] = "+ Añadir ranura",
-        ["Applied successfully."] = "Aplicado correctamente.",
+        ["Applied and read back successfully."] = "Aplicado y verificado mediante lectura correctamente.",
         ["Applied."] = "Aplicado.",
         ["Could not apply."] = "No se pudo aplicar.",
         ["Bio Hazard"] = "Biohazard",
@@ -665,6 +674,9 @@ private static readonly Dictionary<string, string> Spanish = new(StringComparer.
 
 private static readonly Dictionary<string, string> French = new(StringComparer.Ordinal)
     {
+        ["USB charging: N/A."] = "Charge USB : N/A.",
+        ["USB Power-Off Charging"] = "Charge USB à l’arrêt",
+        ["Charges devices from the supported USB port while the laptop is off. Stops at the selected laptop battery level. Uses battery power."] = "Charge les appareils via le port USB compatible lorsque le PC est éteint. S’arrête au niveau de batterie choisi. Consomme la batterie.",
         ["Performance Mode"] = "Mode de performance",
         ["Balanced"] = "Équilibré",
         ["Performance"] = "Performance",
@@ -832,7 +844,7 @@ private static readonly Dictionary<string, string> French = new(StringComparer.O
         ["VRAM Data Rate (MHz)"] = "Débit VRAM (MHz)",
         ["GPU Fan (RPM)"] = "Ventilateur GPU (tr/min)",
         ["+ Add Slot"] = "+ Ajouter un emplacement",
-        ["Applied successfully."] = "Appliqué avec succès.",
+        ["Applied and read back successfully."] = "Application et vérification par relecture réussies.",
         ["Applied."] = "Appliqué.",
         ["Could not apply."] = "Impossible d’appliquer.",
         ["Bio Hazard"] = "Biohazard",

@@ -120,6 +120,7 @@ namespace PreySense.Rgb
                 or CustomEffectMode.OceanTide or CustomEffectMode.IceCrystal)
                 return;
 
+            CancellationToken token;
             lock (_lock)
             {
                 _currentMode = mode;
@@ -129,11 +130,12 @@ namespace PreySense.Rgb
                 _forceHwDispatch = true;
                 _hasLastFrame = false;
                 _cts = new CancellationTokenSource();
+                token = _cts.Token;
             }
 
             KeyboardActivity.NoteKeyDown();
 
-            _animationTask = Task.Run(() => AnimationLoopAsync(_cts.Token));
+            _animationTask = Task.Run(() => AnimationLoopAsync(token));
             AppLogger.Log($"CustomLightingEffectsEngine: Started effect {mode} (speed={speed}, brightness={brightness}).");
         }
 
@@ -213,6 +215,21 @@ namespace PreySense.Rgb
 
             _animationTask = null;
             RestoreHardwareTimeout();
+        }
+
+        /// <summary>
+        /// Background apply/shutdown path only: finish the cancelled animation before
+        /// issuing a static write or starting its replacement. Never call from FrameUpdated.
+        /// </summary>
+        public void StopAndWait()
+        {
+            Task? animation;
+            lock (_lock) animation = _animationTask;
+            Stop();
+            if (animation is null) return;
+            try { animation.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { AppLogger.Error($"Lighting animation stopped with an error: {ex}"); }
         }
 
         private void WakeIdle() => _idleWake.Pulse();
@@ -805,7 +822,7 @@ namespace PreySense.Rgb
         {
             if (_isDisposed) return;
             _isDisposed = true;
-            Stop();
+            StopAndWait();
         }
     }
 }

@@ -59,15 +59,20 @@ public partial class MainViewModel
     public bool ApplyCpuBoostForMode(byte mode)
     {
         int boost = CpuBoostModeForMode(mode);
-        if (CpuBoostMode != boost)
-            CpuBoostMode = boost;
-        else
-        {
-            _lastCpuBoostApplySucceeded = PowerLimitController.SetCpuBoost(boost);
-            if (!_lastCpuBoostApplySucceeded)
-                DiagnosticMessage = "Could not apply CPU boost.";
-        }
+        CpuBoostMode = boost;
+        _lastCpuBoostApplySucceeded = PowerLimitController.SetCpuBoost(boost);
+        if (!_lastCpuBoostApplySucceeded) DiagnosticMessage = "Could not apply CPU boost.";
         return _lastCpuBoostApplySucceeded;
+    }
+
+    private async System.Threading.Tasks.Task<bool> ApplyCpuBoostForModeAsync(byte mode)
+    {
+        int boost = CpuBoostModeForMode(mode);
+        CpuBoostMode = boost;
+        bool applied = await System.Threading.Tasks.Task.Run(() => PowerLimitController.SetCpuBoost(boost));
+        _lastCpuBoostApplySucceeded = applied;
+        if (!applied) DiagnosticMessage = "Could not apply CPU boost.";
+        return applied;
     }
 
     public int TauForMode(byte mode) => Math.Clamp(mode switch

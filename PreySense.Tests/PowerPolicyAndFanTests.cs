@@ -133,7 +133,7 @@ namespace PreySense.Tests
             Assert.Contains("x:Name=\"CurveEditor\"", fanWindowXaml);
             Assert.Contains("WpfFanCurveControl", fanWindowXaml);
 
-            Assert.Contains("CurveEditor.IsEnabled = isCustom;", fanWindowCs);
+            Assert.Contains("CurveEditor.IsEnabled = isCustom && !_applying;", fanWindowCs);
             Assert.Contains("CurveEditor.Opacity = isCustom ? 1.0 : 0.45;", fanWindowCs);
             Assert.Contains("FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
         }
@@ -146,7 +146,7 @@ namespace PreySense.Tests
 
             // Reset creates default EC stages, updates draft, persists and applies
             Assert.Contains("var defaultProfile = FanCurveProfile.CreateDefault(_mode);", fanWindowCs);
-            Assert.Contains("Vm.SaveFanProfile(_mode, defaultProfile);", fanWindowCs);
+            Assert.Contains("await SaveProfileAsync(Vm, _mode, defaultProfile);", fanWindowCs);
             Assert.Contains("await Vm.ApplyFanProfileAsync();", fanWindowCs);
 
             var def = FanCurveProfile.CreateDefault(1);

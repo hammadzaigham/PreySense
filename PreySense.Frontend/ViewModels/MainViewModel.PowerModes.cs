@@ -12,6 +12,8 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel
     {
+        private readonly Services.LatestBackgroundWorker<bool> _energySaverWorker =
+            new(PowerLimitController.SetEnergySaverOnBattery, (_, latest) => latest);
         private const int ModeSwitchDebounceMilliseconds = 1000;
         private readonly object _modeSwitchDebounceLock = new();
         private readonly SemaphoreSlim _modeSwitchGate = new(1, 1);
@@ -170,7 +172,8 @@ namespace PreySense.Frontend.ViewModels
                 catch (Exception ex)
                 {
                     DiagnosticMessage = $"Could not apply automatic tuning: {ex.Message}";
-                    if (_hw.TryGetPowerMode(out byte actual)) ActivePowerMode = actual;
+                    var actual = await Task.Run(() => _hw.TryGetPowerMode(out byte current) ? (byte?)current : null);
+                    if (actual.HasValue) ActivePowerMode = actual.Value;
                     UpdateModeName(ActivePowerMode);
                     NotifyModeSelectionsChanged();
                     return;
@@ -183,7 +186,7 @@ namespace PreySense.Frontend.ViewModels
                 if (!changed) { DiagnosticMessage = "Could not switch Acer mode."; return; }
             }
             ActivePowerMode = mode;
-            if (!ApplyCpuBoostForMode(mode))
+            if (!await ApplyCpuBoostForModeAsync(mode))
                 DiagnosticMessage = "Mode selected, but CPU boost failed.";
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
@@ -268,7 +271,7 @@ namespace PreySense.Frontend.ViewModels
                 return;
 
             PersistSessionSettings();
-            PowerLimitController.SetEnergySaverOnBattery(value);
+            _ = _energySaverWorker.Submit(value);
         }
 
         private void NotifyModeSelectionsChanged()
@@ -290,18 +293,19 @@ namespace PreySense.Frontend.ViewModels
         }
 
         [RelayCommand]
-        public void SetCpuBoost(string boostModeStr)
+        public async Task SetCpuBoostAsync(string boostModeStr)
         {
             if (!int.TryParse(boostModeStr, out int boostVal))
                 return;
-            int index = ActivePowerMode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 };
+            byte mode = ActivePowerMode;
+            int index = mode switch { 0x06 => 0, 0x00 => 1, 0x04 => 3, 0x05 => 4, _ => 2 };
             int boost = Math.Clamp(boostVal, 0, 6);
             SetCpuBoostForModeIndex(index, boost);
             try
             {
                 TuningStore.Update(cfg =>
                 {
-                    var profile = ActivePowerMode switch
+                    var profile = mode switch
                     {
                         0 => cfg.Tuning.Quiet,
                         1 => cfg.Tuning.Balanced,
@@ -315,7 +319,13 @@ namespace PreySense.Frontend.ViewModels
                 });
             }
             catch { }
-            ApplyCpuBoostForMode(ActivePowerMode);
+            await _modeSwitchGate.WaitAsync();
+            try
+            {
+                if (!_disposed && ActivePowerMode == mode)
+                    await ApplyCpuBoostForModeAsync(mode);
+            }
+            finally { _modeSwitchGate.Release(); }
         }
 
         internal static string GetCpuBoostModeName(int boostMode) =>
@@ -325,10 +335,7 @@ namespace PreySense.Frontend.ViewModels
         {
             int boost = Math.Clamp(value, 0, 6);
             CpuBoostModeName = GetCpuBoostModeName(boost);
-            bool applied = PowerLimitController.SetCpuBoost(boost);
-            _lastCpuBoostApplySucceeded = applied;
-            DiagnosticMessage = applied ? $"CPU Boost set to: {CpuBoostModeName}"
-                : "Could not apply CPU boost.";
+
         }
     }
 }

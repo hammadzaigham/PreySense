@@ -68,6 +68,7 @@ namespace PreySense.Frontend.ViewModels
 
         public void RefreshLocalizedText()
         {
+            OnPropertyChanged(nameof(UsbChargingStatus));
             OnPropertyChanged(nameof(ProchotActivationLabel));
             OnPropertyChanged(nameof(EcoOrQuietModeName));
             UpdateModeName(ActivePowerMode);

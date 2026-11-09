@@ -54,6 +54,7 @@ namespace PreySense.Frontend.ViewModels
 
                 IsAutoRefreshRateEnabled = cfg.Display.AutoRefreshRate;
                 IsBatteryLimitEnabled = cfg.Battery.ChargeLimitEnabled;
+                _usbChargingCutoffPercent = cfg.Battery.UsbPowerOffChargingCutoffPercent;
                 IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
 
                 _suppressPowerProfile = true;
@@ -65,7 +66,6 @@ namespace PreySense.Frontend.ViewModels
 
                 IsBatteryEnergySaverEnabled = cfg.Battery.BatteryEnergySaver;
 
-                UpdatePowerSourceState(_hw.GetPowerSource());
                 _suppressPowerProfile = false;
             }
             catch (Exception ex)
@@ -243,6 +243,8 @@ namespace PreySense.Frontend.ViewModels
             RestoreFanMode();
 
             _hw.SetBatteryChargeLimit(IsBatteryLimitEnabled ? 1 : 0);
+            try { ApplyUsbChargingCutoff(_usbChargingCutoffPercent); }
+            catch (Exception ex) { failures.Add(ex.Message); }
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
             string warning = string.Join("; ", failures);
             if (failures.Count > 0) AppLogger.Log("Settings restore partial: " + warning);

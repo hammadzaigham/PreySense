@@ -626,27 +626,38 @@ namespace PreySense.Helpers
         public int GetUsbChargingLevel()
         {
             ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x04ul);
-            return status switch
+            return DecodeUsbChargingLevel(status);
+        }
+
+        internal static int DecodeUsbChargingLevel(ulong? status)
+        {
+            if (!status.HasValue) return -1;
+            // AcerControl.ps1 identifies bit 12 as disabled. Require a recognized
+            // response payload as well, so errors/unknown packets cannot mean Off.
+            int cutoff = (status.Value & ~0x1000ul) switch
             {
                 659200ul => 10,
                 1314560ul => 20,
                 1969920ul => 30,
                 _ => -1
             };
+            return cutoff < 0 ? -1 : (status.Value & 0x1000ul) != 0 ? 0 : cutoff;
         }
+
+        internal static ulong EncodeUsbChargingLevel(int percent) => percent switch
+        {
+            0 => 663300ul, // 0xA1F04
+            10 => 659204ul, // 0xA0F04
+            20 => 1314564ul, // 0x140F04
+            30 => 1969924ul, // 0x1E0F04
+            _ => throw new ArgumentOutOfRangeException(nameof(percent))
+        };
 
         public void SetUsbChargingLevel(int percent)
         {
-            ulong val = percent switch
-            {
-                10 => 659204ul, // 0xA0F04
-                20 => 1314564ul, // 0x140F04
-                30 => 1969924ul, // 0x1E0F04
-                _ => 663300ul   // 0xA1F04 (off)
-            };
-            if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, val).HasValue)
-                throw new InvalidOperationException("Acer firmware setting could not be applied.");
-            AppLogger.Log($"USB power-off charging level: {percent}%");
+            if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, EncodeUsbChargingLevel(percent)).HasValue)
+                throw new InvalidOperationException("USB power-off charging: N/A.");
+            AppLogger.Log($"USB power-off charging cutoff: {percent}%");
         }
 
         public int GetBatteryMode()

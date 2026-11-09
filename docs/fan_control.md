@@ -10,18 +10,30 @@ to Auto or Max preserves its saved points. New modes default to Auto.
 Save persists drafts; Apply also activates the selected performance mode. Fan
 settings follow performance-mode change events. Custom control uses the shared
 one-second temperature loop. Opening Fans again activates the existing window.
-The old global FanMode preference no longer controls the runtime. Legacy
-profile switches migrate to the new selection, respecting a saved global Auto
-override; an explicit new per-mode selection takes priority over legacy keys.
+Only current-schema configuration is loaded; v1 files are not migrated.
 
-Custom mode follows EC-style **stages** (12 gears), not a 5°C percentage grid.
-Each stage has CPU/GPU rise and fall thresholds (°C) and CPU/GPU target RPM.
-Rising on either sensor advances to the next stage; falling retreats when both
-sensors clear their fall thresholds (`127` disables that trip). Rise/fall is the
-only hysteresis; there is no extra stage-change delay. Duties sent to WMI are
-`RPM / 6400` for both fans (measured Max ≈ 6250/6380). If the GPU is asleep, its temperature
-is treated as 0°C for trips. Opening the editor requests no telemetry.
-There is no separate immediate or emergency cooling override.
+Custom mode follows EC-style stages, with at most 12 runtime slots. Each stage
+stores separate CPU/GPU exit temperatures and duty percentages. Reaching either
+exit temperature advances to the next stage. Both sensors must fall below the
+previous stage's exit temperatures to retreat. The shared Fan Control Delay
+(0–5 seconds) applies to changes in either direction.
+
+`127` is the EC disabled-transition sentinel, not an actual target temperature.
+A stage with both temperatures set to `127` is the terminal plateau: its duty
+still runs, but no hotter stage can be reached. Older files stored all 12 EC
+slots, including unreachable filler plateaus and the unused final max-RPM slot.
+JSON now stores only the reachable stages, including the terminal plateau.
+Loading expands them to 12 runtime slots with disabled tail transitions; no
+reachable duty or threshold is removed. Custom writes send only the evaluated
+duty percentages through Acer WMI, not the EC stage array.
+
+The graph plots the duty entered at each temperature transition for the selected
+sensor and continues flat at the last reachable duty. CPU and GPU tabs can have
+different point counts because a disabled CPU trip may still have an active GPU
+trip. Viewing or switching tabs does not rewrite the curve. The follower commands
+both fans at the higher of the stage's two saved duties. Missing GPU temperature
+leaves CPU alone to drive transitions; missing CPU temperature skips the update.
+Opening the editor requests no telemetry. There is no separate emergency override.
 
 The main window requests no telemetry. The visible overlay requests only its
 selected metrics. Custom mode reads only temperatures to follow the curve,
@@ -39,8 +51,9 @@ applied again or the mode changes; it does not switch to Auto or retry every fiv
 seconds. Exiting the app still releases software fan control to firmware Auto.
 There is no periodic fan-PWM keepalive.
 
-The editor uses percentages only. Estimated RPM editing and its scaling logic
-have been removed. Actual RPM telemetry elsewhere in the app is unchanged.
+The editor supports duty percentages and estimated RPM (`duty × 6400 / 100`).
+These are command estimates, not RPM feedback. Actual RPM telemetry elsewhere
+in the app is unchanged.
 
 ## Audio latency considerations
 
@@ -59,7 +72,7 @@ audio workload in firmware Auto and Custom, with an interrupt/scheduling trace,
 is needed on an affected machine before claiming an audio fix. See Microsoft's
 [audio latency explanation](https://microsoft.github.io/MIDI/kb/dpc-latency/).
 
-## v1.4 compatibility
+## JSON storage
 
 Per-mode fan curves persist under `Fans.{Quiet|Eco|Balanced|Performance|Turbo}` in
 `preysense.json` as `ControlMode`, `RampUpSeconds`, and `Stages` of

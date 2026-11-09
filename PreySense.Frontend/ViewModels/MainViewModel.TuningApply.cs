@@ -128,7 +128,7 @@ public partial class MainViewModel
             if (!prochot.TrySetOffset(offset, out string prochotStatus))
                 return new(false, prochotStatus);
         }
-        return new(true, "Applied successfully.");
+        return new(true, "Applied and read back successfully.");
     }
 
     internal DriverTuningResult ApplySavedDriverTuning(byte mode)
@@ -257,10 +257,10 @@ public partial class MainViewModel
             var applied = await Task.Run(() => ExecuteDriverTuning(new(mode, pl1, pl2, tau, offsets,
                 applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits, restoreMsrToStaticFloor)));
             if (!applied.Success) throw new InvalidOperationException(applied.Status);
-            ActivePowerMode = _hw.CurrentPowerMode;
+            ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode);
             UpdateModeName(ActivePowerMode);
             NotifyModeSelectionsChanged();
-            bool boostOk = ApplyCpuBoostForMode(mode);
+            bool boostOk = await ApplyCpuBoostForModeAsync(mode);
             if (persist)
             {
                 int boost = CpuBoostModeForMode(mode);
@@ -287,7 +287,7 @@ public partial class MainViewModel
                     IsProchotOffsetEnabled = false;
             }
             DiagnosticMessage = boostOk
-                ? (persist ? "Applied and saved." : "Applied successfully.")
+                ? (persist ? "Applied and saved." : "Applied and read back successfully.")
                 : "Applied, but CPU boost failed.";
             AppLogger.Log($"[Tuning] {DiagnosticMessage}");
             return boostOk;
@@ -298,7 +298,7 @@ public partial class MainViewModel
                 ? ex.Message
                 : $"Could not apply: {ex.Message}";
             AppLogger.Error($"[Tuning] {ex}");
-            try { ActivePowerMode = _hw.CurrentPowerMode; UpdateModeName(ActivePowerMode); NotifyModeSelectionsChanged(); } catch { }
+            try { ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode); UpdateModeName(ActivePowerMode); NotifyModeSelectionsChanged(); } catch { }
             return false;
         }
         finally { IsBusy = false; _modeSwitchGate.Release(); }

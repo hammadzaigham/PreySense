@@ -178,6 +178,9 @@ namespace PreySense.Core.Configuration
                     throw new ArgumentException("FactoryStaticCpuPl1Watts/FactoryStaticCpuPl2Watts must both be valid PL1/PL2 watts.");
             }
 
+            if (config.Battery.UsbPowerOffChargingCutoffPercent is not (0 or 10 or 20 or 30))
+                throw new ArgumentOutOfRangeException(nameof(config.Battery.UsbPowerOffChargingCutoffPercent), "USB power-off charging cutoff must be 0, 10, 20 or 30 percent.");
+
             // Session validation
             if (config.Session.ActivePowerMode is not (0 or 1 or 4 or 5 or 6))
                 throw new ArgumentOutOfRangeException(nameof(config.Session.ActivePowerMode), "ActivePowerMode must be 0, 1, 4, 5, or 6.");
@@ -194,6 +197,17 @@ namespace PreySense.Core.Configuration
 
             if (config.Overlay.TextAlphaPercent is < 0 or > 100)
                 throw new ArgumentOutOfRangeException(nameof(config.Overlay.TextAlphaPercent), "Overlay text alpha must be between 0 and 100.");
+
+            foreach (string color in new[] { config.Overlay.BackgroundColorHex, config.Overlay.CpuTextColorHex,
+                config.Overlay.GpuTextColorHex, config.Overlay.CpuGraphColorHex, config.Overlay.GpuGraphColorHex })
+                if (color == null || color.Length != 7 || color[0] != '#' ||
+                    !uint.TryParse(color.AsSpan(1), System.Globalization.NumberStyles.AllowHexSpecifier,
+                        System.Globalization.CultureInfo.InvariantCulture, out _))
+                    throw new ArgumentException("Overlay colors must use #RRGGBB hexadecimal notation.");
+            if (config.Overlay.CornerRadiusPixels is < 0 or > 16)
+                throw new ArgumentOutOfRangeException(nameof(config.Overlay.CornerRadiusPixels), "Overlay corner radius must be 0-16 base pixels.");
+            if (!float.IsFinite(config.Overlay.GraphLineWidthPixels) || config.Overlay.GraphLineWidthPixels is < 0.5f or > 4f)
+                throw new ArgumentOutOfRangeException(nameof(config.Overlay.GraphLineWidthPixels), "Overlay graph line width must be 0.5-4 screen pixels.");
 
             if (config.Overlay.Slots == null)
                 config.Overlay.Slots = new System.Collections.Generic.List<OverlaySlotConfig>();

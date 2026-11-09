@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using PreySense.Frontend.Controls;
@@ -76,33 +77,32 @@ public partial class FanCurveWindow : Window
         DelayRow.ValueText = $"{seconds} s";
     }
 
-    private void RebuildVisibleStages()
+    internal static (int[] StageIndices, int[] Temperatures, int[] Duties, int LeadInDuty)
+        BuildGraph(FanStage[] stages, bool gpu)
     {
         // Reachable via this fan's rise. Disabled (127) rise stops the chain.
-        // Final EC stage is not plotted — curve continues flat at last duty.
         var candidates = new List<(int Stage, int EntryC, int Duty)>();
         var reachable = new List<int>();
-        int lastIndex = _profile.Stages.Length - 1;
-        for (int i = 0; i < _profile.Stages.Length; i++)
+        for (int i = 0; i < stages.Length; i++)
         {
-            if (i > 0 && !_profile.Stages[i - 1].HasActiveRise(_gpu))
+            if (i > 0 && !stages[i - 1].HasActiveRise(gpu))
                 break;
             reachable.Add(i);
         }
 
-        _leadInDuty = reachable.Count > 0 ? _profile.Stages[0].DutyPercent(_gpu) : 0;
+        int leadInDuty = reachable.Count > 0 ? stages[0].DutyPercent(gpu) : 0;
         for (int v = 0; v < reachable.Count; v++)
         {
             int stageIndex = reachable[v];
-            if (stageIndex == 0 || stageIndex == lastIndex)
+            if (stageIndex == 0)
                 continue;
 
-            var stage = _profile.Stages[stageIndex];
-            int duty = stage.DutyPercent(_gpu);
-            if (!_profile.Stages[stageIndex - 1].HasActiveRise(_gpu))
+            var stage = stages[stageIndex];
+            int duty = stage.DutyPercent(gpu);
+            if (!stages[stageIndex - 1].HasActiveRise(gpu))
                 continue;
             int entryC = Math.Clamp(
-                _profile.Stages[stageIndex - 1].RiseCelsius(_gpu),
+                stages[stageIndex - 1].RiseCelsius(gpu),
                 WpfFanCurveControl.MinCelsius,
                 WpfFanCurveControl.MaxCelsius);
 
@@ -114,31 +114,19 @@ public partial class FanCurveWindow : Window
             candidates.Add((stageIndex, entryC, duty));
         }
 
+        return (candidates.Select(point => point.Stage).ToArray(),
+            candidates.Select(point => point.EntryC).ToArray(),
+            candidates.Select(point => point.Duty).ToArray(), leadInDuty);
+    }
+
+    private void RebuildVisibleStages()
+    {
+        var graph = BuildGraph(_profile.Stages, _gpu);
         _visibleStageIndices.Clear();
-        _dutyValues = new int[candidates.Count];
-        _temperatureLabels = new int[candidates.Count];
-        for (int v = 0; v < candidates.Count; v++)
-        {
-            _visibleStageIndices.Add(candidates[v].Stage);
-            _dutyValues[v] = candidates[v].Duty;
-            _temperatureLabels[v] = candidates[v].EntryC;
-        }
-
-        WpfFanCurveControl.EnforceNondecreasing(_dutyValues);
-        FanStage.EnforceStrictlyIncreasing(_temperatureLabels);
-        for (int v = 0; v < _temperatureLabels.Length; v++)
-            _temperatureLabels[v] = Math.Clamp(_temperatureLabels[v], WpfFanCurveControl.MinCelsius, WpfFanCurveControl.MaxCelsius);
-
-        if (_visibleStageIndices.Count > 0)
-            FanStage.ApplyEntryTemperatures(_profile.Stages, _visibleStageIndices, _temperatureLabels, _gpu);
-
-        for (int v = 0; v < _visibleStageIndices.Count; v++)
-        {
-            int stageIndex = _visibleStageIndices[v];
-            _profile.Stages[stageIndex].SetDuty(_gpu, _dutyValues[v]);
-            _profile.Stages[stageIndex].Normalize();
-            _dutyValues[v] = _profile.Stages[stageIndex].DutyPercent(_gpu);
-        }
+        _visibleStageIndices.AddRange(graph.StageIndices);
+        _temperatureLabels = graph.Temperatures;
+        _dutyValues = graph.Duties;
+        _leadInDuty = graph.LeadInDuty;
     }
 
     private void SyncCurve()
@@ -268,21 +256,21 @@ public partial class FanCurveWindow : Window
 
     private async void FanMode_Changed(object sender, RoutedEventArgs e)
     {
-        if (_loading) return;
+        if (_loading || _applying) return;
         SaveDraft();
         UpdateEditor();
         SyncSelectedStage();
         if (Vm != null && !_applying)
         {
-            _applying = true;
+            SetApplying(true);
             try
             {
-                Vm.SaveFanProfile(_mode, _profile);
+                await SaveProfileAsync(Vm, _mode, _profile);
                 if (await EnsureModeActiveAsync(Vm))
                     await Vm.ApplyFanProfileAsync();
             }
-            catch (Exception) { }
-            finally { _applying = false; }
+            catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+            finally { SetApplying(false); }
         }
     }
 
@@ -290,7 +278,7 @@ public partial class FanCurveWindow : Window
     {
         if (CurveEditor == null) return;
         bool isCustom = CustomOption.IsChecked == true;
-        CurveEditor.IsEnabled = isCustom;
+        CurveEditor.IsEnabled = isCustom && !_applying;
         CurveEditor.Opacity = isCustom ? 1.0 : 0.45;
         if (FooterPanel != null)
             FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
@@ -298,7 +286,7 @@ public partial class FanCurveWindow : Window
 
     private async void Profile_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading || !IsLoaded || Vm == null) return;
+        if (_loading || _applying || !IsLoaded || Vm == null) return;
         int index = Array.IndexOf(Vm.FanCurveModeNames, ProfileRow.SelectedItem as string);
         if (index < 0 || Modes[index] == _mode) return;
         SaveDraft();
@@ -325,45 +313,67 @@ public partial class FanCurveWindow : Window
     private async void Reset_Click(object sender, RoutedEventArgs e)
     {
         if (Vm == null || _applying) return;
-        _applying = true;
+        SetApplying(true);
         try
         {
             var defaultProfile = FanCurveProfile.CreateDefault(_mode);
             defaultProfile.ControlMode = FanControlMode.Custom;
             _drafts[_mode] = defaultProfile;
-            Vm.SaveFanProfile(_mode, defaultProfile);
+            await SaveProfileAsync(Vm, _mode, defaultProfile);
             LoadProfile();
             if (!await EnsureModeActiveAsync(Vm)) return;
             await Vm.ApplyFanProfileAsync();
         }
-        catch (Exception) { }
-        finally { _applying = false; }
+        catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+        finally { SetApplying(false); }
     }
 
-    private void SaveAll()
+    private void SetApplying(bool applying)
     {
+        _applying = applying;
+        ProfileRow.IsEnabled = AutoOption.IsEnabled = MaxOption.IsEnabled = CustomOption.IsEnabled = !applying;
+        FooterPanel.IsEnabled = !applying;
+        UpdateEditor();
+    }
+
+    private static System.Threading.Tasks.Task SaveProfileAsync(MainViewModel vm, byte mode, FanCurveProfile profile)
+    {
+        var snapshot = profile.Copy();
+        return System.Threading.Tasks.Task.Run(() => vm.SaveFanProfile(mode, snapshot));
+    }
+
+    private async System.Threading.Tasks.Task SaveAllAsync()
+    {
+        if (Vm is not { } vm) return;
         SaveDraft();
-        foreach (var (mode, profile) in _drafts) Vm?.SaveFanProfile(mode, profile);
+        var snapshots = _drafts.Select(entry => (entry.Key, Profile: entry.Value.Copy())).ToArray();
+        await System.Threading.Tasks.Task.Run(() =>
+        {
+            foreach (var (mode, profile) in snapshots) vm.SaveFanProfile(mode, profile);
+        });
         _drafts.Clear();
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private async void Save_Click(object sender, RoutedEventArgs e)
     {
-        try { SaveAll(); }
-        catch (Exception) { }
+        if (_applying) return;
+        SetApplying(true);
+        try { await SaveAllAsync(); }
+        catch (Exception ex) { AppLogger.Error($"Fan save failed: {ex}"); }
+        finally { SetApplying(false); }
     }
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
         if (Vm == null || _applying) return;
-        _applying = true;
+        SetApplying(true);
         try
         {
-            SaveAll();
+            await SaveAllAsync();
             if (!await EnsureModeActiveAsync(Vm)) return;
             await Vm.ApplyFanProfileAsync();
         }
-        catch (Exception) { }
-        finally { _applying = false; }
+        catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+        finally { SetApplying(false); }
     }
 }

@@ -212,8 +212,8 @@ namespace PreySense.Tests
             Assert.Contains("SliderTextOpacity_ValueChanged", cs);
             Assert.Contains("overlay_text_alpha", cs);
 
-            // Overlay reads overlay_text_alpha and snaps scale to 5% increments
-            Assert.Contains("overlay_text_alpha", overlayCs);
+            // Overlay reads the shared text opacity preference and snaps scale to 5% increments
+            Assert.Contains("config.TextAlphaPercent * 2.55", overlayCs);
             Assert.Contains("Math.Round(next / 5.0) * 5", overlayCs);
             Assert.Contains("ScaleStepPercent = 5", overlayCs);
             Assert.DoesNotContain("Math.Round(next / 25.0) * 25", overlayCs);

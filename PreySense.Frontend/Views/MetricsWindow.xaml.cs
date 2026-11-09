@@ -168,7 +168,7 @@ namespace PreySense.Frontend.Views
 			{
 				Margin = new Thickness(0.0, 3.0, 0.0, 3.0)
 			};
-			grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
+			grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
 			grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 			grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 			grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -185,7 +185,7 @@ namespace PreySense.Frontend.Views
 			{
 				ItemsSource = CpuChoices,
 				SelectedItem = CpuChoices.FirstOrDefault(choice => choice.Id == slot.CpuMetric) ?? CpuChoices[0],
-				Width = 160.0,
+				Width = 180.0,
 				Height = 28.0,
 				Margin = new Thickness(0.0, 0.0, 6.0, 0.0),
 				FontSize = controlFontSize
@@ -194,7 +194,7 @@ namespace PreySense.Frontend.Views
 			{
 				ItemsSource = GpuChoices,
 				SelectedItem = GpuChoices.FirstOrDefault(choice => choice.Id == slot.GpuMetric) ?? GpuChoices[0],
-				Width = 160.0,
+				Width = 180.0,
 				Height = 28.0,
 				Margin = new Thickness(0.0),
 				FontSize = controlFontSize

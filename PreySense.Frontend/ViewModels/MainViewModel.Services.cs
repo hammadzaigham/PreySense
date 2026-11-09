@@ -23,6 +23,19 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private bool _isRunOnStartupEnabled = false;
         [ObservableProperty] private bool _isBootSoundEnabled = false;
 
+        private int _startupPreferenceRevision;
+
+        private async Task InitializeStartupPreferenceAsync()
+        {
+            try
+            {
+                int revision = _startupPreferenceRevision;
+                bool enabled = await Task.Run(StartupTaskService.IsStartupEnabled);
+                if (!_disposed && revision == _startupPreferenceRevision) IsRunOnStartupEnabled = enabled;
+            }
+            catch (Exception ex) { AppLogger.Error($"Startup preference read failed: {ex}"); }
+        }
+
         [RelayCommand]
         public async Task ToggleAcerServicesDebloaterAsync()
         {
@@ -56,18 +69,27 @@ namespace PreySense.Frontend.ViewModels
         }
 
         [RelayCommand]
-        public void ToggleRunOnStartup()
+        public async Task ToggleRunOnStartupAsync()
         {
+            if (_disposed) return;
+            _startupPreferenceRevision++;
             try
             {
-                bool success = StartupTaskService.SetStartupEnabled(IsRunOnStartupEnabled);
+                bool enable = IsRunOnStartupEnabled;
+                var result = await Task.Run(() =>
+                {
+                    bool success = StartupTaskService.SetStartupEnabled(enable);
+                    return (success, enabled: success ? enable : StartupTaskService.IsStartupEnabled());
+                });
+                if (_disposed) return;
+                bool success = result.success;
                 if (success)
                 {
-                    DiagnosticMessage = IsRunOnStartupEnabled ? "Run on Startup: Enabled (Elevated Task)" : "Run on Startup: Disabled";
+                    DiagnosticMessage = enable ? "Run on Startup: Enabled (Elevated Task)" : "Run on Startup: Disabled";
                 }
                 else
                 {
-                    IsRunOnStartupEnabled = StartupTaskService.IsStartupEnabled();
+                    IsRunOnStartupEnabled = result.enabled;
                     DiagnosticMessage = "Startup config failed: check permissions";
                 }
             }
@@ -80,19 +102,32 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task ToggleBootSoundAsync()
         {
-            IsBootSoundEnabled = !IsBootSoundEnabled;
-            await Task.Run(() => _hw.SetBootSound(IsBootSoundEnabled));
-            DiagnosticMessage = IsBootSoundEnabled ? "Predator Boot Sound & Animation: Enabled" : "Predator Boot Sound: Muted";
+            if (_disposed) return;
+            bool enabled = !IsBootSoundEnabled;
+            try
+            {
+                await Task.Run(() => _hw.SetBootSound(enabled));
+                if (_disposed) return;
+                IsBootSoundEnabled = enabled;
+                DiagnosticMessage = enabled ? "Predator Boot Sound & Animation: Enabled" : "Predator Boot Sound: Muted";
+            }
+            catch (Exception ex) { DiagnosticMessage = $"Boot sound update failed: {ex.Message}"; }
         }
 
         [RelayCommand]
         public async Task ToggleBatteryLimitAsync()
         {
-            IsBatteryLimitEnabled = !IsBatteryLimitEnabled;
-            int limitMode = IsBatteryLimitEnabled ? 1 : 0;
-            BatteryLimitPercent = IsBatteryLimitEnabled ? 80 : 100;
-            await Task.Run(() => _hw.SetBatteryChargeLimit(limitMode));
-            DiagnosticMessage = IsBatteryLimitEnabled ? "Battery Care Limit Active (80%)" : "Battery Charge Limit Disabled (100%)";
+            if (_disposed) return;
+            bool enabled = !IsBatteryLimitEnabled;
+            try
+            {
+                await Task.Run(() => _hw.SetBatteryChargeLimit(enabled ? 1 : 0));
+                if (_disposed) return;
+                IsBatteryLimitEnabled = enabled;
+                BatteryLimitPercent = enabled ? 80 : 100;
+                DiagnosticMessage = enabled ? "Battery Care Limit Active (80%)" : "Battery Charge Limit Disabled (100%)";
+            }
+            catch (Exception ex) { DiagnosticMessage = $"Battery limit update failed: {ex.Message}"; }
         }
 
         [RelayCommand]
@@ -106,11 +141,17 @@ namespace PreySense.Frontend.ViewModels
                 _ => 80
             };
 
-            BatteryLimitPercent = percent;
+            if (_disposed) return;
             bool enable = percent <= 80;
-            IsBatteryLimitEnabled = enable;
-            await Task.Run(() => _hw.SetBatteryChargeLimit(enable ? 1 : 0));
-            DiagnosticMessage = enable ? $"Battery Care Limit: {percent}% (Preserving Health)" : "Battery Charge Limit: 100% (Full Capacity)";
+            try
+            {
+                await Task.Run(() => _hw.SetBatteryChargeLimit(enable ? 1 : 0));
+                if (_disposed) return;
+                BatteryLimitPercent = percent;
+                IsBatteryLimitEnabled = enable;
+                DiagnosticMessage = enable ? $"Battery Care Limit: {percent}% (Preserving Health)" : "Battery Charge Limit: 100% (Full Capacity)";
+            }
+            catch (Exception ex) { DiagnosticMessage = $"Battery limit update failed: {ex.Message}"; }
         }
 
     }

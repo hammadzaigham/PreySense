@@ -4,6 +4,12 @@ Both surfaces use the **ENEK5130** HID controller. ACPI-WMI has no verified RGB 
 
 ---
 
+## Applying changes
+
+The editor captures lighting values on the UI dispatcher. HID writes, effect transitions and JSON saves run on one background worker. Rapid edits replace the pending snapshot while preserving whether keyboard or cover changes still need applying; they do not queue a long series of obsolete writes. Software-effect cover frames use the same worker and do not save the JSON on every frame. Hardware errors go to `debug.log`.
+
+Shutdown drains the final lighting save and waits for active writes before closing the device. This wait is limited to shutdown; interactive handlers do not wait synchronously for the hardware.
+
 ## Device
 
 | | |

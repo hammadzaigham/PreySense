@@ -431,7 +431,7 @@ namespace PreySense.Frontend.Views
                 vm.IsProchotOffsetEnabled = false;
                 LoadModeData();
                 string message = verified
-                    ? Services.LocalizationService.Translate("Applied successfully.")
+                    ? Services.LocalizationService.Translate("Applied and read back successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
                         ? Services.LocalizationService.Translate("Could not apply.")
                         : vm.DiagnosticMessage);
@@ -512,7 +512,7 @@ namespace PreySense.Frontend.Views
                     ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, applyProchot,
                     Draft.ApplyCpuLimits, Draft.ApplyGpuLimits);
                 string message = verified
-                    ? Services.LocalizationService.Translate("Applied successfully.")
+                    ? Services.LocalizationService.Translate("Applied and read back successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
                         ? Services.LocalizationService.Translate("Could not apply.")
                         : vm.DiagnosticMessage);

@@ -33,7 +33,7 @@ public class LocalizationTests
             foreach (object choice in choices)
                 labels.Add((string)choice.GetType().GetProperty("Label")!.GetValue(choice)!);
         }
-        labels.UnionWith(new[] { "Run on Startup", "Slot #{0}", "Include PROCHOT offset", "Applied successfully.", "Could not apply." });
+        labels.UnionWith(new[] { "Run on Startup", "Slot #{0}", "Include PROCHOT offset", "Applied and read back successfully.", "Could not apply." });
         foreach (string language in new[] { "zh-CN", "hi-IN", "es-ES", "fr-FR" })
         {
             var table = UiText.For(language)!;

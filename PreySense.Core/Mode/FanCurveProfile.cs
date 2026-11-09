@@ -41,11 +41,7 @@ public sealed class FanCurveProfile
     {
         RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
         if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
-        if (Stages is not { Length: StageCount })
-            Stages = DefaultStages(1);
-        else
-            foreach (var stage in Stages)
-                stage.Normalize();
+        Stages = NormalizeStages(Stages, 1);
     }
 
     public void Normalize(byte mode)
@@ -58,11 +54,20 @@ public sealed class FanCurveProfile
     private static FanStage[] NormalizeStages(FanStage[]? source, byte mode)
     {
         var result = DefaultStages(mode);
-        if (source == null) return result;
+        if (source is not { Length: > 0 }) return result;
         for (int i = 0; i < StageCount && i < source.Length; i++)
         {
             result[i] = source[i]?.Copy() ?? result[i];
             result[i].Normalize();
+        }
+        // Compact storage ends at a terminal plateau. Never restore factory trips
+        // into its omitted tail: a hand-edited shorter curve must stay terminal.
+        if (source.Length < StageCount)
+        {
+            var terminal = result[source.Length - 1];
+            terminal.CpuRiseC = terminal.GpuRiseC = FanStage.DisabledTripCelsius;
+            terminal.Normalize();
+            for (int i = source.Length; i < StageCount; i++) result[i] = terminal.Copy();
         }
         return result;
     }
@@ -167,15 +172,12 @@ public static class FanCurveStorage
             var fanMode = GetModeFanConfig(cfg, mode);
             profile.ControlMode = (FanControlMode)Math.Clamp(fanMode.ControlMode, 0, 2);
             profile.RampUpSeconds = Math.Clamp(fanMode.RampUpSeconds, 0, 5);
-            if (fanMode.Stages is { Length: FanCurveProfile.StageCount })
-            {
-                for (int i = 0; i < FanCurveProfile.StageCount; i++)
+            if (fanMode.Stages is { Length: > 0 } stages)
+                profile.Stages = stages.Select(stage => stage?.ToFanStage() ?? new FanStage
                 {
-                    var s = fanMode.Stages[i];
-                    if (s == null) continue;
-                    profile.Stages[i] = s.ToFanStage();
-                }
-            }
+                    CpuRiseC = FanStage.DisabledTripCelsius,
+                    GpuRiseC = FanStage.DisabledTripCelsius
+                }).ToArray();
         }
         catch { }
         profile.Normalize(mode);
@@ -201,9 +203,8 @@ public static class FanCurveStorage
                 var fanMode = GetModeFanConfig(cfg, mode);
                 fanMode.ControlMode = (int)saved.ControlMode;
                 fanMode.RampUpSeconds = saved.RampUpSeconds;
-                fanMode.Stages = new PreySense.Core.Configuration.FanStageConfig[FanCurveProfile.StageCount];
-                for (int i = 0; i < FanCurveProfile.StageCount; i++)
-                    fanMode.Stages[i] = new PreySense.Core.Configuration.FanStageConfig(saved.Stages[i]);
+                fanMode.Stages = saved.Stages.Select(stage =>
+                    new PreySense.Core.Configuration.FanStageConfig(stage)).ToArray();
             });
         }
         catch { }

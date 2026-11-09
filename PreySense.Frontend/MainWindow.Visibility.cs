@@ -17,7 +17,7 @@ public partial class MainWindow
             long revision = _visibilitySession.BeginRestore();
             try
             {
-                ShowInTaskbar = false;
+                ShowInTaskbar = true;
                 Topmost = true;
                 if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
                 if (!IsVisible) Show();

@@ -65,6 +65,28 @@
                                                       OffText="100%"
                                                       SwitchWidth="92"
                                                       Command="{Binding ToggleBatteryLimitCommand}"/>
+                            <controls:SettingSliderRow x:Name="UsbChargingSlider" Title="USB Power-Off Charging"
+                                                       Minimum="0" Maximum="30" SmallChange="10" LargeChange="10"
+                                                       TickFrequency="10" IsSnapToTickEnabled="True"
+                                                       Value="{Binding UsbChargingCutoffPercent, Mode=OneWay}"
+                                                       ValueChanged="UsbCharging_ValueChanged"
+                                                       PreviewMouseLeftButtonUp="UsbCharging_MouseReleased"
+                                                       LostMouseCapture="UsbCharging_MouseCaptureLost"
+                                                       PreviewKeyUp="UsbCharging_KeyReleased"
+                                                       IsEnabled="{Binding CanChangeUsbCharging}"
+                                                       Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding UsbChargingStatus}" TextWrapping="Wrap" Margin="0,2,0,4"
+                                       Foreground="{DynamicResource TextSecondaryBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding UsbChargingStatus}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
 

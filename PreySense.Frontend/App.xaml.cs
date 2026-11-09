@@ -15,37 +15,48 @@ namespace PreySense.Frontend
         private static EventWaitHandle? _showAppEvent;
         private static Thread? _showAppThread;
 
+        public App()
+        {
+            // Install before InitializeComponent/OnStartup can load resources or configuration.
+            DispatcherUnhandledException += (_, args) =>
+            {
+                args.Handled = true;
+                ShowStartupFailure(args.Exception);
+                Shutdown(1);
+            };
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+                Services.StartupDiagnostics.CreateReport(args.ExceptionObject as Exception
+                    ?? new Exception(args.ExceptionObject?.ToString() ?? "Unknown application failure."));
+        }
+
         protected override void OnStartup(StartupEventArgs e)
         {
+            try { StartApplication(e); }
+            catch (Exception ex)
+            {
+                ShowStartupFailure(ex);
+                Shutdown(1);
+            }
+        }
+
+        private bool _failureReported;
+        private void ShowStartupFailure(Exception exception)
+        {
+            if (_failureReported) return;
+            _failureReported = true;
+            string report = Services.StartupDiagnostics.CreateReport(exception);
+            try { MessageBox.Show(report, "PreySense could not start", MessageBoxButton.OK, MessageBoxImage.Error); }
+            catch { /* Logging must still work when Windows cannot display a dialog. */ }
+        }
+
+        private void StartApplication(StartupEventArgs e)
+        {
             base.OnStartup(e);
-
             Services.LocalizationService.Initialize();
-
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
-
             Deactivated += (_, _) =>
             {
                 if (MainWindow is MainWindow mainWindow) mainWindow.QueueAutoHide();
-            };
-
-            // Global crash exception logging
-            DispatcherUnhandledException += (s, args) =>
-            {
-                try
-                {
-                    var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
-                    File.WriteAllText(logPath, args.Exception.ToString());
-                }
-                catch { }
-            };
-            AppDomain.CurrentDomain.UnhandledException += (s, args) =>
-            {
-                try
-                {
-                    var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_domain.log");
-                    File.WriteAllText(logPath, args.ExceptionObject?.ToString());
-                }
-                catch { }
             };
 
             // Single instance Mutex check

@@ -374,7 +374,7 @@ namespace PreySense.Frontend.ViewModels
         {
             if (IsBiosDiscreteGpuActive || IsGpuIgpuOnlyActive)
                 return;
-            if (!ConfirmGpuBatterySwitchIfNeeded())
+            if (!await ConfirmGpuBatterySwitchIfNeededAsync())
                 return;
 
             if (System.Threading.Interlocked.CompareExchange(ref _gpuSwitchInProgress, 1, 0) != 0) return;
@@ -417,11 +417,11 @@ namespace PreySense.Frontend.ViewModels
         /// <summary>
         /// Shows CustomModalDialog when user-facing processes still hold the dGPU.
         /// </summary>
-        private bool ConfirmGpuBatterySwitchIfNeeded()
+        private async Task<bool> ConfirmGpuBatterySwitchIfNeededAsync()
         {
             try
             {
-                var processes = _hw.GetActiveGpuProcesses();
+                var processes = await Task.Run(() => _hw.GetActiveGpuProcesses());
                 if (processes.Count == 0)
                     return true;
 

@@ -72,6 +72,9 @@ namespace PreySense.Core.Configuration
 
     public sealed class BatteryConfig
     {
+        /// <summary>Power-off USB charging battery cutoff: 0 disables; 10, 20 or 30 percent.</summary>
+        public int UsbPowerOffChargingCutoffPercent { get; set; } = 0;
+
         /// <summary>80% battery charge limiter enabled.</summary>
         public bool ChargeLimitEnabled { get; set; } = true;
 
@@ -329,8 +332,28 @@ namespace PreySense.Core.Configuration
         /// <summary>Shared delay before accepting a stage change (0-5s).</summary>
         public int RampUpSeconds { get; set; } = 2;
 
-        /// <summary>EC-style stages (12): CpuTempC, GpuTempC, CpuDutyPercent, GpuDutyPercent.</summary>
-        public FanStageConfig[]? Stages { get; set; }
+        private FanStageConfig[]? _stages;
+
+        /// <summary>Reachable stages, including the terminal plateau; unused EC slots are omitted.</summary>
+        public FanStageConfig[]? Stages
+        {
+            get => _stages;
+            set
+            {
+                if (value is not { Length: > 0 }) { _stages = value; return; }
+                int count = Math.Min(value.Length, FanCurveProfile.StageCount);
+                for (int i = 0; i < count - 1; i++)
+                {
+                    var stage = value[i]?.ToFanStage();
+                    if (stage is not null && !stage.HasActiveRise(false) && !stage.HasActiveRise(true))
+                    {
+                        count = i + 1;
+                        break;
+                    }
+                }
+                _stages = value.Length == count ? value : value[..count];
+            }
+        }
 
         public static ModeFanCurveConfig CreateDefaultQuiet() => FromProfile(FanCurveProfile.CreateDefault(0));
         public static ModeFanCurveConfig CreateDefaultEco() => FromProfile(FanCurveProfile.CreateDefault(6));
@@ -396,6 +419,18 @@ namespace PreySense.Core.Configuration
         /// <summary>Text opacity percent (0-100%).</summary>
         [JsonPropertyName("TextOpacityPercent")]
         public int TextAlphaPercent { get; set; } = 100;
+
+        // Advanced appearance settings are intentionally JSON-only.
+        public string BackgroundColorHex { get; set; } = "#000000";
+        public string CpuTextColorHex { get; set; } = "#FFFFFF";
+        public string GpuTextColorHex { get; set; } = "#FFFFFF";
+        public string CpuGraphColorHex { get; set; } = "#2C7CB4";
+        public string GpuGraphColorHex { get; set; } = "#3AAA54";
+        /// <summary>Corner radius in base overlay pixels, scaled with ScalePercent.</summary>
+        public int CornerRadiusPixels { get; set; } = 6;
+        /// <summary>Graph stroke width in screen pixels.</summary>
+        public float GraphLineWidthPixels { get; set; } = 1.5f;
+        public bool ShowBackgroundShading { get; set; } = false;
 
         /// <summary>Horizontal position preset ('Left', 'Center', 'Right').</summary>
         public string PositionHorizontal { get; set; } = "Left";

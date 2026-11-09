@@ -47,7 +47,7 @@ namespace PreySense.Overlay
             }
 
             var graphicsState = graphics.Save();
-            graphics.SetClip(new RectangleF(x, y, width, height));
+            graphics.SetClip(new RectangleF(x, y, width, height), CombineMode.Intersect);
 
             void DrawSeries(float[] history, PointF[] points, SolidBrush brush, Pen pen)
             {

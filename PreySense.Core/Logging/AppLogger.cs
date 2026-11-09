@@ -4,7 +4,7 @@ namespace PreySense
 {
     public static class AppLogger
     {
-        private static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug.log");
+        public static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug.log");
         private static readonly object LockObj = new();
         private static StreamWriter? _writer;
 

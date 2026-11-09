@@ -126,6 +126,8 @@ namespace PreySense.Frontend.ViewModels
         public MainViewModel(IHardwareService hw)
         {
             _hw = hw;
+            _lightingWorker = new(ApplyLightingRequest,
+                (pending, latest) => latest with { Work = pending.Work | latest.Work });
             _isLightTheme = ThemeManager.LoadAndApply();
             AttachSessionLifecycleHooks();
 
@@ -144,11 +146,7 @@ namespace PreySense.Frontend.ViewModels
 
             UpdateFanDemand();
 
-            try
-            {
-                IsRunOnStartupEnabled = StartupTaskService.IsStartupEnabled();
-            }
-            catch { }
+            _ = InitializeStartupPreferenceAsync();
 
             try
             {
@@ -317,7 +315,8 @@ namespace PreySense.Frontend.ViewModels
             {
                 if (_disposed) return;
                 if (IsBusy || _isRestoringSession || _modeSwitchGate.CurrentCount == 0) return;
-                if (!_hw.TryGetPowerMode(out byte confirmedMode) || confirmedMode != mode) return;
+                bool confirmed = await Task.Run(() => _hw.TryGetPowerMode(out byte actual) && actual == mode);
+                if (!confirmed || _disposed || IsBusy || _isRestoringSession || _modeSwitchGate.CurrentCount == 0) return;
                 // PreySense owns the chassis Mode / Turbo key. Ignore OEM firmware
                 // echoes while a local cycle is pending or just queued.
                 if (IsModeSelectionPending()
@@ -331,7 +330,7 @@ namespace PreySense.Frontend.ViewModels
                     return;
                 }
                 ActivePowerMode = mode;
-                ApplyCpuBoostForMode(mode);
+                await ApplyCpuBoostForModeAsync(mode);
                 UpdateModeName(mode);
                 NotifyModeSelectionsChanged();
                 PersistSessionSettings();
@@ -361,6 +360,11 @@ namespace PreySense.Frontend.ViewModels
         public void Dispose()
         {
             if (_disposed) return;
+            // Capture the last edit, including changes still inside the debounce window.
+            // Only explicit shutdown waits: the worker never awaits the dispatcher.
+            _lightingDebouncer.Cancel();
+            _ = QueueLighting(LightingWork.Save);
+            _lightingWorker.StopAsync(drainPending: true).GetAwaiter().GetResult();
             _disposed = true;
             _applicationReady.TrySetResult();
             DisposeFanTelemetry();
@@ -379,6 +383,7 @@ namespace PreySense.Frontend.ViewModels
             CancelPendingModeSwitch();
             _modeSwitchGate.Dispose();
             _lightingDebouncer.Dispose();
+            _energySaverWorker.StopAsync().GetAwaiter().GetResult();
             if (_coverSyncFrameHooked && _hw is ProductionHardwareService hooked)
             {
                 hooked.LightingEngine.FrameUpdated -= OnLightingEngineFrameUpdated;

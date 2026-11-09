@@ -25,11 +25,6 @@ public partial class MainViewModel
         {
             lock (_fanControlGate)
             {
-                if (_runningFanProfile == null && _hw.TryGetPowerMode(out byte mode))
-                {
-                    _runningFanProfile = FanCurveStorage.Load(mode);
-                    _runningFanProfileMode = mode;
-                }
                 return !_fanWriteFailed && _runningFanProfile?.ControlMode == FanControlMode.Custom;
             }
         }
