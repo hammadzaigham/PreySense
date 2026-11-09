@@ -58,7 +58,6 @@ namespace PreySense.Frontend.Services
                   <Triggers>
                     <LogonTrigger>
                       <Enabled>true</Enabled>
-                      <UserId>{user}</UserId>
                     </LogonTrigger>
                   </Triggers>
                   <Actions Context="Author">
@@ -136,9 +135,22 @@ namespace PreySense.Frontend.Services
                 {
                     File.WriteAllText(path, BuildLogonTaskXml(exe, user), Encoding.Unicode);
                     var result = run($"/Create /F /TN \"{TaskName}\" /XML \"{path}\"");
-                    if (result.ExitCode == 0 && TryRead(out string saved) && MatchesTaskXml(saved, exe, user)) return true;
-                    AppLogger.Error($"Startup task registration/readback failed: {result.Output}");
-                    return false;
+                    if (result.ExitCode != 0)
+                    {
+                        AppLogger.Error($"Startup task registration failed: {result.Output}");
+                        return false;
+                    }
+                    if (!TryRead(out string saved))
+                    {
+                        AppLogger.Error("Startup task was created but could not be queried back.");
+                        return false;
+                    }
+                    if (!MatchesTaskXml(saved, exe, user))
+                    {
+                        AppLogger.Error("Startup task was created but readback did not match the required logon policy.");
+                        return false;
+                    }
+                    return true;
                 }
                 catch (Exception ex) { AppLogger.Error($"Startup task registration failed: {ex}"); return false; }
                 finally { try { File.Delete(path); } catch { } }
@@ -153,17 +165,34 @@ namespace PreySense.Frontend.Services
                 var root = XDocument.Parse(xml).Root;
                 if (root?.Name != ns + "Task" || string.IsNullOrWhiteSpace(user)) return false;
                 var principal = root.Element(ns + "Principals")?.Element(ns + "Principal");
-                if (principal?.Element(ns + "UserId")?.Value != user) return false;
+                string? principalUser = principal?.Element(ns + "UserId")?.Value;
+                if (string.IsNullOrWhiteSpace(principalUser) || !UserIdsMatch(principalUser, user)) return false;
                 if (!Enabled(root.Element(ns + "Settings")?.Element(ns + "Enabled"))) return false;
+                // Logon trigger is intentionally unscoped (any interactive logon). Older builds may still
+                // have a per-user UserId that Task Scheduler rewrote to DOMAIN\user — accept both.
                 return root.Element(ns + "Triggers")?.Elements(ns + "LogonTrigger").Any(trigger =>
                     Enabled(trigger.Element(ns + "Enabled")) &&
-                    (string.IsNullOrWhiteSpace(trigger.Element(ns + "UserId")?.Value) ||
-                        trigger.Element(ns + "UserId")?.Value == user)) == true;
+                    UserIdsMatch(trigger.Element(ns + "UserId")?.Value, user, allowEmpty: true)) == true;
             }
             catch { return false; }
         }
 
         private static bool Enabled(XElement? element) => element == null || element.Value.Trim() is "true" or "1";
+
+        // Principal stays as the enabling account (SID). Scheduler may still rewrite older trigger UserIds.
+        internal static bool UserIdsMatch(string? actual, string expected, bool allowEmpty = false)
+        {
+            if (string.IsNullOrWhiteSpace(actual)) return allowEmpty;
+            if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) return true;
+            try
+            {
+                static string ToSid(string value) => value.StartsWith("S-", StringComparison.OrdinalIgnoreCase)
+                    ? value
+                    : ((SecurityIdentifier)new NTAccount(value).Translate(typeof(SecurityIdentifier))).Value;
+                return string.Equals(ToSid(actual), ToSid(expected), StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
 
         internal static bool MatchesTaskXml(string xml, string exe, string user)
         {
@@ -173,28 +202,39 @@ namespace PreySense.Frontend.Services
             {
                 XNamespace ns = TaskNamespace;
                 var actual = XDocument.Parse(xml).Root!;
-                var expected = XDocument.Parse(BuildLogonTaskXml(exe, user)).Root!;
-                // Compare only the policy we own; Scheduler adds harmless metadata/default fields.
-                foreach (var leaf in expected.Descendants().Where(element => !element.HasElements &&
-                    element.Parent?.Name != ns + "RegistrationInfo" && element.Name != ns + "Command"))
-                {
-                    var path = leaf.AncestorsAndSelf().Reverse().Skip(1).Select(element => element.Name).ToArray();
-                    XElement? match = actual;
-                    foreach (var name in path) match = match?.Element(name);
-                    if (!string.Equals(match?.Value, leaf.Value, leaf.Name == ns + "WorkingDirectory"
-                        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return false;
-                }
-                var triggers = actual.Element(ns + "Triggers")!;
-                var actions = actual.Element(ns + "Actions")!;
-                var principal = actual.Element(ns + "Principals")!.Element(ns + "Principal")!;
-                return triggers.Elements().Count() == 1 && actions.Elements().Count() == 1 &&
-                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "EndBoundary") == null &&
-                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "StartBoundary") == null &&
-                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "Delay") == null &&
-                    (string?)actions.Attribute("Context") == (string?)principal.Attribute("id");
+                var settings = actual.Element(ns + "Settings");
+                var principal = actual.Element(ns + "Principals")?.Element(ns + "Principal");
+                var trigger = actual.Element(ns + "Triggers")?.Element(ns + "LogonTrigger");
+                var actions = actual.Element(ns + "Actions");
+                var exec = actions?.Element(ns + "Exec");
+                string workingDirectory = Path.GetDirectoryName(exe) ?? "";
+                // Check durable policy only. Scheduler drops many default leaves and may rewrite UserId form.
+                return principal?.Element(ns + "LogonType")?.Value == "InteractiveToken" &&
+                    principal?.Element(ns + "RunLevel")?.Value == "HighestAvailable" &&
+                    ValueOrDefault(settings, ns + "DisallowStartIfOnBatteries") == "false" &&
+                    ValueOrDefault(settings, ns + "StopIfGoingOnBatteries") == "false" &&
+                    ValueOrDefault(settings, ns + "StartWhenAvailable", "true") == "true" &&
+                    ValueOrDefault(settings, ns + "ExecutionTimeLimit", "PT0S") == "PT0S" &&
+                    ValueOrDefault(settings, ns + "MultipleInstancesPolicy", "IgnoreNew") == "IgnoreNew" &&
+                    ValueOrDefault(settings, ns + "RunOnlyIfIdle", "false") == "false" &&
+                    ValueOrDefault(settings, ns + "RunOnlyIfNetworkAvailable", "false") == "false" &&
+                    ValueOrDefault(settings?.Element(ns + "IdleSettings"), ns + "StopOnIdleEnd", "false") == "false" &&
+                    ValueOrDefault(settings?.Element(ns + "IdleSettings"), ns + "RestartOnIdle", "false") == "false" &&
+                    actual.Element(ns + "Triggers")?.Elements().Count() == 1 &&
+                    actions?.Elements().Count() == 1 &&
+                    trigger?.Element(ns + "EndBoundary") == null &&
+                    trigger?.Element(ns + "StartBoundary") == null &&
+                    trigger?.Element(ns + "Delay") == null &&
+                    exec?.Element(ns + "Arguments")?.Value == "--minimized" &&
+                    string.Equals(exec?.Element(ns + "WorkingDirectory")?.Value, workingDirectory,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (string?)actions?.Attribute("Context") == (string?)principal?.Attribute("id");
             }
             catch { return false; }
         }
+
+        private static string ValueOrDefault(XElement? parent, XName name, string whenMissing = "false") =>
+            parent?.Element(name)?.Value.Trim() ?? whenMissing;
 
         private static bool TryReadCommand(string xml, out string command)
         {

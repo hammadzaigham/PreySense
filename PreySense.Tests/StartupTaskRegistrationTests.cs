@@ -93,6 +93,68 @@ public class StartupTaskRegistrationTests
     }
 
     [TestMethod]
+    public void WindowsNormalizedTask_WithUnscopedLogonTrigger_IsAccepted()
+    {
+        // Mirrors Export-ScheduledTask after /Create: defaults stripped, no trigger UserId.
+        string xml = $$"""
+            <?xml version="1.0" encoding="UTF-16"?>
+            <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+              <RegistrationInfo><URI>\PreySense</URI></RegistrationInfo>
+              <Principals>
+                <Principal id="Author">
+                  <UserId>{{User}}</UserId>
+                  <LogonType>InteractiveToken</LogonType>
+                  <RunLevel>HighestAvailable</RunLevel>
+                </Principal>
+              </Principals>
+              <Settings>
+                <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                <StartWhenAvailable>true</StartWhenAvailable>
+                <IdleSettings>
+                  <StopOnIdleEnd>false</StopOnIdleEnd>
+                  <RestartOnIdle>false</RestartOnIdle>
+                </IdleSettings>
+              </Settings>
+              <Triggers><LogonTrigger /></Triggers>
+              <Actions Context="Author">
+                <Exec>
+                  <Command>{{_exe}}</Command>
+                  <Arguments>--minimized</Arguments>
+                  <WorkingDirectory>{{_directory}}</WorkingDirectory>
+                </Exec>
+              </Actions>
+            </Task>
+            """;
+        Assert.IsTrue(IsEnabledTaskXml(xml, User));
+        Assert.IsTrue(MatchesTaskXml(xml, _exe, User));
+        var fake = new Scheduler { NormalizedReadback = xml };
+        Assert.IsTrue(Create(fake).SetEnabled(true));
+        Assert.AreEqual(1, fake.Creates);
+    }
+
+    [TestMethod]
+    public void NewRegistration_OmitsPerUserLogonTriggerUserId()
+    {
+        string xml = BuildLogonTaskXml(_exe, User);
+        Assert.Contains($"<UserId>{User}</UserId>", xml);
+        StringAssert.DoesNotMatch(xml,
+            new Regex(@"<LogonTrigger>\s*<Enabled>true</Enabled>\s*<UserId>", RegexOptions.CultureInvariant));
+    }
+
+    [TestMethod]
+    public void LegacyPerUserTrigger_WithoutUserIdOrWithEmptyUserId_IsAccepted()
+    {
+        var doc = XDocument.Parse(BuildLogonTaskXml(_exe, User));
+        var trigger = doc.Descendants(Ns + "LogonTrigger").Single();
+        trigger.Element(Ns + "Enabled")?.Remove();
+        Assert.IsTrue(IsEnabledTaskXml(doc.ToString(), User));
+        Assert.IsTrue(MatchesTaskXml(doc.ToString(), _exe, User));
+    }
+
+    [TestMethod]
     public void MalformedTask_IsOffAndNotAutomaticallyReplaced()
     {
         var fake = new Scheduler { Xml = "<broken>" };
@@ -153,6 +215,7 @@ public class StartupTaskRegistrationTests
     private sealed class Scheduler
     {
         public string? Xml;
+        public string? NormalizedReadback;
         public int Creates, Deletes;
         public bool CorruptReadback;
         public ManualResetEventSlim? ReadStarted, ReleaseRead;
@@ -178,7 +241,7 @@ public class StartupTaskRegistrationTests
             {
                 Creates++;
                 string path = Regex.Match(args, "/XML \"([^\"]+)\"").Groups[1].Value;
-                Xml = CorruptReadback ? "<broken>" : File.ReadAllText(path);
+                Xml = CorruptReadback ? "<broken>" : NormalizedReadback ?? File.ReadAllText(path);
                 return new(0, "Created");
             }
             throw new InvalidOperationException(args);

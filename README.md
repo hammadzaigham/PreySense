@@ -67,7 +67,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, s
 3. Run as administrator. Close official Predator Sense if it is running.
 4. Closing the window hides to the tray; use **Quit** to exit.
 
-Run on Startup is off when no scheduled task exists. It reflects the current account's enabled logon task, not a JSON default. Existing enabled tasks are checked against the running executable and current launch settings; missing tasks and disabled tasks/triggers stay off until you enable startup. Logon launches minimized, without a delay, idle/network requirements, battery restrictions, or a runtime limit. Keep the executable in a permanent local folder. Registration failures are written to `debug.log`.
+Run on Startup is off when no scheduled task exists. It reflects this install’s enabled logon task (current-user principal, any interactive logon), not a JSON default. Existing enabled tasks are checked against the running executable and current launch settings; missing tasks and disabled tasks/triggers stay off until you enable startup. Logon launches minimized at HighestAvailable, without a delay, idle/network requirements, battery restrictions, or a runtime limit. Keep the executable in a permanent local folder. Registration failures are written to `debug.log`.
 
 ## Quick start for tuning
 
