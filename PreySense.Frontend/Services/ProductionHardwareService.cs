@@ -42,22 +42,20 @@ namespace PreySense.Frontend.Services
                 engine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
                 return engine;
             }, true);
-            TelemetryCoordinator.ConfigureSampler(SampleTelemetrySnapshot, SampleFanOnlyTelemetrySnapshot);
+            TelemetryCoordinator.ConfigureMetricSampler(SampleTelemetrySnapshot);
         }
 
         public PowerSourceKind GetPowerSource() => _wmi.ReadPowerSource();
 
-        private TelemetrySnapshot SampleTelemetrySnapshot() =>
-            TelemetryCollector.Read(TelemetryCoordinator.RequestedMetrics, this, !TelemetryCoordinator.HasUiDemand);
-
-        private TelemetrySnapshot SampleFanOnlyTelemetrySnapshot() =>
-            TelemetryCollector.Read(TelemetryMetrics.Temperatures, this, fanOnly: true);
+        private TelemetrySnapshot SampleTelemetrySnapshot(TelemetryMetrics requested, bool fanOnly) =>
+            TelemetryCollector.Read(requested, this, fanOnly);
 
         CpuTelemetrySnapshot? ITelemetrySources.ReadCpuUsage() => CpuUsageMonitor.GetSnapshot(aggregateOnly: true);
         int? ITelemetrySources.ReadCpuTemperature() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadPackageTemperature();
         float? ITelemetrySources.ReadCpuVoltage() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadCoreVoltageVid();
         float? ITelemetrySources.ReadCpuPower() => PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.ReadPackagePowerWatts();
         int? ITelemetrySources.ReadRamSpeed() => _memorySpeed.Value;
+        string? ITelemetrySources.ReadDisplayGpuName() => DisplayManager.GetPrimaryDisplayGpuName();
         NvidiaGpuControl.Metrics ITelemetrySources.ReadGpu(TelemetryMetrics metrics)
         {
             // Read Windows' cached power data before touching NVAPI/NVML or even
@@ -70,27 +68,30 @@ namespace PreySense.Frontend.Services
             return Gpu.ReadMetrics(metrics);
         }
 
-        CpuClockSnapshot ITelemetrySources.ReadCpuClockSnapshot(TelemetryMetrics requested) => ReadDriverClocks();
+        CpuClockSnapshot ITelemetrySources.ReadCpuClockSnapshot(TelemetryMetrics requested) => ReadDriverClocks(requested);
 
-        private static CpuClockSnapshot ReadDriverClocks()
+        private static CpuClockSnapshot ReadDriverClocks(TelemetryMetrics requested)
         {
-            var sample = PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.SampleTopologyClocks();
+            bool active = (requested & TelemetryMetrics.CpuClock) != 0;
+            bool effective = (requested & TelemetryMetrics.CpuEffectiveClock) != 0;
+            if (!active && !effective) return default;
+            var sample = PreySense.Core.Hardware.CpuDriverRuntime.Telemetry?.SampleTopologyClocks(includeEffective: effective);
             if (sample is not { } clocks) return default;
             static int? Max(int? a, int? b) => a.HasValue && b.HasValue ? Math.Max(a.Value, b.Value) : a ?? b;
-            return new(clocks.PCoreActiveMhz, clocks.ECoreActiveMhz,
-                Max(clocks.PCoreActiveMhz, clocks.ECoreActiveMhz),
-                Max(clocks.PCoreEffectiveMhz, clocks.ECoreEffectiveMhz));
+            return new(active ? clocks.PCoreActiveMhz : null, active ? clocks.ECoreActiveMhz : null,
+                active ? Max(clocks.PCoreActiveMhz, clocks.ECoreActiveMhz) : null,
+                effective ? Max(clocks.PCoreEffectiveMhz, clocks.ECoreEffectiveMhz) : null);
         }
 
         (int? Performance, int? Efficiency) ITelemetrySources.ReadCpuClocks()
         {
-            var clocks = ReadDriverClocks();
+            var clocks = ReadDriverClocks(TelemetryMetrics.CpuClock);
             return (clocks.PerformanceMhz, clocks.EfficiencyMhz);
         }
 
         (int? ActiveMhz, int? EffectiveMhz) ITelemetrySources.ReadCpuActiveEffectiveClocks()
         {
-            var clocks = ReadDriverClocks();
+            var clocks = ReadDriverClocks(TelemetryMetrics.CpuClock | TelemetryMetrics.CpuEffectiveClock);
             return (clocks.ActiveMhz, clocks.EffectiveMhz);
         }
 
@@ -247,10 +248,13 @@ namespace PreySense.Frontend.Services
             _wmi.SetZoneColors(colors, _wmi.Brightness);
         }
 
-        public void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4)
+        public void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4) =>
+            SetRgbAllZones(z1, z2, z3, z4, _wmi.Brightness);
+
+        public void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4, byte brightness)
         {
-            LightingEngine.Stop();
-            _wmi.SetZoneColors([z1, z2, z3, z4], _wmi.Brightness);
+            LightingEngine.StopAndWait();
+            _wmi.SetZoneColors([z1, z2, z3, z4], brightness);
         }
 
         public void SetRgbHardwareEffect(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction)

@@ -188,15 +188,16 @@ namespace PreySense.Overlay
         private long _sessionHandle;
         private long _traceHandle;
 
-        private const int FlushIntervalMs = 200; // flush cadence while a game renders
-        private const int MinFlushFps = 10;      // below this fps = idle/browsing, flush only 1×/s
-        private System.Threading.Timer? _flushTimer;
-        private long _lastFlushTick;             // ≥1 s flush floor
+        private readonly object _sessionGate = new();
+        private bool _stopped;
         private volatile int _targetPid;  // written by overlay timer thread, read by ETW callback thread
         private int _lastTargetPid;       // detects PID switches so the window can be reset
 
         private bool _dxgiActiveForCurrentPid = false;
 
+        // ETW flush delivery is asynchronous. At a one-second sample cadence, the
+        // completed batch can be one interval old; expire after the next interval.
+        private const int MaxSampleAgeSeconds = 2;
         private const int RollingWindowSize = 360; // frames — holds a full 1 s window up to 360 fps
         private readonly long[] _frameTimes = new long[RollingWindowSize];
         private volatile int _frameHead = 0;    // next write slot — read by overlay tick thread
@@ -316,6 +317,10 @@ namespace PreySense.Overlay
 
         public void Start(int targetPid = 0)
         {
+            long traceHandle;
+            lock (_sessionGate)
+            {
+                if (_stopped) return;
             _targetPid = targetPid;
 
             ForceStopSession();
@@ -382,31 +387,37 @@ namespace PreySense.Overlay
                 return;
             }
 
-            _flushTimer = new System.Threading.Timer(_ => FlushSession(), null, FlushIntervalMs, FlushIntervalMs);
-
-            uint procHr = ProcessTrace(new[] { _traceHandle }, 1, IntPtr.Zero, IntPtr.Zero);
+            traceHandle = _traceHandle;
+            }
+            uint procHr = ProcessTrace(new[] { traceHandle }, 1, IntPtr.Zero, IntPtr.Zero);
         }
 
         public void Stop()
         {
-            _flushTimer?.Dispose();
-            _flushTimer = null;
-            CloseTrace(_traceHandle);
-            var props = BuildSessionProperties();
-            StopTrace(_sessionHandle, SessionName, ref props);
+            lock (_sessionGate)
+            {
+                if (_stopped) return;
+                _stopped = true;
+                if (_traceHandle != 0 && _traceHandle != -1) CloseTrace(_traceHandle);
+                _traceHandle = 0;
+                if (_sessionHandle != 0)
+                {
+                    var props = BuildSessionProperties();
+                    StopTrace(_sessionHandle, SessionName, ref props);
+                    _sessionHandle = 0;
+                }
+            }
         }
 
-        private void FlushSession()
+        // Called only by the shared one-second telemetry producer; no independent flush timer.
+        public void FlushPendingFrames()
         {
-            if (_sessionHandle == 0) return;
-
-            long now = Stopwatch.GetTimestamp();
-            bool idleFlushDue = now - _lastFlushTick >= Stopwatch.Frequency;
-            if ((!double.IsFinite(SampleFps()) || SampleFps() < MinFlushFps) && !idleFlushDue) return;
-
-            _lastFlushTick = now;
-            var props = BuildSessionProperties();
-            ControlTrace(_sessionHandle, null, ref props, EVENT_TRACE_CONTROL_FLUSH);
+            lock (_sessionGate)
+            {
+                if (_stopped || _sessionHandle == 0) return;
+                var props = BuildSessionProperties();
+                ControlTrace(_sessionHandle, null, ref props, EVENT_TRACE_CONTROL_FLUSH);
+            }
         }
 
         public void Dispose() => Stop();
@@ -466,7 +477,7 @@ namespace PreySense.Overlay
             int head = _frameHead;
             long newest = _frameTimes[(head - 1 + RollingWindowSize) % RollingWindowSize];
 
-            if (Stopwatch.GetTimestamp() - newest > freq) return double.NaN;
+            if (Stopwatch.GetTimestamp() - newest > MaxSampleAgeSeconds * freq) return double.NaN;
 
             long cutoff = newest - freq;
             int count = 1;
@@ -508,7 +519,7 @@ namespace PreySense.Overlay
             {
                 double secs = (double)(nowTick - _diagStart) / freq;
                 AppLogger.Log(
-                    $"FPS diag: fps={SampleFps():F0} frames={_diagFrames} rate={_diagFrames / secs:F0}/s | " +
+                    $"FPS diag: frames={_diagFrames} rate={_diagFrames / secs:F0}/s | " +
                     $"ETW latency ms: min={_diagLatMin:F0} avg={_diagLatSum / _diagFrames:F0} max={_diagLatMax:F0} | " +
                     $"maxgap={_diagGapMax:F0}ms");
                 _diagStart = nowTick; _diagFrames = 0; _diagLatSum = 0; _diagGapMax = 0;

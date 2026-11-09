@@ -11,6 +11,8 @@ Saved files use two-space indentation, stable section/property ordering and cons
 Current serialized names are `CpuTurboTimeLimitSeconds`, `GpuPowerOffsetWatts`, `GpuNominalPowerWatts`, `BackgroundOpacityPercent` and `TextOpacityPercent`. These names describe time, offsets and opacity directly. Old spellings are not imported or renamed.
 
 Writes go through a temporary file in the same directory and replace/move into place only after validation. Malformed JSON and invalid or unsupported settings report errors; the service does not search AppData for another settings file. There are no automatic `.bak` files. Back up a file yourself before manual edits. Editing the file does not directly invoke hardware writes; the app loads settings at startup or explicit reload.
+Identical saves leave the file untouched. Before skipping a write, the service checks its existing contents, so deleting or externally editing the file does not cause an explicit save to be silently ignored. Validation and caller-object isolation still apply.
+
 
 ## Main sections
 

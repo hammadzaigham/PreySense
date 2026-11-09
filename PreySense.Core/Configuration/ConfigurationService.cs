@@ -28,6 +28,7 @@ namespace PreySense.Core.Configuration
         private readonly object _gate = new();
         private readonly string _configFilePath;
         private PreySenseConfig _currentConfig;
+        private string? _persistedJson;
 
         public string ConfigPath => _configFilePath;
 
@@ -77,6 +78,14 @@ namespace PreySense.Core.Configuration
             lock (_gate)
             {
                 Validate(config);
+                // Own the saved graph once: callers and mutators may retain their objects.
+                var snapshot = Clone(config);
+                string json = SerializeForFile(snapshot);
+                if (IsAlreadyPersisted(json))
+                {
+                    _currentConfig = snapshot;
+                    return;
+                }
 
                 string dir = Path.GetDirectoryName(_configFilePath) ?? Directory.GetCurrentDirectory();
                 if (!Directory.Exists(dir))
@@ -85,7 +94,6 @@ namespace PreySense.Core.Configuration
                 }
 
                 string tempFile = Path.Combine(dir, $"{ConfigFileName}.{Guid.NewGuid():N}.tmp");
-                string json = SerializeForFile(config);
 
                 try
                 {
@@ -100,7 +108,8 @@ namespace PreySense.Core.Configuration
                         File.Move(tempFile, _configFilePath);
                     }
 
-                    _currentConfig = Clone(config);
+                    _currentConfig = snapshot;
+                    _persistedJson = json;
                 }
                 finally
                 {
@@ -110,6 +119,17 @@ namespace PreySense.Core.Configuration
                     }
                 }
             }
+        }
+
+        private bool IsAlreadyPersisted(string json)
+        {
+            if (!string.Equals(json, _persistedJson, StringComparison.Ordinal) || !File.Exists(_configFilePath))
+                return false;
+            // Explicit saves must still honor the caller's desired state if another
+            // process edited the file. The optimization skips writes, not that check.
+            try { return string.Equals(File.ReadAllText(_configFilePath), json, StringComparison.Ordinal); }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
         }
 
         /// <summary>
@@ -295,8 +315,8 @@ namespace PreySense.Core.Configuration
         {
             if (!File.Exists(_configFilePath))
             {
-                var fresh = new PreySenseConfig();
-                return fresh;
+                _persistedJson = null;
+                return new PreySenseConfig();
             }
 
             try
@@ -347,6 +367,7 @@ namespace PreySense.Core.Configuration
                 loaded.Tuning.AdditionalSettings?.Remove("CpuBoostMode");
 
                 Validate(loaded);
+                _persistedJson = json;
                 return loaded;
             }
             catch (Exception ex)
@@ -357,13 +378,13 @@ namespace PreySense.Core.Configuration
 
         private static string SerializeForFile(PreySenseConfig config)
         {
-            var saved = Clone(config);
+            // The caller passes an owned, validated snapshot; no second deep clone is needed.
             string[] modeOrder = ["Quiet", "Eco", "Balanced", "Performance", "Turbo"];
-            var defaults = saved.Tuning.FactoryDefaults;
-            saved.Tuning.FactoryDefaults = modeOrder.Where(defaults.ContainsKey)
+            var defaults = config.Tuning.FactoryDefaults;
+            config.Tuning.FactoryDefaults = modeOrder.Where(defaults.ContainsKey)
                 .Concat(defaults.Keys.Except(modeOrder).Order(StringComparer.Ordinal))
                 .ToDictionary(mode => mode, mode => defaults[mode]);
-            return JsonSerializer.Serialize(saved, SerializerOptions);
+            return JsonSerializer.Serialize(config, SerializerOptions);
         }
 
         private static PreySenseConfig Clone(PreySenseConfig source)

@@ -1,3 +1,4 @@
+using PreySense.Core.Configuration;
 using System.Drawing;
 using Microsoft.Win32;
 
@@ -7,11 +8,11 @@ public partial class HardwareOverlay
 {
     private void EnsureFpsMonitor()
     {
-        if (!_showFps)
+        if (!_showFps || !IsShowing)
         {
             _fps?.Dispose(); _fps = null; ResetFpsDisplayState(); return;
         }
-        if (_fps != null || !AppConfig.IsOverlay()) return;
+        if (_fps != null || !_active) return;
         ResetFpsDisplayState();
         var fps = new EtwFpsMonitor();
         _fps = fps;
@@ -34,15 +35,16 @@ public partial class HardwareOverlay
         if (_active && e.Mode == PowerModes.Resume) _foregroundEvents?.Refresh();
     }
 
-    private void RestorePosition()
+    private void RestorePosition(OverlayConfig? config = null)
     {
-        string hPos = AppConfig.GetString("overlay_pos_horizontal");
-        string vPos = AppConfig.GetString("overlay_pos_vertical");
-        if (!string.IsNullOrEmpty(hPos) && !string.IsNullOrEmpty(vPos)) { SetConfiguredPosition(hPos, vPos); return; }
-        int anchor = AppConfig.Get("overlay_anchor", -1);
+        config ??= ConfigurationService.Instance.GetCurrent().Overlay;
+        string hPos = config.PositionHorizontal;
+        string vPos = config.PositionVertical;
+        if (!string.IsNullOrEmpty(hPos) && !string.IsNullOrEmpty(vPos)) { PlaceConfiguredPosition(hPos, vPos); return; }
+        int anchor = config.Anchor;
         if (anchor < 0) { PositionAtTopLeft(); return; }
-        int offsetX = AppConfig.Get("overlay_offset_x", MarginFromEdge);
-        int offsetY = AppConfig.Get("overlay_offset_y", MarginFromEdge);
+        int offsetX = config.OffsetX;
+        int offsetY = config.OffsetY;
         Screen screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
         bool isRight = (anchor & 1) != 0, isBottom = (anchor & 2) != 0;
         int x = isRight ? screen.Bounds.Right - Width - offsetX : screen.Bounds.X + offsetX;
@@ -56,19 +58,20 @@ public partial class HardwareOverlay
     public void StartOverlay()
     {
         ClearGraphHistory();
-        LoadDisplayConfiguration();
+        var config = LoadDisplayConfiguration();
         HardwareControl.ResetMetrics();
         _active = true; _lastFgPid = 0; _hidden = false;
         _shownPid = 0; _classifiedPid = 0; _classifiedProcessName = null; _fgDesktop = false;
         _wasOwnWindow = false; _keepOverlayAfterUiHide = false;
-        _scalePercent = Math.Clamp(AppConfig.Get("overlay_scale_percent", 100), MinScalePercent, MaxScalePercent);
-        ApplyColors(); SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        _scalePercent = Math.Clamp(config.ScalePercent, MinScalePercent, MaxScalePercent);
+        ApplyColors(config); SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged += OnOverlayPowerModeChanged;
         _fps?.Dispose(); _fps = null; ResetFpsDisplayState(); Size = CalculateOverlaySize(_scalePercent);
-        RestorePosition(); base.Show();
+        RestorePosition(config); base.Show();
         Invalidate();
-        RestorePosition(); EnsureFpsMonitor();
+        EnsureFpsMonitor();
         StartForegroundEvents();
+        PreySense.Core.Services.TelemetryCoordinator.ConfigureFrameSampler(SampleFrameTelemetry);
         PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
         PreySense.Core.Services.TelemetryCoordinator.Heartbeat += Tick;
         PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
@@ -78,11 +81,13 @@ public partial class HardwareOverlay
 
     private void SyncOverlayTelemetryDemand()
     {
-        PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(IsShowing);
-        PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, IsShowing);
+        EnsureFpsMonitor();
+        PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(IsShowing && _showFps);
+        PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay,
+            IsShowing && _selectedMetrics != PreySense.Core.Services.TelemetryMetrics.None);
     }
 
-    private void LoadDisplayConfiguration()
+    private OverlayConfig LoadDisplayConfiguration()
     {
         var config = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Overlay;
         var slots = config.Slots;
@@ -110,7 +115,9 @@ public partial class HardwareOverlay
         for (int i = 0; i < _columnCpu.Length; i++)
             metrics |= PreySense.Core.Services.TelemetrySelection.Cpu(_columnCpu[i]) | PreySense.Core.Services.TelemetrySelection.Gpu(_columnGpu[i]);
         PreySense.Core.Services.TelemetryCoordinator.SetOverlayMetrics(metrics);
-        _showFps = AppConfig.Get("overlay_show_fps", 1) == 1;
+        _selectedMetrics = metrics;
+        _showFps = config.ShowFps;
+        return config;
     }
 
     public void StopOverlay()
@@ -120,6 +127,7 @@ public partial class HardwareOverlay
         StopForegroundEvents();
         PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
         PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
+        PreySense.Core.Services.TelemetryCoordinator.ConfigureFrameSampler(null);
         PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
         PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
         PreySense.Core.Services.TelemetryCoordinator.SetOverlayMetrics(PreySense.Core.Services.TelemetryMetrics.None);

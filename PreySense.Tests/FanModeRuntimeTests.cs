@@ -108,14 +108,32 @@ public class FanModeRuntimeTests
         Select(vm, FanControlMode.Custom);
         for (int i = 0; i < 10; i++)
             Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        // Custom/Max: five transient retries, then permanent pause until explicit reset.
-        CollectionAssert.AreEqual(new[] { "curve:50/50", "curve:50/50", "curve:50/50", "curve:50/50", "curve:50/50" }, hardware.Calls);
+        CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
         Assert.IsNull(vm.AppliedCpuFanPercent);
         hardware.FailWrites = false;
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        Assert.HasCount(6, hardware.Calls);
+        Assert.HasCount(2, hardware.Calls);
         Assert.AreEqual(50, vm.AppliedCpuFanPercent);
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task FailedMaxWriteIsReportedByApplyInsteadOfClaimingSuccess()
+    {
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var hardware = new RecordingFans { FailWrites = true };
+        var vm = Create(hardware);
+        try
+        {
+            store.Update(config => config.Fans.Balanced.ControlMode = (int)FanControlMode.Max);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ApplyFanProfileAsync());
+            CollectionAssert.AreEqual(new[] { "mode:1" }, hardware.Calls);
+            for (int i = 0; i < 5; i++) Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
+            CollectionAssert.AreEqual(new[] { "mode:1" }, hardware.Calls);
+        }
+        finally { Run(vm, "DisposeFanTelemetry"); store.Save(original); }
     }
 
     [TestMethod]

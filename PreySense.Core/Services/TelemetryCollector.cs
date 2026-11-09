@@ -21,6 +21,7 @@ public interface ITelemetrySources
     (int? Pl1Watts, int? Pl2Watts) ReadCpuPowerLimits() => default;
     (int? Percent, int? UsedMb) ReadRamUsage();
     int? ReadRamSpeed();
+    string? ReadDisplayGpuName() => null;
     (int? Cpu, int? Gpu) ReadFanRpms(bool cpu, bool gpu);
     NvidiaGpuControl.Metrics ReadGpu(TelemetryMetrics metrics);
 }
@@ -43,10 +44,12 @@ public static class TelemetryCollector
         var fans = Wants(TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm)
             ? sources.ReadFanRpms(Wants(TelemetryMetrics.CpuFanRpm), Wants(TelemetryMetrics.GpuFanRpm)) : default;
         var gpu = Wants(TelemetryMetrics.Gpu) ? sources.ReadGpu(metrics & TelemetryMetrics.Gpu) : default;
+        string? displayGpu = Wants(TelemetryMetrics.DisplayAdapter) ? sources.ReadDisplayGpuName() : null;
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         return TelemetrySnapshot.Empty with
         {
             TimestampTicks = fanOnly ? 0 : now, ThermalTimestampTicks = now,
+            DisplayGpuName = displayGpu,
             IsValid = true, IsFanOnly = fanOnly,
             CpuUsage = cpu?.TotalUsage, CpuMaxCoreUsage = cpu?.MaxCoreUsage,
             CpuPCoreUsage = cpu?.PCoreUsage, CpuECoreUsage = cpu?.ECoreUsage,

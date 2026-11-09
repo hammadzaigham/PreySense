@@ -288,7 +288,10 @@ public sealed class CpuTelemetryReader : IDisposable
     /// Returns null if reference clock is undiscovered, delta window is insufficient, or counters reset.
     /// </summary>
     /// <param name="logicalProcessorIndex">Specific logical core to sample. If null, samples the current or package context.</param>
-    public FrequencySample? SampleFrequency(int? logicalProcessorIndex = null)
+    public FrequencySample? SampleFrequency(int? logicalProcessorIndex = null) =>
+        SampleFrequencyCore(logicalProcessorIndex, includeEffective: true);
+
+    private FrequencySample? SampleFrequencyCore(int? logicalProcessorIndex, bool includeEffective)
     {
         lock (_syncLock)
         {
@@ -318,7 +321,7 @@ public sealed class CpuTelemetryReader : IDisposable
                 }
 
                 // Read TSC (MSR 0x10) if possible, for precise wall-cycle C0 measurement
-                _backend.ReadMsr(MSR_IA32_TIME_STAMP_COUNTER, out tsc);
+                if (includeEffective) _backend.ReadMsr(MSR_IA32_TIME_STAMP_COUNTER, out tsc);
             }
 
             // All state access is protected by _syncLock, so no concurrent collection is needed.
@@ -360,6 +363,12 @@ public sealed class CpuTelemetryReader : IDisposable
 
             state.Update(aperf, mperf, tsc, now);
 
+            if (!includeEffective)
+            {
+                int active = deltaMperf == 0 ? 0 : (int)Math.Clamp(Math.Round(refClock * deltaAperf / deltaMperf), 0, 10000);
+                // Effective is not requested; topology masks this field rather than reporting an invented value.
+                return new FrequencySample(active, 0, 0);
+            }
             return ComputeFrequencySample(deltaAperf, deltaMperf, deltaTsc, elapsedSec, refClock);
         }
     }
@@ -423,7 +432,7 @@ public sealed class CpuTelemetryReader : IDisposable
     /// Performance-core (P-Core) and Efficiency-core (E-Core) active and wall-time effective clocks.
     /// Returns (PCoreActiveMhz, ECoreActiveMhz, PCoreEffectiveMhz, ECoreEffectiveMhz).
     /// </summary>
-    public (int? PCoreActiveMhz, int? ECoreActiveMhz, int? PCoreEffectiveMhz, int? ECoreEffectiveMhz) SampleTopologyClocks()
+    public (int? PCoreActiveMhz, int? ECoreActiveMhz, int? PCoreEffectiveMhz, int? ECoreEffectiveMhz) SampleTopologyClocks(bool includeEffective = true)
     {
         lock (_syncLock)
         {
@@ -436,7 +445,7 @@ public sealed class CpuTelemetryReader : IDisposable
 
             for (int core = 0; core < _isECore.Length; core++)
             {
-                var sample = SampleFrequency(core);
+                var sample = SampleFrequencyCore(core, includeEffective);
                 if (!sample.HasValue) continue;
 
                 bool isEfficiency = _isECore[core];
@@ -457,8 +466,8 @@ public sealed class CpuTelemetryReader : IDisposable
             return (
                 hasPerformanceSample ? performanceActiveMaximum : null,
                 hasEfficiencySample ? efficiencyActiveMaximum : null,
-                hasPerformanceSample ? performanceEffectiveMaximum : null,
-                hasEfficiencySample ? efficiencyEffectiveMaximum : null
+                includeEffective && hasPerformanceSample ? performanceEffectiveMaximum : null,
+                includeEffective && hasEfficiencySample ? efficiencyEffectiveMaximum : null
             );
         }
     }

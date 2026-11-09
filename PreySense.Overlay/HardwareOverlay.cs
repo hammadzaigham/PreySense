@@ -1,3 +1,4 @@
+using PreySense.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -118,6 +119,7 @@ namespace PreySense.Overlay
         private string[] _columnGpu = [];
         private bool[] _columnGraphs = [];
         private bool _showFps = true;
+        private PreySense.Core.Services.TelemetryMetrics _selectedMetrics;
 
         private static readonly HashSet<string> DesktopApps = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -296,18 +298,31 @@ namespace PreySense.Overlay
                 if (_foregroundEvents?.IsAvailable != true)
                     UpdateForegroundState(NativeMethods.GetForegroundWindow());
                 if (_screenshotHidden || _hidden) return;
-                if (_fps != null && !_ownForeground && !(_keepOverlayAfterUiHide && _desktopForeground))
-                    UpdateCurrentFps(_fps.SampleFps());
             }
-            if (IsShowing && PreySense.Core.Services.TelemetryCoordinator.RequestedMetrics == PreySense.Core.Services.TelemetryMetrics.None)
-                Invalidate(); // FPS-only overlays still repaint without collecting hardware metrics.
+        }
+
+        private PreySense.Core.Services.FrameTelemetry SampleFrameTelemetry()
+        {
+            lock (_foregroundGate)
+            {
+                if (!IsShowing || !_showFps || _fps is not { } fps) return default;
+                if (_ownForeground || (_keepOverlayAfterUiHide && _desktopForeground))
+                    return new(_currentFps >= 0 ? _currentFps : null,
+                        _currentFps > 0 ? 1000d / _currentFps : null, _shownPid > 0 ? _shownPid : null);
+                fps.FlushPendingFrames();
+                double sample = fps.SampleFps();
+                double? value = double.IsFinite(sample) && sample >= 0 ? sample : null;
+                return new(value, value > 0 ? 1000d / value : null, fps.TargetPid > 0 ? fps.TargetPid : null);
+            }
         }
 
         private void OnTelemetrySnapshot(PreySense.Core.Services.TelemetrySnapshot snapshot)
         {
-            if (IsDisposed || !_active || !IsShowing || snapshot.IsFanOnly) return;
+            if (IsDisposed || !_active || !IsShowing || snapshot.IsFanOnly ||
+                (_selectedMetrics == PreySense.Core.Services.TelemetryMetrics.None && !_showFps)) return;
 
-            HardwareControl.ApplySnapshot(snapshot);
+            if (_showFps) UpdateCurrentFps(snapshot.FramesPerSecond ?? double.NaN);
+            if (_selectedMetrics != PreySense.Core.Services.TelemetryMetrics.None) HardwareControl.ApplySnapshot(snapshot);
 
             if (_graphMetrics.Count > 0)
             {
@@ -328,6 +343,8 @@ namespace PreySense.Overlay
                 _graphCpuBrush.Dispose(); _graphGpuBrush.Dispose();
                 Microsoft.Win32.SystemEvents.PowerModeChanged -= OnOverlayPowerModeChanged;
                 StopForegroundEvents();
+                PreySense.Core.Services.TelemetryCoordinator.ConfigureFrameSampler(null);
+                PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
                 PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
                 PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
                 PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
@@ -758,10 +775,12 @@ namespace PreySense.Overlay
         {
             if (string.IsNullOrWhiteSpace(horizontal)) horizontal = "Left";
             if (string.IsNullOrWhiteSpace(vertical)) vertical = "Top";
+            PlaceConfiguredPosition(horizontal, vertical);
+            SavePosition(horizontal: horizontal, vertical: vertical);
+        }
 
-            AppConfig.Set("overlay_pos_horizontal", horizontal);
-            AppConfig.Set("overlay_pos_vertical", vertical);
-
+        private void PlaceConfiguredPosition(string horizontal, string vertical)
+        {
             Screen screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
             const int edgeMargin = 12;
 
@@ -784,7 +803,6 @@ namespace PreySense.Overlay
             y = Math.Clamp(y, screen.Bounds.Top + margin, screen.Bounds.Bottom - Height - margin);
 
             Location = new Point(x, y);
-            SavePosition();
         }
 
         private bool AreDragKeysDown() =>
@@ -815,7 +833,6 @@ namespace PreySense.Overlay
             int bottomEdge = Location.Y + Height;
 
             _scalePercent = next;
-            AppConfig.Set("overlay_scale_percent", _scalePercent);
 
             Size newSize = CalculateOverlaySize(_scalePercent);
             int newX = isRight  ? rightEdge  - newSize.Width  : Location.X;
@@ -826,10 +843,10 @@ namespace PreySense.Overlay
             newY = Math.Clamp(newY, screen.Bounds.Top  + margin, screen.Bounds.Bottom - newSize.Height - margin);
 
             SetBounds(newX, newY, newSize.Width, newSize.Height);
-            SavePosition();
+            SavePosition(scalePercent: _scalePercent);
         }
 
-        private void SavePosition()
+        private void SavePosition(string? horizontal = null, string? vertical = null, int? scalePercent = null)
         {
             Point center = new Point(Location.X + Width / 2, Location.Y + Height / 2);
             Screen screen = Screen.FromPoint(center);
@@ -838,14 +855,20 @@ namespace PreySense.Overlay
             int anchor  = (isBottom ? 2 : 0) | (isRight ? 1 : 0);
             int offsetX = isRight  ? screen.Bounds.Right  - Location.X - Width  : Location.X - screen.Bounds.X;
             int offsetY = isBottom ? screen.Bounds.Bottom - Location.Y - Height : Location.Y - screen.Bounds.Y;
-            AppConfig.Set("overlay_anchor",   anchor);
-            AppConfig.Set("overlay_offset_x", offsetX);
-            AppConfig.Set("overlay_offset_y", offsetY);
+            ConfigurationService.Instance.Update(config =>
+            {
+                var overlay = config.Overlay;
+                overlay.Anchor = anchor;
+                overlay.OffsetX = offsetX;
+                overlay.OffsetY = offsetY;
+                if (horizontal != null) overlay.PositionHorizontal = horizontal;
+                if (vertical != null) overlay.PositionVertical = vertical;
+                if (scalePercent.HasValue) overlay.ScalePercent = scalePercent.Value;
+            });
         }
 
-        private void ApplyColors()
+        private void ApplyColors(OverlayConfig config)
         {
-            var config = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Overlay;
             _bgAlpha = (int)Math.Round(config.BackgroundAlphaPercent * 2.55);
             int textAlpha = (int)Math.Round(config.TextAlphaPercent * 2.55);
             _cornerRadius = config.CornerRadiusPixels;
@@ -867,8 +890,8 @@ namespace PreySense.Overlay
         /// <summary>Called by MetricsWindow when the user changes settings while the overlay is running.</summary>
         public void RefreshDisplayFlags()
         {
-            LoadDisplayConfiguration();
-            int configuredScale = Math.Clamp(AppConfig.Get("overlay_scale_percent", 100), MinScalePercent, MaxScalePercent);
+            var config = LoadDisplayConfiguration();
+            int configuredScale = Math.Clamp(config.ScalePercent, MinScalePercent, MaxScalePercent);
             if (configuredScale != _scalePercent)
             {
                 ApplyScale(configuredScale);
@@ -897,7 +920,7 @@ namespace PreySense.Overlay
                 }
             }
 
-            ApplyColors();
+            ApplyColors(config);
             EnsureFpsMonitor();
 
             if (_active)

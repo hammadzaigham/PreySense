@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using Microsoft.Win32;
 using PreySense.Helpers;
 
 namespace PreySense.Overlay
@@ -45,6 +46,17 @@ namespace PreySense.Overlay
 
         private static void StopAndDelete(string serviceName)
         {
+            // Usually absent after the first cleanup; avoid two process launches at every app start.
+            try
+            {
+                using var serviceKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + serviceName);
+                if (serviceKey == null) return;
+            }
+            catch (Exception ex)
+            {
+                // A denied registry read must not prevent removal of the legacy driver.
+                AppLogger.Error($"WinRing0Cleanup: service lookup failed: {ex.Message}");
+            }
             RunSc($"stop \"{serviceName}\"");
             RunSc($"delete \"{serviceName}\"");
         }

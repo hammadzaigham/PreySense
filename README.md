@@ -67,13 +67,15 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, s
 3. Run as administrator. Close official Predator Sense if it is running.
 4. Closing the window hides to the tray; use **Quit** to exit.
 
+Run on Startup is off when no scheduled task exists. It reflects the current account's enabled logon task, not a JSON default. Existing enabled tasks are checked against the running executable and current launch settings; missing tasks and disabled tasks/triggers stay off until you enable startup. Logon launches minimized, without a delay, idle/network requirements, battery restrictions, or a runtime limit. Keep the executable in a permanent local folder. Registration failures are written to `debug.log`.
+
 ## Quick start for tuning
 
 1. Open **Tuning** and turn on **Enable Tuning**.
 2. Choose a mode, set CPU/GPU values, then **Apply** or **Save**.
 3. Switch modes as usual; saved profiles follow automatically.
 
-Details: [driver tuning](docs/driver_tuning.md) · [v3.0.5](docs/releases/v3.0.5.md) · [v3.0.4](docs/releases/v3.0.4.md) · [v3.0.3](docs/releases/v3.0.3.md) · [v3.0.2](docs/releases/v3.0.2.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
+Details: [driver tuning](docs/driver_tuning.md) · [v3.0.6](docs/releases/v3.0.6.md) · [v3.0.5](docs/releases/v3.0.5.md) · [v3.0.4](docs/releases/v3.0.4.md) · [v3.0.3](docs/releases/v3.0.3.md) · [v3.0.2](docs/releases/v3.0.2.md) · [v3.0.1](docs/releases/v3.0.1.md) · [v3.0.0](docs/releases/v3.0.0.md)
 
 ## Build
 

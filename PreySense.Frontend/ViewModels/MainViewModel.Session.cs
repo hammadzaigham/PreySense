@@ -112,18 +112,6 @@ namespace PreySense.Frontend.ViewModels
             await RestoreSessionSettingsAsync("startup");
             if (_disposed)
                 return;
-            // OEM fan ownership often settles after first restore; re-claim Max/Custom once.
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(5000);
-                if (_disposed) return;
-                FanControlMode mode;
-                lock (_fanControlGate)
-                    mode = _runningFanProfile?.ControlMode ?? FanControlMode.Auto;
-                if (mode is FanControlMode.Max or FanControlMode.Custom)
-                    RestoreFanMode();
-            });
-
             int batteryLimit = IsBatteryLimitEnabled ? 1 : 0;
 
             await Task.Run(() =>

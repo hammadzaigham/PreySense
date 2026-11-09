@@ -113,6 +113,76 @@ public class GpuDisplayStateTests
         Assert.Contains("blocked by test driver", vm.DiagnosticMessage);
     }
 
+    [TestMethod]
+    [DoNotParallelize]
+    [DataRow(DdsActiveMux.Optimus)]
+    [DataRow(DdsActiveMux.dGPU)]
+    public async Task AlreadyAutomaticLiveDriverState_DoesNotCommitOrRefreshAdapters(DdsActiveMux route)
+    {
+        var hardware = new RecordingDds(new(true, true, route, 0, 0));
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        try
+        {
+            var vm = CreateDdsViewModel(hardware);
+            await vm.SetGpuMuxModeAsync(1);
+            Assert.AreEqual(0, hardware.Requests);
+            Assert.AreEqual(1, hardware.StatusReads);
+            Assert.AreEqual(0, hardware.SupportReads);
+            Assert.AreEqual(0, hardware.AdapterRefreshes);
+            Assert.IsTrue(vm.IsGpuAutoActive);
+            Assert.IsFalse(vm.IsBusy);
+        }
+        finally { store.Save(original); }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task CachedAutomaticSelection_DoesNotSkipARequiredLiveDriverChange()
+    {
+        var hardware = new RecordingDds(new(true, false, DdsActiveMux.Optimus, 0, 0));
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        try
+        {
+            var vm = CreateDdsViewModel(hardware);
+            await vm.SetGpuMuxModeAsync(1);
+            Assert.AreEqual(1, hardware.Requests);
+            Assert.AreEqual(2, hardware.StatusReads, "One live preflight and one required post-commit confirmation.");
+            Assert.AreEqual(0, hardware.SupportReads);
+            Assert.AreEqual(1, hardware.AdapterRefreshes);
+            Assert.IsTrue(vm.IsGpuAutoActive);
+        }
+        finally { store.Save(original); }
+    }
+
+    private static MainViewModel CreateDdsViewModel(IHardwareService hardware)
+    {
+        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, hardware);
+        typeof(MainViewModel).GetField("_activeGpuMuxMode", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, 1);
+        typeof(MainViewModel).GetField("<AvailableRefreshRates>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(vm, new System.Collections.ObjectModel.ObservableCollection<string>());
+        typeof(MainViewModel).GetField("_dispatcher", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(vm, Dispatcher.CurrentDispatcher);
+        return vm;
+    }
+
+    private sealed class RecordingDds(DdsStatus status) : MockHardwareService, IHardwareService
+    {
+        public int Requests, StatusReads, SupportReads, AdapterRefreshes;
+        public new DdsStatus? GetDdsStatus() { StatusReads++; return status; }
+        public new bool IsDdsSupported() { SupportReads++; return status.IsSupported; }
+        public void RefreshGpuAdapter() => AdapterRefreshes++;
+        public new (bool Success, string Message) SetDdsMode(DdsDisplayMode mode)
+        {
+            Requests++;
+            status = new(true, mode == DdsDisplayMode.Automatic,
+                mode == DdsDisplayMode.NvidiaGpuOnly ? DdsActiveMux.dGPU : DdsActiveMux.Optimus, 0, 0);
+            return (true, "applied");
+        }
+    }
+
     private sealed class RejectingDds : MockHardwareService, IHardwareService
     {
         public int Requests;

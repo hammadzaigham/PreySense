@@ -29,7 +29,10 @@ public enum TelemetryMetrics
     GpuActiveClock = 1 << 22,
     Temperatures = CpuTemperature | GpuTemperature,
     Gpu = GpuTemperature | GpuUsage | GpuActiveClock | GpuVoltage | GpuPower | GpuMemory | GpuMemoryClock | GpuHotspot | GpuThrottleReasons | GpuPowerLimit | GpuMemoryTemperature,
-    All = 0x7FFFFF
+    FrameRate = 1 << 23,
+    DisplayAdapter = 1 << 24,
+    Hardware = 0x7FFFFF | DisplayAdapter,
+    All = Hardware | FrameRate
 }
 
 public static class TelemetrySelection

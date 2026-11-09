@@ -8,6 +8,7 @@ internal sealed class WindowVisibilitySession<TWindow> where TWindow : class
     public long Revision { get; private set; }
     public bool IsHidden { get; private set; }
     public bool IsRestoring { get; private set; }
+    private bool _hasHadForeground;
 
     public bool BeginHide(IEnumerable<TWindow> visibleWindows, TWindow? activeWindow)
     {
@@ -15,6 +16,7 @@ internal sealed class WindowVisibilitySession<TWindow> where TWindow : class
         HiddenWindows = visibleWindows.ToArray();
         PreferredWindow = activeWindow;
         IsHidden = true;
+        _hasHadForeground = false;
         IsRestoring = false;
         Revision++;
         return true;
@@ -24,6 +26,7 @@ internal sealed class WindowVisibilitySession<TWindow> where TWindow : class
     {
         IsHidden = false;
         IsRestoring = true;
+        _hasHadForeground = false;
         return ++Revision;
     }
 
@@ -33,6 +36,18 @@ internal sealed class WindowVisibilitySession<TWindow> where TWindow : class
         HiddenWindows = Array.Empty<TWindow>();
         PreferredWindow = null;
         IsRestoring = false;
+    }
+
+    public void RecordForeground(bool? applicationForeground)
+    {
+        if (!IsHidden && applicationForeground == true) _hasHadForeground = true;
+    }
+
+    public bool ShouldAutoHide(long revision, bool? applicationForeground)
+    {
+        if (revision != Revision) return false;
+        RecordForeground(applicationForeground);
+        return CanAutoHide(revision) && _hasHadForeground && applicationForeground == false;
     }
 
     public bool CanAutoHide(long revision) =>

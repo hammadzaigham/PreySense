@@ -230,5 +230,78 @@ namespace PreySense.Tests
             Assert.AreEqual("en-US", reloaded.General.Language);
             Assert.IsNull(reloaded.Tuning.Turbo.CpuPl1Watts);
         }
+        [TestMethod]
+        public void IdenticalSaveAndUpdate_DoNotRewriteTheFile()
+        {
+            var service = new ConfigurationService(_testConfigPath);
+            service.Save(service.GetCurrent());
+            var marker = new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc);
+            File.SetLastWriteTimeUtc(_testConfigPath, marker);
+            service.Save(service.GetCurrent());
+            service.Update(config => config.General.Language = config.General.Language);
+            Assert.AreEqual(marker, File.GetLastWriteTimeUtc(_testConfigPath));
+            Assert.HasCount(1, Directory.GetFiles(_testDir));
+        }
+
+        [TestMethod]
+        public void SaveStillOwnsItsSnapshotAndChangedUpdatesPersist()
+        {
+            var service = new ConfigurationService(_testConfigPath);
+            var supplied = service.GetCurrent();
+            supplied.General.Language = "fr-FR";
+            service.Save(supplied);
+            supplied.General.Language = "hi-IN";
+            Assert.AreEqual("fr-FR", service.GetCurrent().General.Language);
+            PreySenseConfig? retainedDraft = null;
+            service.Update(config =>
+            {
+                retainedDraft = config;
+                config.General.Language = "es-ES";
+            });
+            retainedDraft!.General.Language = "zh-CN";
+            Assert.AreEqual("es-ES", service.GetCurrent().General.Language);
+            Assert.AreEqual("es-ES", service.Reload().General.Language);
+        }
+
+        [TestMethod]
+        public void FailedSaveDoesNotSuppressTheNextValidSave()
+        {
+            var service = new ConfigurationService(_testConfigPath);
+            service.Save(service.GetCurrent());
+            string original = File.ReadAllText(_testConfigPath);
+            Assert.Throws<ArgumentOutOfRangeException>(() => service.Update(config => config.Overlay.ScalePercent = 999));
+            Assert.AreEqual(original, File.ReadAllText(_testConfigPath));
+            service.Update(config => config.Overlay.ScalePercent = 125);
+            Assert.AreEqual(125, service.Reload().Overlay.ScalePercent);
+        }
+
+        [TestMethod]
+        public void IdenticalSaveRecreatesADeletedFileAndReloadRefreshesTheCache()
+        {
+            var service = new ConfigurationService(_testConfigPath);
+            service.Save(service.GetCurrent());
+            File.Delete(_testConfigPath);
+            service.Save(service.GetCurrent());
+            Assert.IsTrue(File.Exists(_testConfigPath));
+            var other = new ConfigurationService(_testConfigPath);
+            other.Update(config => config.General.Language = "fr-FR");
+            service.Reload();
+            var marker = new DateTime(2001, 2, 3, 4, 5, 6, DateTimeKind.Utc);
+            File.SetLastWriteTimeUtc(_testConfigPath, marker);
+            service.Save(service.GetCurrent());
+            Assert.AreEqual(marker, File.GetLastWriteTimeUtc(_testConfigPath));
+            Assert.AreEqual("fr-FR", service.GetCurrent().General.Language);
+        }
+        [TestMethod]
+        public void IdenticalSaveStillRestoresDesiredStateAfterAnExternalEdit()
+        {
+            var service = new ConfigurationService(_testConfigPath);
+            service.Save(service.GetCurrent());
+            var external = new ConfigurationService(_testConfigPath);
+            external.Update(config => config.General.Language = "fr-FR");
+            Assert.AreEqual("fr-FR", external.Reload().General.Language);
+            service.Save(service.GetCurrent());
+            Assert.AreEqual("en-US", service.Reload().General.Language);
+        }
     }
 }

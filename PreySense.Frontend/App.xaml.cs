@@ -14,6 +14,8 @@ namespace PreySense.Frontend
         private static Mutex? _singleInstanceMutex;
         private static EventWaitHandle? _showAppEvent;
         private static Thread? _showAppThread;
+        private static volatile bool _exiting;
+        private static bool _ownsSingleInstanceMutex;
 
         public App()
         {
@@ -52,7 +54,6 @@ namespace PreySense.Frontend
         private void StartApplication(StartupEventArgs e)
         {
             base.OnStartup(e);
-            Services.LocalizationService.Initialize();
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             Deactivated += (_, _) =>
             {
@@ -61,6 +62,7 @@ namespace PreySense.Frontend
 
             // Single instance Mutex check
             _singleInstanceMutex = new Mutex(true, "PreySenseApp_Unique_System_Mutex_999", out bool createdNew);
+            _ownsSingleInstanceMutex = createdNew;
             if (!createdNew)
             {
                 try
@@ -74,6 +76,7 @@ namespace PreySense.Frontend
                 return;
             }
 
+            Services.LocalizationService.Initialize();
             _ = Task.Run(PreySense.Overlay.WinRing0Cleanup.RemoveInstalledDriver);
 
             // Start cross-process show event listener
@@ -82,11 +85,12 @@ namespace PreySense.Frontend
                 _showAppEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "PreySense_Show_App_Event");
                 _showAppThread = new Thread(() =>
                 {
-                    while (true)
+                    while (!_exiting)
                     {
                         try
                         {
                             _showAppEvent.WaitOne();
+                            if (_exiting || Dispatcher.HasShutdownStarted) break;
                             Dispatcher.BeginInvoke(() =>
                             {
                                 if (MainWindow is MainWindow mw)
@@ -95,8 +99,13 @@ namespace PreySense.Frontend
                                 }
                             });
                         }
+                        catch (ObjectDisposedException) { break; }
                         catch (ThreadAbortException) { break; }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Error($"Show-app listener stopped: {ex}");
+                            break;
+                        }
                     }
                 })
                 {
@@ -121,7 +130,6 @@ namespace PreySense.Frontend
             // Hidden launches must initialize without waiting for WPF Loaded.
             ((ViewModels.MainViewModel)mainWindow.DataContext).NotifyApplicationReady();
             Services.OverlayBridge.StartIfNeeded();
-            _ = Task.Run(Services.StartupTaskService.RepairLogonTask);
 
             _ = Services.UpdateCheckService.CheckForUpdatesAsync();
 
@@ -140,16 +148,21 @@ namespace PreySense.Frontend
 
         protected override void OnExit(ExitEventArgs e)
         {
+            _exiting = true;
+            try { _showAppEvent?.Set(); } catch (ObjectDisposedException) { }
             try
             {
                 if (MainWindow?.DataContext is ViewModels.MainViewModel vm)
                     vm.PersistSessionSettings();
                 Views.ModeToastWindow.Shutdown();
+            }
+            catch (Exception ex) { AppLogger.Error($"Application exit cleanup failed: {ex}"); }
+            finally
+            {
                 _showAppEvent?.Dispose();
-                _singleInstanceMutex?.ReleaseMutex();
+                if (_ownsSingleInstanceMutex) _singleInstanceMutex?.ReleaseMutex();
                 _singleInstanceMutex?.Dispose();
             }
-            catch { }
 
             base.OnExit(e);
         }

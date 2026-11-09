@@ -9,6 +9,10 @@ namespace PreySense.Frontend.Views
         public SettingsWindow()
         {
             InitializeComponent();
+            Loaded += async (_, _) =>
+            {
+                if (DataContext is ViewModels.MainViewModel vm) await vm.RefreshStartupPreferenceAsync();
+            };
             UpdateUsbChargingLabel();
             LanguageSelector.SelectedIndex = Services.LocalizationService.LanguageIndex;
             MaxHeight = SystemParameters.WorkArea.Height - 40;

@@ -58,11 +58,14 @@ namespace PreySense.Overlay
 
         public static void Reposition(string horizontal, string vertical)
         {
-            AppConfig.Set("overlay_pos_horizontal", horizontal);
-            AppConfig.Set("overlay_pos_vertical", vertical);
-            var overlay = GetOverlay();
-            if (overlay.IsActive)
+            if (_overlay is { IsActive: true } overlay)
                 overlay.SetConfiguredPosition(horizontal, vertical);
+            else
+                PreySense.Core.Configuration.ConfigurationService.Instance.Update(config =>
+                {
+                    config.Overlay.PositionHorizontal = horizontal;
+                    config.Overlay.PositionVertical = vertical;
+                });
         }
 
         public static void Dispose()

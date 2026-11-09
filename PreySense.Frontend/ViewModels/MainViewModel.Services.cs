@@ -24,16 +24,38 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private bool _isBootSoundEnabled = false;
 
         private int _startupPreferenceRevision;
+        private int _startupPreferenceReads;
+        private bool _startupPreferenceWriteInProgress;
+        public bool CanChangeRunOnStartup => _startupPreferenceReads == 0 && !_startupPreferenceWriteInProgress;
 
-        private async Task InitializeStartupPreferenceAsync()
+        private Task? _startupPreferenceRefresh;
+        internal Func<bool>? StartupPreferenceReader { get; set; }
+
+        internal Task RefreshStartupPreferenceAsync()
         {
+            if (_disposed) return Task.CompletedTask;
+            // Opening Settings during initial discovery shares the active query.
+            if (_startupPreferenceRefresh is { IsCompleted: false }) return _startupPreferenceRefresh;
+            return _startupPreferenceRefresh = RefreshStartupPreferenceCoreAsync();
+        }
+
+        private async Task RefreshStartupPreferenceCoreAsync()
+        {
+            _startupPreferenceReads++;
+            OnPropertyChanged(nameof(CanChangeRunOnStartup));
             try
             {
                 int revision = _startupPreferenceRevision;
-                bool enabled = await Task.Run(StartupTaskService.IsStartupEnabled);
+                var read = StartupPreferenceReader ?? StartupTaskService.ReconcileExistingTask;
+                bool enabled = await Task.Run(read);
                 if (!_disposed && revision == _startupPreferenceRevision) IsRunOnStartupEnabled = enabled;
             }
             catch (Exception ex) { AppLogger.Error($"Startup preference read failed: {ex}"); }
+            finally
+            {
+                _startupPreferenceReads--;
+                OnPropertyChanged(nameof(CanChangeRunOnStartup));
+            }
         }
 
         [RelayCommand]
@@ -73,16 +95,20 @@ namespace PreySense.Frontend.ViewModels
         {
             if (_disposed) return;
             _startupPreferenceRevision++;
+            _startupPreferenceWriteInProgress = true;
+            OnPropertyChanged(nameof(CanChangeRunOnStartup));
             try
             {
                 bool enable = IsRunOnStartupEnabled;
                 var result = await Task.Run(() =>
                 {
                     bool success = StartupTaskService.SetStartupEnabled(enable);
+                    // Create already verifies XML readback; a successful delete is serialized with repair.
                     return (success, enabled: success ? enable : StartupTaskService.IsStartupEnabled());
                 });
                 if (_disposed) return;
-                bool success = result.success;
+                IsRunOnStartupEnabled = result.enabled;
+                bool success = result.success && result.enabled == enable;
                 if (success)
                 {
                     DiagnosticMessage = enable ? "Run on Startup: Enabled (Elevated Task)" : "Run on Startup: Disabled";
@@ -96,6 +122,11 @@ namespace PreySense.Frontend.ViewModels
             catch (Exception ex)
             {
                 DiagnosticMessage = $"Startup config failed: {ex.Message}";
+            }
+            finally
+            {
+                _startupPreferenceWriteInProgress = false;
+                OnPropertyChanged(nameof(CanChangeRunOnStartup));
             }
         }
 

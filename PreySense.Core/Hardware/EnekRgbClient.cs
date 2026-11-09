@@ -35,6 +35,7 @@ namespace PreySense
         private static readonly byte[] ZoneMasks = { 0x01, 0x02, 0x04, 0x08 };
 
         private readonly object _lock = new();
+        private readonly Func<byte, byte, byte, byte, byte, bool> _sendStaticZone;
         private SafeFileHandle? _deviceHandle;
         private bool _isDisposed;
         private long _nextEnumerateTicks;
@@ -56,6 +57,7 @@ namespace PreySense
 
         public EnekRgbClient()
         {
+            _sendStaticZone = SendStaticZone;
             HidArrivalHub.Arrived += OnHidArrived;
         }
 
@@ -170,16 +172,27 @@ namespace PreySense
                     return TurnOffBacklight();
                 }
 
-                // Dispatch 4 per-zone feature reports using confirmed masks 0x01, 0x02, 0x04, 0x08
-                bool allSucceeded = true;
-                for (int i = 0; i < 4; i++)
-                {
-                    bool ok = SendFeatureReport(EffectStatic, b, 0, 0, zoneColors[i].R, zoneColors[i].G, zoneColors[i].B, ZoneMasks[i]);
-                    if (!ok) allSucceeded = false;
-                }
-
-                return allSucceeded;
+                return WriteStaticZones(zoneColors, b, _sendStaticZone);
             }
+        }
+
+        private bool SendStaticZone(byte brightness, byte r, byte g, byte b, byte mask) =>
+            SendFeatureReport(EffectStatic, brightness, 0, 0, r, g, b, mask);
+
+        internal static bool WriteStaticZones(ReadOnlySpan<Color> colors, byte brightness,
+            Func<byte, byte, byte, byte, byte, bool> send)
+        {
+            if (colors.Length < 4) return false;
+            Color first = colors[0];
+            bool uniform = true;
+            for (int i = 1; i < 4; i++)
+                uniform &= colors[i].R == first.R && colors[i].G == first.G && colors[i].B == first.B;
+            // 0x0F is the documented all-zones mask; preserve individual masks for mixed colors.
+            if (uniform) return send(brightness, first.R, first.G, first.B, 0x0F);
+            bool succeeded = true;
+            for (int i = 0; i < 4; i++)
+                if (!send(brightness, colors[i].R, colors[i].G, colors[i].B, ZoneMasks[i])) succeeded = false;
+            return succeeded;
         }
 
         /// <summary>

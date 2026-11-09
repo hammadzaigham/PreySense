@@ -146,7 +146,7 @@ namespace PreySense.Frontend.ViewModels
 
             UpdateFanDemand();
 
-            _ = InitializeStartupPreferenceAsync();
+            _ = RefreshStartupPreferenceAsync();
 
             try
             {
@@ -360,6 +360,7 @@ namespace PreySense.Frontend.ViewModels
         public void Dispose()
         {
             if (_disposed) return;
+            SetMainWindowTelemetryVisible(false);
             // Capture the last edit, including changes still inside the debounce window.
             // Only explicit shutdown waits: the worker never awaits the dispatcher.
             _lightingDebouncer.Cancel();

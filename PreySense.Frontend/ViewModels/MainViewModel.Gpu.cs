@@ -309,19 +309,28 @@ namespace PreySense.Frontend.ViewModels
                     await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
                     if (IsGpuIgpuOnlyActive) { DiagnosticMessage = "Windows still shows the NVIDIA GPU as disabled."; return; }
                 }
-                bool available = false;
+                DdsStatus? current = null;
                 for (int attempt = 0; attempt < (leavingIgpuOnly ? 8 : 1); attempt++)
                 {
-                    available = await Task.Run(() => _hw.IsDdsAvailable && _hw.IsDdsSupported());
-                    if (available) break;
+                    current = await Task.Run(() => _hw.IsDdsAvailable ? _hw.GetDdsStatus() : null);
+                    if (current?.IsSupported == true) break;
                     if (leavingIgpuOnly && attempt < 7) await Task.Delay(250);
                 }
-                if (!available)
+                if (current?.IsSupported != true)
                 {
                     DiagnosticMessage = "NVIDIA Advanced Optimus is not available.";
                     return;
                 }
                 var targetDdsMode = (DdsDisplayMode)muxVal;
+                if (current.Matches(targetDdsMode))
+                {
+                    // Auto may currently route through either GPU. Do not reset its MUX
+                    // to the Optimus base or COMMIT an unchanged live driver preference.
+                    ApplyDdsStatus(current);
+                    if (persistPreference) SaveGpuModePreference(muxVal);
+                    DiagnosticMessage = $"GPU mode already set to {GetGpuModeName(muxVal)}.";
+                    return;
+                }
                 var prevRenderMode = System.Windows.Media.RenderOptions.ProcessRenderMode;
                 try
                 {

@@ -85,8 +85,7 @@ public partial class MainViewModel
                 {
                     _hw.SetRgbAllZones(
                         ColorTranslator.FromHtml(keyboard.Zone1ColorHex), ColorTranslator.FromHtml(keyboard.Zone2ColorHex),
-                        ColorTranslator.FromHtml(keyboard.Zone3ColorHex), ColorTranslator.FromHtml(keyboard.Zone4ColorHex));
-                    _hw.SetRgbBrightness(brightness);
+                        ColorTranslator.FromHtml(keyboard.Zone3ColorHex), ColorTranslator.FromHtml(keyboard.Zone4ColorHex), brightness);
                 }
             }
             _hw.SetKbdBacklightTimeoutSeconds(keyboard.BacklightTimeoutSeconds);

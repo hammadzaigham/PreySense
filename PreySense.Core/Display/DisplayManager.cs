@@ -81,6 +81,19 @@ namespace PreySense.Helpers
             return null;
         }
 
+        /// <summary>Windows' active primary-display adapter; this does not open a vendor GPU client.</summary>
+        public static string? GetPrimaryDisplayGpuName()
+        {
+            for (uint index = 0; ; index++)
+            {
+                var device = new DISPLAY_DEVICE { cb = Marshal.SizeOf<DISPLAY_DEVICE>() };
+                if (!EnumDisplayDevices(null, index, ref device, 0)) return null;
+                // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE
+                if ((device.StateFlags & 5) == 5)
+                    return string.IsNullOrWhiteSpace(device.DeviceString) ? null : device.DeviceString.Trim();
+            }
+        }
+
         public static System.Collections.Generic.List<int> GetSupportedRefreshRates()
         {
             var rates = new System.Collections.Generic.List<int>();

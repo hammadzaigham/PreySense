@@ -35,7 +35,7 @@ both fans at the higher of the stage's two saved duties. Missing GPU temperature
 leaves CPU alone to drive transitions; missing CPU temperature skips the update.
 Opening the editor requests no telemetry. There is no separate emergency override.
 
-The main window requests no telemetry. The visible overlay requests only its
+The visible main window requests CPU/GPU temperatures and fan RPMs; hiding it removes that demand. The visible overlay requests only its
 selected metrics. Custom mode reads only temperatures to follow the curve,
 regardless of window visibility; Auto and Max do not request sensors.
 Custom control never requests fan RPM or other metric reads. Before accessing
@@ -46,6 +46,7 @@ Mode-change events and explicit profile application select the running profile;
 fan evaluation does not query the firmware power mode on every sample.
 Missing CPU temperature skips the update and preserves the last confirmed command.
 Missing GPU temperature uses CPU temperature alone.
+Startup applies the selected fan policy once; there is no unconditional five-second reapply.
 A rejected fan write pauses automatic writes until the profile is explicitly
 applied again or the mode changes; it does not switch to Auto or retry every five
 seconds. Exiting the app still releases software fan control to firmware Auto.

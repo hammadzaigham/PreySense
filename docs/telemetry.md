@@ -11,12 +11,12 @@ hardware work. Explicit poll requests share the same rate limit.
 
 | Consumer | Request |
 | --- | --- |
-| Main window | None; controls only |
+| Visible main window | CPU/GPU temperatures, both fan RPMs, and the primary display adapter |
 | Visible overlay | Only the CPU/GPU metric selected in each column |
 | Active Custom fan profile | CPU/GPU temperatures required by the curve |
 | Fan editor | None; edits saved curves without live sensor markers |
 | Hidden Auto/Max fan profiles | None |
-| FPS-only overlay | No hardware metrics |
+| Visible FPS selection | FPS, average frame time and target PID; no hardware sensors |
 
 The overlay publishes its selection when configuration changes. Hidden overlay
 selections are ignored. None slots and disabled graphs add no reads. Duplicate
@@ -33,9 +33,10 @@ metadata. Power-source automation uses existing Acer events, not telemetry polli
 
 The shared timer runs lightweight overlay/FPS housekeeping, samples the requested
 sources, then publishes one completed snapshot. Active Custom fan control and
-the overlay consume it without further reads. Main-window CPU/GPU temperature,
-RPM, refresh-rate status, and active display-GPU labels have been removed. The
-main window and fan editor never request or subscribe to display telemetry.
+the visible main window and overlay consume it without further reads. The main
+window subscribes only while visible and removes its temperature/RPM demand when
+hidden. It displays N/A until a fresh sample arrives. Display refresh-rate status
+is not polled. The active display-GPU label comes from Windows display-adapter enumeration in the same cycle; it does not open a vendor GPU client. The fan editor requests no telemetry.
 
 Before accessing the NVIDIA client, the sampler checks Windows-maintained device
 power data. An asleep adapter is not queried through NVAPI/NVML. Custom fans use
@@ -47,17 +48,27 @@ these readings, sharing the same cycle.
 Graphs record only enabled, selected series, once per metric. Fan graphs use EC
 RPM directly without depending on GPU activity. Repainting happens once per
 snapshot; a separate hash of a subset of metrics no longer suppresses updates.
-An FPS-only overlay repaints from the shared heartbeat without sampling hardware.
+FPS, average frame time and target PID are optional fields in that same immutable
+snapshot. The selected/visible FPS consumer flushes its ETW buffers and samples
+its accumulated frame counters once through the shared producer. Because ETW
+buffer delivery is asynchronous, the last completed batch remains usable for at
+most two shared intervals; older frame data becomes N/A. FPS-only
+selection skips the hardware collector entirely. The overlay renders snapshot
+values rather than reading FPS independently.
 
-When no sensor consumer needs data, no metrics are collected. An enabled but
-temporarily hidden overlay can still use the shared lightweight heartbeat.
-When the overlay is stopped as well, the timer stops entirely.
+The timer runs only when actual sensor metrics or visible FPS are requested. An
+empty overlay with FPS off does not keep it alive. Changing metric selections
+starts/stops the existing timer even when the consumer demand bit is unchanged.
+Hiding the main window/overlay removes their requests; Custom fan control can
+retain temperature-only demand. With all three consumers idle, the timer stops.
 
 Removed paths include separate display/overlay/fan-editor timers, independent
 fan-temperature requests, legacy overlay sampling and warmup, extra post-switch
 polling, fallback samplers, repeated GPU probes, duplicate battery reads, and
 duplicate UI metric copies. Unexpected unavailable readings
-remain N/A. FPS ETW capture/flush and its display thresholds are unchanged.
+remain N/A. ETW frame arrival is event-driven; its former independent 200 ms
+flush timer has been removed. Frame-source failure yields N/A for FPS without
+discarding successfully collected hardware temperatures.
 
 ## Event-driven work
 

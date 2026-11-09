@@ -12,50 +12,12 @@ namespace PreySense.Frontend.Services
         public const string TaskName = "PreySense";
         private const string TaskNamespace = "http://schemas.microsoft.com/windows/2004/02/mit/task";
 
-        public static bool IsStartupEnabled()
-        {
-            return QueryTaskExitCode() == 0;
-        }
+        private static readonly StartupTaskRegistration Registration = new(RunSchtasks,
+            () => Environment.ProcessPath, () => WindowsIdentity.GetCurrent().User?.Value);
 
-        public static bool SetStartupEnabled(bool enable)
-        {
-            if (!enable)
-            {
-                int deleted = RunSchtasks($"/Delete /F /TN \"{TaskName}\"").ExitCode;
-                return deleted == 0 || QueryTaskExitCode() != 0;
-            }
-
-            string? exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-            if (string.IsNullOrWhiteSpace(exePath))
-                return false;
-
-            return RegisterLogonTask(exePath);
-        }
-
-        /// <summary>
-        /// schtasks defaults a logon task to "start only on AC power" and "stop when
-        /// switching to battery". Re-register an existing task so logon starts PreySense
-        /// on battery as well, without changing the executable it already points at.
-        /// </summary>
-        public static void RepairLogonTask()
-        {
-            if (!TryReadTaskXml(out string xml))
-                return;
-
-            if (xml.Contains("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>", StringComparison.Ordinal)
-                && xml.Contains("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>", StringComparison.Ordinal)
-                && xml.Contains("<StartWhenAvailable>true</StartWhenAvailable>", StringComparison.Ordinal)
-                && xml.Contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", StringComparison.Ordinal)
-                && xml.Contains("<WorkingDirectory>", StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            if (!TryReadCommand(xml, out string command))
-                return;
-
-            RegisterLogonTask(command);
-        }
+        public static bool IsStartupEnabled() => Registration.IsEnabled();
+        public static bool SetStartupEnabled(bool enable) => Registration.SetEnabled(enable);
+        public static bool ReconcileExistingTask() => Registration.ReconcileExisting();
 
         public static string BuildLogonTaskXml(string exePath, string userId)
         {
@@ -82,6 +44,11 @@ namespace PreySense.Frontend.Services
                     <AllowHardTerminate>true</AllowHardTerminate>
                     <StartWhenAvailable>true</StartWhenAvailable>
                     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+                    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+                    <IdleSettings>
+                      <StopOnIdleEnd>false</StopOnIdleEnd>
+                      <RestartOnIdle>false</RestartOnIdle>
+                    </IdleSettings>
                     <AllowStartOnDemand>true</AllowStartOnDemand>
                     <Enabled>true</Enabled>
                     <Hidden>false</Hidden>
@@ -105,38 +72,128 @@ namespace PreySense.Frontend.Services
                 """;
         }
 
-        private static bool RegisterLogonTask(string exePath)
-        {
-            string? userId = WindowsIdentity.GetCurrent().User?.Value;
-            if (string.IsNullOrWhiteSpace(userId))
-                return false;
+        internal readonly record struct SchtasksResult(int ExitCode, string Output);
 
-            string path = Path.Combine(Path.GetTempPath(), $"PreySense-startup-{Environment.ProcessId}.xml");
+        // All reads/repairs/toggles share a lock, so an in-flight repair cannot recreate a deleted task.
+        internal sealed class StartupTaskRegistration(
+            Func<string, SchtasksResult> run, Func<string?> executablePath, Func<string?> currentUser)
+        {
+            private readonly object _gate = new();
+
+            public bool IsEnabled()
+            {
+                lock (_gate) return TryRead(out string xml) && CanLaunch(xml);
+            }
+
+            public bool ReconcileExisting()
+            {
+                lock (_gate)
+                {
+                    // Never create a missing entry or re-enable a task/trigger disabled by its owner.
+                    if (!TryRead(out string xml) || !IsEnabledTaskXml(xml, currentUser())) return false;
+                    string? exe = executablePath();
+                    string? user = currentUser();
+                    if (!string.IsNullOrWhiteSpace(exe) && !string.IsNullOrWhiteSpace(user) &&
+                        !MatchesTaskXml(xml, exe, user))
+                    {
+                        if (Register(exe, user)) return true;
+                    }
+                    return CanLaunch(xml);
+                }
+            }
+
+            public bool SetEnabled(bool enable)
+            {
+                lock (_gate)
+                {
+                    if (!enable)
+                    {
+                        var deleted = run($"/Delete /F /TN \"{TaskName}\"");
+                        if (deleted.ExitCode != 0) AppLogger.Error($"Startup task removal failed: {deleted.Output}");
+                        return deleted.ExitCode == 0;
+                    }
+                    string? exe = executablePath();
+                    string? user = currentUser();
+                    return !string.IsNullOrWhiteSpace(exe) && !string.IsNullOrWhiteSpace(user) && Register(exe, user);
+                }
+            }
+
+            private bool CanLaunch(string xml) => IsEnabledTaskXml(xml, currentUser()) &&
+                TryReadCommand(xml, out string command) && File.Exists(command);
+
+            private bool TryRead(out string xml)
+            {
+                var result = run($"/Query /TN \"{TaskName}\" /XML");
+                xml = result.Output;
+                return result.ExitCode == 0;
+            }
+
+            private bool Register(string exe, string user)
+            {
+                if (!Path.IsPathFullyQualified(exe) || !File.Exists(exe)) return false;
+                string path = Path.Combine(Path.GetTempPath(), $"PreySense-startup-{Guid.NewGuid():N}.xml");
+                try
+                {
+                    File.WriteAllText(path, BuildLogonTaskXml(exe, user), Encoding.Unicode);
+                    var result = run($"/Create /F /TN \"{TaskName}\" /XML \"{path}\"");
+                    if (result.ExitCode == 0 && TryRead(out string saved) && MatchesTaskXml(saved, exe, user)) return true;
+                    AppLogger.Error($"Startup task registration/readback failed: {result.Output}");
+                    return false;
+                }
+                catch (Exception ex) { AppLogger.Error($"Startup task registration failed: {ex}"); return false; }
+                finally { try { File.Delete(path); } catch { } }
+            }
+        }
+
+        internal static bool IsEnabledTaskXml(string xml, string? user)
+        {
             try
             {
-                File.WriteAllText(path, BuildLogonTaskXml(exePath, userId), Encoding.Unicode);
-                return RunSchtasks($"/Create /F /TN \"{TaskName}\" /XML \"{path}\"").ExitCode == 0;
+                XNamespace ns = TaskNamespace;
+                var root = XDocument.Parse(xml).Root;
+                if (root?.Name != ns + "Task" || string.IsNullOrWhiteSpace(user)) return false;
+                var principal = root.Element(ns + "Principals")?.Element(ns + "Principal");
+                if (principal?.Element(ns + "UserId")?.Value != user) return false;
+                if (!Enabled(root.Element(ns + "Settings")?.Element(ns + "Enabled"))) return false;
+                return root.Element(ns + "Triggers")?.Elements(ns + "LogonTrigger").Any(trigger =>
+                    Enabled(trigger.Element(ns + "Enabled")) &&
+                    (string.IsNullOrWhiteSpace(trigger.Element(ns + "UserId")?.Value) ||
+                        trigger.Element(ns + "UserId")?.Value == user)) == true;
             }
-            catch
-            {
-                return false;
-            }
-            finally
-            {
-                try { File.Delete(path); } catch { }
-            }
+            catch { return false; }
         }
 
-        private static int QueryTaskExitCode()
-        {
-            return RunSchtasks($"/Query /TN \"{TaskName}\"").ExitCode;
-        }
+        private static bool Enabled(XElement? element) => element == null || element.Value.Trim() is "true" or "1";
 
-        private static bool TryReadTaskXml(out string xml)
+        internal static bool MatchesTaskXml(string xml, string exe, string user)
         {
-            SchtasksResult result = RunSchtasks($"/Query /TN \"{TaskName}\" /XML");
-            xml = result.Output;
-            return result.ExitCode == 0 && xml.Contains("<Task", StringComparison.Ordinal);
+            if (!IsEnabledTaskXml(xml, user) || !TryReadCommand(xml, out string command) ||
+                !string.Equals(command, exe, StringComparison.OrdinalIgnoreCase)) return false;
+            try
+            {
+                XNamespace ns = TaskNamespace;
+                var actual = XDocument.Parse(xml).Root!;
+                var expected = XDocument.Parse(BuildLogonTaskXml(exe, user)).Root!;
+                // Compare only the policy we own; Scheduler adds harmless metadata/default fields.
+                foreach (var leaf in expected.Descendants().Where(element => !element.HasElements &&
+                    element.Parent?.Name != ns + "RegistrationInfo" && element.Name != ns + "Command"))
+                {
+                    var path = leaf.AncestorsAndSelf().Reverse().Skip(1).Select(element => element.Name).ToArray();
+                    XElement? match = actual;
+                    foreach (var name in path) match = match?.Element(name);
+                    if (!string.Equals(match?.Value, leaf.Value, leaf.Name == ns + "WorkingDirectory"
+                        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return false;
+                }
+                var triggers = actual.Element(ns + "Triggers")!;
+                var actions = actual.Element(ns + "Actions")!;
+                var principal = actual.Element(ns + "Principals")!.Element(ns + "Principal")!;
+                return triggers.Elements().Count() == 1 && actions.Elements().Count() == 1 &&
+                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "EndBoundary") == null &&
+                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "StartBoundary") == null &&
+                    triggers.Element(ns + "LogonTrigger")?.Element(ns + "Delay") == null &&
+                    (string?)actions.Attribute("Context") == (string?)principal.Attribute("id");
+            }
+            catch { return false; }
         }
 
         private static bool TryReadCommand(string xml, out string command)
@@ -144,23 +201,13 @@ namespace PreySense.Frontend.Services
             command = string.Empty;
             try
             {
-                var document = XDocument.Parse(xml);
                 XNamespace ns = TaskNamespace;
-                string? value = document.Descendants(ns + "Command").FirstOrDefault()?.Value?.Trim();
-                if (string.IsNullOrWhiteSpace(value))
-                    return false;
-                if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-                    value = value[1..^1];
-                command = value;
+                command = XDocument.Parse(xml).Root?.Element(ns + "Actions")?.Element(ns + "Exec")?
+                    .Element(ns + "Command")?.Value.Trim().Trim('"') ?? string.Empty;
                 return command.Length > 0;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
-
-        private readonly record struct SchtasksResult(int ExitCode, string Output);
 
         private static SchtasksResult RunSchtasks(string arguments)
         {
@@ -183,6 +230,7 @@ namespace PreySense.Frontend.Services
                 if (!proc.WaitForExit(15000))
                 {
                     try { proc.Kill(entireProcessTree: true); } catch { }
+                    AppLogger.Error("Startup task operation timed out.");
                     return new SchtasksResult(-1, string.Empty);
                 }
 
@@ -190,8 +238,9 @@ namespace PreySense.Frontend.Services
                 string error = stderr.GetAwaiter().GetResult();
                 return new SchtasksResult(proc.ExitCode, string.IsNullOrWhiteSpace(output) ? error : output);
             }
-            catch
+            catch (Exception ex)
             {
+                AppLogger.Error($"Startup task operation failed: {ex}");
                 return new SchtasksResult(-1, string.Empty);
             }
         }

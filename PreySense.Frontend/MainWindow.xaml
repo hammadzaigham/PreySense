@@ -18,10 +18,21 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-gauge-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="Performance Mode" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
+              <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}"
+                         VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0,0,0">
+                <Run Text="CPU"/><Run Text=": "/>
+                <Run Text="{Binding CpuTemperatureText, Mode=OneWay}"/>
+                <Run Text=" • "/>
+                <Run Text="{Binding CpuFanText, Mode=OneWay}"/>
+              </TextBlock>
             </Grid>
             <UniformGrid Columns="5" Rows="1" Margin="0,2,0,2">
               <Button AutomationProperties.AutomationId="BtnModeEco" Command="{Binding SetModeCommand}" CommandParameter="6">
@@ -115,10 +126,21 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-video-card-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="GPU Mode" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
+              <TextBlock Grid.Column="1" Style="{StaticResource OriginalStatusTextStyle}"
+                         VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0,0,0">
+                <Run Text="GPU"/><Run Text=": "/>
+                <Run Text="{Binding GpuTemperatureText, Mode=OneWay}"/>
+                <Run Text=" • "/>
+                <Run Text="{Binding GpuFanText, Mode=OneWay}"/>
+              </TextBlock>
             </Grid>
             <UniformGrid Columns="{Binding GpuModeTileColumns}" Rows="1" Margin="0,2,0,2">
               <Button Height="62" Margin="3" CommandParameter="1" Command="{Binding SetGpuMuxModeCommand}">
@@ -222,10 +244,17 @@
         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-laptop-32.png" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
                 <TextBlock Text="Display" Style="{StaticResource OriginalSectionTitleStyle}" />
               </StackPanel>
+              <TextBlock Grid.Column="1" Text="{Binding ActiveGpuDisplayMode, Mode=OneWay}"
+                         Style="{StaticResource OriginalStatusTextStyle}" HorizontalAlignment="Right"
+                         VerticalAlignment="Center" Margin="8,0,0,0" MaxWidth="300" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <Grid Margin="0,2,0,2">
               <Grid.ColumnDefinitions>

@@ -100,6 +100,7 @@ namespace PreySense.Core.Services
         public void SetRgbStatic(byte zone, Color color) => SetRgbStaticCount++;
 
         public void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4) => SetRgbAllZonesCount++;
+        public void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4, byte brightness) => SetRgbAllZonesCount++;
 
         public void SetRgbHardwareEffect(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction) => SetRgbHardwareEffectCount++;
 

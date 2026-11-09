@@ -151,14 +151,14 @@ public class LatestBackgroundWorkerTests
             worker.Submit(new(keyboard, cover, MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Cover))
                 .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             var calls = recorder.Calls.ToArray();
-            CollectionAssert.AreEqual(new[] { "SetRgbAllZones", "SetRgbBrightness", "SetKbdBacklightTimeoutSeconds", "SetCoverLogoLighting" }, calls.Select(c => c.Name).ToArray());
+            CollectionAssert.AreEqual(new[] { "SetRgbAllZones", "SetKbdBacklightTimeoutSeconds", "SetCoverLogoLighting" }, calls.Select(c => c.Name).ToArray());
             Assert.IsTrue(calls.All(call => call.Thread != caller));
             Assert.AreEqual(ColorTranslator.FromHtml("#112233"), (Color)calls[0].Arguments[0]!);
             Assert.AreEqual(ColorTranslator.FromHtml("#4488CC"), (Color)calls[0].Arguments[3]!);
-            Assert.AreEqual((byte)50, calls[1].Arguments[0]);
-            Assert.AreEqual(60, calls[2].Arguments[0]);
-            Assert.AreEqual(ColorTranslator.FromHtml("#445566"), (Color)calls[3].Arguments[1]!);
-            Assert.AreEqual((byte)25, calls[3].Arguments[2]);
+            Assert.AreEqual((byte)50, calls[0].Arguments[4], "Zones and their final brightness must use one hardware operation.");
+            Assert.AreEqual(60, calls[1].Arguments[0]);
+            Assert.AreEqual(ColorTranslator.FromHtml("#445566"), (Color)calls[2].Arguments[1]!);
+            Assert.AreEqual((byte)25, calls[2].Arguments[2]);
         }
         finally { worker.StopAsync().GetAwaiter().GetResult(); }
     }

@@ -55,4 +55,30 @@ public class WindowVisibilitySessionTests
         CollectionAssert.AreEqual(new[] { "fans" }, session.HiddenWindows.ToArray());
         Assert.IsFalse(session.CanAutoHide(session.Revision));
     }
+    [TestMethod]
+    public void ShowBeforeWindowsActivatesTheApp_DoesNotImmediatelyHide()
+    {
+        var session = new WindowVisibilitySession<string>();
+        long revision = session.BeginRestore();
+        session.CompleteRestore(revision);
+        Assert.IsFalse(session.ShouldAutoHide(revision, false));
+        Assert.IsFalse(session.ShouldAutoHide(revision, null));
+        Assert.IsFalse(session.ShouldAutoHide(revision, true));
+        Assert.IsTrue(session.ShouldAutoHide(revision, false));
+    }
+
+    [TestMethod]
+    public void ReopeningRequiresNewForegroundOwnershipBeforeAutoHide()
+    {
+        var session = new WindowVisibilitySession<string>();
+        long first = session.BeginRestore();
+        session.RecordForeground(true);
+        session.CompleteRestore(first);
+        Assert.IsTrue(session.ShouldAutoHide(first, false));
+        session.BeginHide(Array.Empty<string>(), null);
+        long second = session.BeginRestore();
+        session.CompleteRestore(second);
+        Assert.IsFalse(session.ShouldAutoHide(first, true));
+        Assert.IsFalse(session.ShouldAutoHide(second, false));
+    }
 }

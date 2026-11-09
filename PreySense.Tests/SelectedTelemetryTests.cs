@@ -19,6 +19,7 @@ public class SelectedTelemetryTests
     [DataRow(TelemetryMetrics.CpuFanRpm, "fans")]
     [DataRow(TelemetryMetrics.GpuFanRpm, "fans")]
     [DataRow(TelemetryMetrics.GpuTemperature, "gpu")]
+    [DataRow(TelemetryMetrics.DisplayAdapter, "displayGpu")]
     [DataRow(TelemetryMetrics.GpuUsage, "gpu")]
     [DataRow(TelemetryMetrics.GpuActiveClock, "gpu")]
     [DataRow(TelemetryMetrics.GpuVoltage, "gpu")]
@@ -157,19 +158,24 @@ public class SelectedTelemetryTests
     }
 
     [TestMethod]
-    public void MainWindowContainsOnlyControlsAndCannotRequestTelemetry()
+    public void MainWindowRequestsOnlyTemperaturesAndRpmsWhileVisible()
     {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string xaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml"));
-        string code = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "MainWindow.xaml.cs"));
-        foreach (string removed in new[] { "CpuTemperatureText", "GpuTemperatureText", "CpuFanText", "GpuFanText", "DisplayPanelInfo", "ActiveGpuDisplayMode" })
-            Assert.DoesNotContain(removed, xaml);
-        Assert.DoesNotContain("SetTelemetryPollingActive", code);
-        Assert.DoesNotContain("TelemetryCoordinator", code);
-        Assert.DoesNotContain("MainWindow", Enum.GetNames<TelemetryDemand>());
-        Assert.Contains("SetModeCommand", xaml);
-        Assert.Contains("SetGpuMuxModeCommand", xaml);
-        Assert.Contains("SelectedRefreshRateOption", xaml);
+        TelemetryCoordinator.Reset();
+        try
+        {
+            Assert.AreEqual(TelemetryMetrics.None, TelemetryCoordinator.RequestedMetrics);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            Assert.IsTrue(TelemetryCoordinator.HasUiDemand);
+            Assert.AreEqual(TelemetryMetrics.Temperatures | TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm | TelemetryMetrics.DisplayAdapter,
+                TelemetryCoordinator.RequestedMetrics);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, true);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, false);
+            Assert.IsFalse(TelemetryCoordinator.HasUiDemand);
+            Assert.AreEqual(TelemetryMetrics.Temperatures, TelemetryCoordinator.RequestedMetrics);
+            TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, false);
+            Assert.AreEqual(TelemetryMetrics.None, TelemetryCoordinator.RequestedMetrics);
+        }
+        finally { TelemetryCoordinator.Reset(); }
     }
 
     [TestMethod]
@@ -199,6 +205,7 @@ public class SelectedTelemetryTests
         public CpuClockSnapshot ClockResult = new(4000, 2500, 4000, 2000);
         public CpuClockSnapshot ReadCpuClockSnapshot(TelemetryMetrics requested) { Calls.Add("cpuClock"); return ClockResult; }
         public CpuTelemetrySnapshot? ReadCpuUsage() { Calls.Add("cpuUsage"); return new(10, 20, 10, 5, 8); }
+        public string? ReadDisplayGpuName() { Calls.Add("displayGpu"); return "Intel Graphics"; }
         public int? ReadCpuTemperature() { Calls.Add("cpuTemp"); return 60; }
         public float? ReadCpuVoltage() { Calls.Add("cpuVoltage"); return 1; }
         public float? ReadCpuPower() { Calls.Add("cpuPower"); return 15; }

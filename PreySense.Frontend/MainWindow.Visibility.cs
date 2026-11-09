@@ -39,10 +39,11 @@ public partial class MainWindow
                     : visibleWindows.LastOrDefault(window => window.IsActive)
                         ?? visibleWindows.OrderBy(OwnerDepth).LastOrDefault() ?? this;
                 ForceToForeground(target);
+                _visibilitySession.RecordForeground(IsApplicationForeground(GetForegroundWindow()));
             }
             finally
             {
-                // This guard belongs to this transition; never clear a modal dialog's suppression.
+                // Ignore transient activation changes while restoring the window group.
                 Dispatcher.BeginInvoke(DispatcherPriority.Input,
                     () =>
                     {
@@ -60,7 +61,7 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             if (_isExplicitExit || !IsVisible || !_visibilitySession.CanAutoHide(revision)) return;
-            if (IsApplicationForeground(GetForegroundWindow()) == false)
+            if (_visibilitySession.ShouldAutoHide(revision, IsApplicationForeground(GetForegroundWindow())))
                 HideApplicationWindowsForAutoHide();
         });
     }

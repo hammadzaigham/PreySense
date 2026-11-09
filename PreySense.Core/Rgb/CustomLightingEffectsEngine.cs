@@ -429,8 +429,9 @@ namespace PreySense.Rgb
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"CustomLightingEffectsEngine loop error: {ex.Message}");
-                    await Task.Delay(100, ct);
+                    AppLogger.Error($"CustomLightingEffectsEngine stopped after a frame failure: {ex}");
+                    Stop(); // This is the animation task itself: never join it from here.
+                    break;
                 }
             }
         }

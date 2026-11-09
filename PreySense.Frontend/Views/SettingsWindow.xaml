@@ -32,6 +32,7 @@
                         <StackPanel>
                             <!-- Run on Startup Toggle -->
                             <controls:SettingSwitchRow Title="Run on Startup"
+                                                      IsEnabled="{Binding CanChangeRunOnStartup}"
                                                       IsChecked="{Binding IsRunOnStartupEnabled, Mode=TwoWay}" 
                                                       Command="{Binding ToggleRunOnStartupCommand}"/>
 

@@ -88,6 +88,51 @@ public class CpuTelemetryReaderTests
     }
 
     [TestMethod]
+    public void ActiveOnlyClocksSkipTscAndEffectiveClocksWarmUpAfterSelectionChanges()
+    {
+        bool next = false;
+        var reads = new List<uint>();
+        var mock = new MockCpuDriverBackend
+        {
+            ReadOverride = msr =>
+            {
+                reads.Add(msr);
+                return msr switch
+                {
+                    CpuTelemetryReader.MSR_IA32_APERF => next ? 1100UL : 100UL,
+                    CpuTelemetryReader.MSR_IA32_MPERF => next ? 600UL : 100UL,
+                    CpuTelemetryReader.MSR_IA32_TIME_STAMP_COUNTER => 1100UL,
+                    _ => throw new AssertFailedException("Unexpected MSR")
+                };
+            }
+        };
+        using var reader = new CpuTelemetryReader(mock, 2400, new[] { false });
+        Assert.IsNull(reader.SampleTopologyClocks(includeEffective: false).PCoreActiveMhz);
+        Thread.Sleep(60);
+        next = true;
+        var active = reader.SampleTopologyClocks(includeEffective: false);
+        Assert.AreEqual(4800, active.PCoreActiveMhz);
+        Assert.IsNull(active.PCoreEffectiveMhz);
+        CollectionAssert.AreEqual(new[] { CpuTelemetryReader.MSR_IA32_APERF, CpuTelemetryReader.MSR_IA32_MPERF,
+            CpuTelemetryReader.MSR_IA32_APERF, CpuTelemetryReader.MSR_IA32_MPERF }, reads);
+        Thread.Sleep(60);
+        mock.ReadOverride = msr =>
+        {
+            reads.Add(msr);
+            return msr switch
+            {
+                CpuTelemetryReader.MSR_IA32_APERF => 2100UL,
+                CpuTelemetryReader.MSR_IA32_MPERF => 1100UL,
+                CpuTelemetryReader.MSR_IA32_TIME_STAMP_COUNTER => 2100UL,
+                _ => throw new AssertFailedException("Unexpected MSR")
+            };
+        };
+        var effective = reader.SampleTopologyClocks();
+        Assert.IsNull(effective.PCoreEffectiveMhz, "The first TSC read must establish a baseline, not synthesize effective MHz.");
+        Assert.AreEqual(CpuTelemetryReader.MSR_IA32_TIME_STAMP_COUNTER, reads[^1]);
+    }
+
+    [TestMethod]
     public void PackagePower_UnavailableDriverRemainsNull()
     {
         using var reader = new CpuTelemetryReader(new MockCpuDriverBackend { IsInitialized = false }, 2400);

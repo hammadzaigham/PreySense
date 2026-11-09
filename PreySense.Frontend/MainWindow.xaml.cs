@@ -22,12 +22,21 @@ namespace PreySense.Frontend
         public MainWindow()
         {
             InitializeComponent();
-            Activated += (_, _) => _lastActiveWindow = this;
+            Activated += (_, _) =>
+            {
+                _lastActiveWindow = this;
+                _visibilitySession.RecordForeground(true);
+            };
             IsVisibleChanged += (_, _) =>
             {
+                if (DataContext is MainViewModel viewModel) viewModel.SetMainWindowTelemetryVisible(IsVisible);
                 _windowActivityEvents?.Dispose();
                 _windowActivityEvents = IsVisible
-                    ? new ForegroundWindowEvents(_ => QueueAutoHide())
+                    ? new ForegroundWindowEvents(window =>
+                    {
+                        _visibilitySession.RecordForeground(IsApplicationForeground(window));
+                        QueueAutoHide();
+                    })
                     : null;
             };
 

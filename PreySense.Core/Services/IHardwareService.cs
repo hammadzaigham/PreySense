@@ -71,6 +71,7 @@ namespace PreySense.Core.Services
         bool IsRgbAvailable => true;
         void SetRgbStatic(byte zone, Color color);
         void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4);
+        void SetRgbAllZones(Color z1, Color z2, Color z3, Color z4, byte brightness);
         void SetRgbHardwareEffect(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction);
         void SetRgbBrightness(byte brightness);
         int? GetKeyboardBrightness();

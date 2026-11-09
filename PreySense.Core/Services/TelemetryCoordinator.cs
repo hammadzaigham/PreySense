@@ -8,9 +8,12 @@ using System.Threading;
 public enum TelemetryDemand
 {
     None = 0,
+    MainWindow = 1 << 0,
     Overlay = 1 << 1,
     FanController = 1 << 2
 }
+
+public readonly record struct FrameTelemetry(double? FramesPerSecond, double? FrameTimeMilliseconds, int? ProcessId);
 
 public readonly record struct TelemetrySnapshot(
     long TimestampTicks,
@@ -53,7 +56,11 @@ public readonly record struct TelemetrySnapshot(
     int? CpuPl1Watts = null,
     int? CpuPl2Watts = null,
     float? GpuMemoryTemp = null,
-    int? GpuActiveClockMhz = null)
+    int? GpuActiveClockMhz = null,
+    double? FramesPerSecond = null,
+    double? FrameTimeMilliseconds = null,
+    int? FrameProcessId = null,
+    string? DisplayGpuName = null)
 {
     public long EffectiveThermalTicks => ThermalTimestampTicks > 0 ? ThermalTimestampTicks : TimestampTicks;
 
@@ -143,6 +150,10 @@ public readonly record struct TelemetrySnapshot(
                 VramUsedMb = null,
                 VramTotalMb = null,
                 VramSpeedMhz = null,
+                FramesPerSecond = null,
+                FrameTimeMilliseconds = null,
+                FrameProcessId = null,
+                DisplayGpuName = null,
                 TimestampTicks = 0
             };
         }
@@ -206,6 +217,8 @@ public static class TelemetryCoordinator
     private static Func<TelemetrySnapshot>? _customFullSampler;
     private static Func<TelemetrySnapshot>? _customFanOnlySampler;
     private static Func<long>? _customTimestampProvider;
+    private static Func<TelemetryMetrics, bool, TelemetrySnapshot>? _metricSampler;
+    private static Func<FrameTelemetry>? _frameSampler;
 
     /// <summary>
     /// Shared hardware telemetry snapshot for fan control, power transitions, and both UIs.
@@ -215,8 +228,9 @@ public static class TelemetryCoordinator
 
     // Lightweight overlay visibility/FPS work shares the same timer, even while sensors are idle.
     public static event Action? Heartbeat;
-    private static bool _overlayActive;
+    private static volatile bool _overlayActive;
     private static TelemetryMetrics _overlayMetrics;
+    public const TelemetryMetrics MainWindowMetrics = TelemetryMetrics.Temperatures | TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm | TelemetryMetrics.DisplayAdapter;
 
     public static TelemetryMetrics RequestedMetrics
     {
@@ -225,7 +239,8 @@ public static class TelemetryCoordinator
             lock (SyncLock)
             {
                 var demand = (TelemetryDemand)_demandMask;
-                var metrics = TelemetryMetrics.None;
+                var metrics = _overlayActive ? TelemetryMetrics.FrameRate : TelemetryMetrics.None;
+                if (demand.HasFlag(TelemetryDemand.MainWindow)) metrics |= MainWindowMetrics;
                 if (demand.HasFlag(TelemetryDemand.Overlay)) metrics |= _overlayMetrics;
                 if (demand.HasFlag(TelemetryDemand.FanController))
                     metrics |= TelemetryMetrics.Temperatures;
@@ -236,7 +251,11 @@ public static class TelemetryCoordinator
 
     public static void SetOverlayMetrics(TelemetryMetrics metrics)
     {
-        lock (SyncLock) _overlayMetrics = metrics;
+        lock (SyncLock)
+        {
+            _overlayMetrics = metrics & TelemetryMetrics.Hardware;
+            ScheduleNextMasterTick();
+        }
     }
 
 
@@ -291,8 +310,8 @@ public static class TelemetryCoordinator
         }
     }
 
-    public static bool HasActiveDemand => Volatile.Read(ref _demandMask) != 0;
-    public static bool HasUiDemand => (Volatile.Read(ref _demandMask) & (int)TelemetryDemand.Overlay) != 0;
+    public static bool HasActiveDemand => Volatile.Read(ref _demandMask) != 0 || _overlayActive;
+    public static bool HasUiDemand => _overlayActive || (Volatile.Read(ref _demandMask) & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay)) != 0;
     public static bool HasFanOnlyDemand => HasActiveDemand && !HasUiDemand;
     public static TelemetryDemand ActiveDemand => (TelemetryDemand)Volatile.Read(ref _demandMask);
 
@@ -320,21 +339,20 @@ public static class TelemetryCoordinator
     {
         lock (SyncLock)
         {
-            if (Volatile.Read(ref _cycleInProgress) == 0 && !MasterTimer.Enabled &&
-                (_overlayActive || (HasActiveDemand && (_customFullSampler != null || _customFanOnlySampler != null))))
-            {
-                MasterTimer.Start();
-            }
+            bool needsHardware = (RequestedMetrics & TelemetryMetrics.Hardware) != TelemetryMetrics.None &&
+                (_metricSampler != null || _customFullSampler != null || _customFanOnlySampler != null);
+            if (!_overlayActive && !needsHardware) { MasterTimer.Stop(); return; }
+            if (Volatile.Read(ref _cycleInProgress) == 0 && !MasterTimer.Enabled) MasterTimer.Start();
         }
     }
 
+    // Active means the visible overlay actually requests FPS, not merely that a window exists.
     public static void SetOverlayActive(bool active)
     {
         lock (SyncLock)
         {
             _overlayActive = active;
-            if (active) ScheduleNextMasterTick();
-            else if (!HasActiveDemand) MasterTimer.Stop();
+            ScheduleNextMasterTick();
         }
     }
 
@@ -346,8 +364,28 @@ public static class TelemetryCoordinator
             int newMask = active ? oldMask | (int)demand : oldMask & ~(int)demand;
             if (oldMask == newMask) return;
             Volatile.Write(ref _demandMask, newMask);
-            if (oldMask == 0 && newMask != 0) ScheduleNextMasterTick();
-            else if (newMask == 0 && !_overlayActive) MasterTimer.Stop();
+            ScheduleNextMasterTick();
+        }
+    }
+
+    public static void ConfigureMetricSampler(Func<TelemetryMetrics, bool, TelemetrySnapshot> sampler, Func<long>? timestampProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(sampler);
+        lock (SyncLock)
+        {
+            _metricSampler = sampler;
+            _customFullSampler = _customFanOnlySampler = null;
+            _customTimestampProvider = timestampProvider;
+            ScheduleNextMasterTick();
+        }
+    }
+
+    public static void ConfigureFrameSampler(Func<FrameTelemetry>? sampler)
+    {
+        lock (SyncLock)
+        {
+            _frameSampler = sampler;
+            ScheduleNextMasterTick();
         }
     }
 
@@ -362,15 +400,8 @@ public static class TelemetryCoordinator
             _customFanOnlySampler = fanOnlySampler;
             _customTimestampProvider = timestampProvider;
 
-            bool hasSampler = fullSampler != null || fanOnlySampler != null;
-            if (HasActiveDemand && hasSampler)
-            {
-                ScheduleNextMasterTick();
-            }
-            else if (!hasSampler && !_overlayActive)
-            {
-                MasterTimer.Stop();
-            }
+            _metricSampler = null;
+            ScheduleNextMasterTick();
         }
     }
 
@@ -387,6 +418,8 @@ public static class TelemetryCoordinator
             _customFullSampler = null;
             _customFanOnlySampler = null;
             _customTimestampProvider = null;
+            _metricSampler = null;
+            _frameSampler = null;
             _currentSnapshot = TelemetrySnapshot.Empty;
             _lastPollTicks = 0;
             Volatile.Write(ref _demandMask, 0);
@@ -412,133 +445,127 @@ public static class TelemetryCoordinator
     /// <summary>Samples once at most per second, including explicit requests and timer ticks.</summary>
     public static void Poll()
     {
-        if (!HasActiveDemand || RequestedMetrics == TelemetryMetrics.None)
-            return;
-
-        if (Interlocked.Exchange(ref _pollInProgress, 1) != 0)
-            return;
+        if (!HasActiveDemand || RequestedMetrics == TelemetryMetrics.None) return;
+        if (Interlocked.Exchange(ref _pollInProgress, 1) != 0) return;
 
         Func<TelemetrySnapshot>? fullSampler;
         Func<TelemetrySnapshot>? fanOnlySampler;
-
+        Func<TelemetryMetrics, bool, TelemetrySnapshot>? metricSampler;
+        Func<FrameTelemetry>? frameSampler;
+        TelemetryMetrics metrics;
+        bool uiDemand;
+        bool wantsFrames;
+        Func<long>? timestampProvider;
         lock (SyncLock)
         {
+            timestampProvider = _customTimestampProvider;
+            metrics = RequestedMetrics;
+            wantsFrames = (metrics & TelemetryMetrics.FrameRate) != 0;
+            metrics &= TelemetryMetrics.Hardware;
+            uiDemand = HasUiDemand;
             fullSampler = _customFullSampler;
             fanOnlySampler = _customFanOnlySampler;
-
-            if (fullSampler == null && fanOnlySampler == null)
+            metricSampler = _metricSampler;
+            frameSampler = wantsFrames ? _frameSampler : null;
+            if ((!wantsFrames && metrics == TelemetryMetrics.None) ||
+                (!wantsFrames && metricSampler == null && fullSampler == null && fanOnlySampler == null))
             {
                 Volatile.Write(ref _pollInProgress, 0);
                 return;
             }
-
-            if (_lastPollTicks > 0)
+            long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
+            if (_lastPollTicks > 0 && (double)(now - _lastPollTicks) / Stopwatch.Frequency < MinDemandPollIntervalSeconds)
             {
-                long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                double elapsed = _customTimestampProvider != null
-                    ? (double)(now - _lastPollTicks) / Stopwatch.Frequency
-                    : Stopwatch.GetElapsedTime(_lastPollTicks, now).TotalSeconds;
-
-                if (elapsed < MinDemandPollIntervalSeconds)
-                {
-                    Volatile.Write(ref _pollInProgress, 0);
-                    return;
-                }
+                Volatile.Write(ref _pollInProgress, 0);
+                return;
             }
         }
 
-        TelemetrySnapshot snapshot;
-        bool uiDemand = HasUiDemand;
+        var snapshot = TelemetrySnapshot.Empty;
         bool producedSnapshot = false;
-
+        bool sampled = false;
         try
         {
-            // Confine hardware gate lock strictly to the hardware sampling phase
-            using (var lease = HardwareOperationGate.TryEnterTelemetry(50))
+            if (metrics != TelemetryMetrics.None && (metricSampler != null || fullSampler != null || fanOnlySampler != null))
             {
+                using var lease = HardwareOperationGate.TryEnterTelemetry(50);
                 if (lease == null)
                 {
-                    // If gate is contended and thermal readings have expired (> 3.0s),
-                    // notify subscribers with an invalid thermal snapshot so fan curves skip the update.
-                    if (IsThermalExpired(MaxThermalStalenessSeconds))
+                    lock (SyncLock)
                     {
-                        lock (SyncLock)
+                        snapshot = _currentSnapshot;
+                        if (IsThermalExpired(MaxThermalStalenessSeconds))
                         {
                             long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                            snapshot = _currentSnapshot
-                                .ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider)
+                            snapshot = snapshot.ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider)
                                 .WithFanTemperatures(-1, -1, 0) with { IsValid = false };
-                            _currentSnapshot = snapshot;
+                            producedSnapshot = true;
                         }
-                        producedSnapshot = true;
-                    }
-                    else
-                    {
-                        return;
                     }
                 }
                 else
                 {
-                    if (uiDemand)
+                    sampled = true;
+                    snapshot = metricSampler != null ? metricSampler(metrics, !uiDemand)
+                        : uiDemand ? (fullSampler ?? fanOnlySampler!)() : (fanOnlySampler ?? fullSampler!)();
+                    if (!uiDemand && snapshot.IsFanOnly)
                     {
-                        snapshot = (fullSampler ?? fanOnlySampler!)();
-                    }
-                    else
-                    {
-                        snapshot = (fanOnlySampler ?? fullSampler!)();
-                        if (snapshot.IsFanOnly)
+                        lock (SyncLock)
                         {
-                            lock (SyncLock)
+                            if (_currentSnapshot.IsValid)
                             {
-                                if (_currentSnapshot.IsValid)
-                                {
-                                    long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                                    var baseSnapshot = _currentSnapshot.ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider);
-                                    snapshot = baseSnapshot.WithFanTemperatures(
-                                        snapshot.CpuTemp,
-                                        snapshot.GpuTemp,
-                                        snapshot.EffectiveThermalTicks);
-                                }
+                                long now = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
+                                snapshot = _currentSnapshot.ExpireFullTelemetryIfStale(now, StaleSnapshotSeconds, _customTimestampProvider)
+                                    .WithFanTemperatures(snapshot.CpuTemp, snapshot.GpuTemp, snapshot.EffectiveThermalTicks);
                             }
                         }
                     }
-
-                    lock (SyncLock)
-                    {
-                        _currentSnapshot = snapshot;
-                        _lastPollTicks = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
-                    }
-
-                    Interlocked.Increment(ref TelemetryInstrumentation.TotalSnapshotsProduced);
                     producedSnapshot = true;
                 }
             }
-        }
-        finally
-        {
-            Volatile.Write(ref _pollInProgress, 0);
-        }
-
-        if (producedSnapshot)
-        {
-            // Publish completed snapshot to subscribers outside of any hardware locks or gates
-            var handler = SnapshotAvailable;
-            if (handler != null)
+            if (wantsFrames)
             {
-                foreach (Action<TelemetrySnapshot> subscriber in handler.GetInvocationList())
+                sampled = true;
+                // FPS counters and hardware sensors are sampled only here, on the same one-second path.
+                FrameTelemetry frame = default;
+                try { frame = frameSampler?.Invoke() ?? default; }
+                catch (Exception ex) { AppLogger.Error($"Frame telemetry failed: {ex}"); }
+                snapshot = snapshot with
                 {
-                    try
-                    {
-                        subscriber(snapshot);
-                        Interlocked.Increment(ref TelemetryInstrumentation.TotalSnapshotsDelivered);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[TelemetryCoordinator] Subscriber failed: {ex.Message}");
-                    }
-                }
+                    FramesPerSecond = frame.FramesPerSecond,
+                    FrameTimeMilliseconds = frame.FrameTimeMilliseconds,
+                    FrameProcessId = frame.ProcessId,
+                    TimestampTicks = snapshot.TimestampTicks > 0 ? snapshot.TimestampTicks : timestampProvider?.Invoke() ?? Stopwatch.GetTimestamp(),
+                    IsValid = snapshot.IsValid || metrics == TelemetryMetrics.None,
+                    IsFanOnly = false
+                };
+                producedSnapshot = true;
             }
+            else snapshot = snapshot with { FramesPerSecond = null, FrameTimeMilliseconds = null, FrameProcessId = null };
+            if (producedSnapshot)
+            {
+                lock (SyncLock)
+                {
+                    _currentSnapshot = snapshot;
+                    // A busy hardware gate only invalidates stale data; it does not consume a sampling interval.
+                    if (sampled) _lastPollTicks = _customTimestampProvider != null ? _customTimestampProvider() : Stopwatch.GetTimestamp();
+                }
+                Interlocked.Increment(ref TelemetryInstrumentation.TotalSnapshotsProduced);
+            }
+        }
+        finally { Volatile.Write(ref _pollInProgress, 0); }
 
+        if (!producedSnapshot) return;
+        var handler = SnapshotAvailable;
+        if (handler == null) return;
+        foreach (Action<TelemetrySnapshot> subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                subscriber(snapshot);
+                Interlocked.Increment(ref TelemetryInstrumentation.TotalSnapshotsDelivered);
+            }
+            catch (Exception ex) { Debug.WriteLine($"[TelemetryCoordinator] Subscriber failed: {ex.Message}"); }
         }
     }
 }
