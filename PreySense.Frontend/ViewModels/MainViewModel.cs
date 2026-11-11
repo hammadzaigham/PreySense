@@ -258,7 +258,6 @@ namespace PreySense.Frontend.ViewModels
             int revision = Volatile.Read(ref _gpuDisplayRevision);
             var result = await Task.Run(() =>
             {
-                int? liveDdsMode = null;
                 DdsStatus? liveDdsStatus = null;
                 bool? biosDiscrete = null;
                 System.Collections.Generic.List<int>? rates = null;
@@ -268,10 +267,7 @@ namespace PreySense.Frontend.ViewModels
                     using var gpuLease = HardwareOperationGate.TryEnterTelemetry();
                     if (gpuLease != null && _hw.IsDdsAvailable && _hw.IsDdsSupported())
                     {
-                        var status = _hw.GetDdsStatus();
-                        liveDdsStatus = status;
-                        if (status is { IsSupported: true })
-                            liveDdsMode = status.IsAutomatic ? 1 : status.ActiveMux == DdsActiveMux.dGPU ? 2 : 0;
+                        liveDdsStatus = _hw.GetDdsStatus();
                     }
                 }
                 catch { }
@@ -282,22 +278,17 @@ namespace PreySense.Frontend.ViewModels
                     refreshRate = _hw.GetDisplayRefreshRate();
                 }
                 catch { }
-                return (liveDdsMode, liveDdsStatus, biosDiscrete, rates, refreshRate);
+                return (liveDdsStatus, biosDiscrete, rates, refreshRate);
             });
 
             if (_disposed) return;
             await _dispatcher.InvokeAsync(() =>
             {
                 if (_disposed || revision != Volatile.Read(ref _gpuDisplayRevision)) return;
-                if (result.liveDdsMode.HasValue)
-                {
-                    ActiveGpuMuxMode = result.liveDdsMode.Value;
-                    GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
-                    NotifyGpuSelectionsChanged();
-                }
                 if (result.biosDiscrete.HasValue)
                     IsBiosDiscreteGpuActive = result.biosDiscrete.Value;
-                ApplyDdsStatus(result.liveDdsStatus);
+                if (IsBiosDiscreteGpuActive) GpuMuxModeName = "dGPU Only";
+                else ApplyDdsStatus(result.liveDdsStatus);
                 ApplyRefreshRateOptions(result.rates, result.refreshRate);
             });
 

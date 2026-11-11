@@ -80,6 +80,9 @@ public class SettingsWindowInitializationTests
                         if (PreySense.Frontend.Services.ThemeManager.IsGlassSupported)
                         {
                             Assert.IsLessThan((byte)255, surface.Color.A);
+                            Assert.AreEqual((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#4508080C"), surface.Color);
+                            Assert.AreEqual((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3514151C"),
+                                ((System.Windows.Media.SolidColorBrush)app.FindResource("ButtonMainBrush")).Color);
                             foreach (string key in new[] { "WindowShellBgBrush", "ButtonRaisedBgBrush", "SelectedTileGradientBrush", "ButtonHoverBrush", "CardBgBrush" })
                                 Assert.IsInstanceOfType<System.Windows.Media.SolidColorBrush>(app.FindResource(key));
                             var separator = (System.Windows.Media.SolidColorBrush)app.FindResource("SeparatorBrush");

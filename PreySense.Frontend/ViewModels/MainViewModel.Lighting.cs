@@ -587,8 +587,9 @@ namespace PreySense.Frontend.ViewModels
 
         private void ApplySavedLighting()
         {
-            if (_dispatcher.CheckAccess()) _ = QueueLighting(LightingWork.Keyboard | LightingWork.Cover);
-            else _dispatcher.BeginInvoke(() => QueueLighting(LightingWork.Keyboard | LightingWork.Cover));
+            if (_dispatcher.CheckAccess())
+                _ = RestoreExtendedLightingAfterAsync(QueueLighting(LightingWork.Keyboard | LightingWork.Cover));
+            else _dispatcher.BeginInvoke(() => ApplySavedLighting());
         }
 
         private int CoverModeFromKeyboardEffect()

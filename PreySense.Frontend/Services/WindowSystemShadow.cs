@@ -40,7 +40,6 @@ public static class WindowSystemShadow
         {
             window.SourceInitialized -= Window_SourceInitialized;
             window.Loaded -= Window_Loaded;
-            window.Activated -= Window_Activated;
             window.IsVisibleChanged -= Window_IsVisibleChanged;
             window.Closed -= Window_Closed;
             CancelRefresh(window);
@@ -50,7 +49,6 @@ public static class WindowSystemShadow
         }
 
         window.Loaded += Window_Loaded;
-        window.Activated += Window_Activated;
         window.IsVisibleChanged += Window_IsVisibleChanged;
         window.Closed += Window_Closed;
         window.SourceInitialized += Window_SourceInitialized;
@@ -68,12 +66,15 @@ public static class WindowSystemShadow
 
     public static void RefreshTheme(Window window)
     {
-        if (GetEnable(window) && new WindowInteropHelper(window).Handle != IntPtr.Zero)
-            Apply(window);
+        if (!GetEnable(window) || new WindowInteropHelper(window).Handle == IntPtr.Zero) return;
+        // A visible theme change applies once, after WPF has updated its themed surface.
+        if (ThemeManager.IsGlassTheme && window.IsVisible) QueueRefresh(window);
+        else { CancelRefresh(window); Apply(window); }
     }
 
+    public static void RefreshAfterRestore(Window window) => QueueRefresh(window);
+
     private static void Window_Loaded(object sender, RoutedEventArgs e) => QueueRefresh((Window)sender);
-    private static void Window_Activated(object? sender, EventArgs e) => QueueRefresh((Window)sender!);
     private static void Window_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         var window = (Window)sender;
@@ -124,7 +125,7 @@ public static class WindowSystemShadow
 
     private static void QueueRefresh(Window window)
     {
-        if (!ThemeManager.IsGlassTheme || !window.IsVisible || window.AllowsTransparency
+        if (!GetEnable(window) || !ThemeManager.IsGlassTheme || !window.IsVisible || window.AllowsTransparency
             || window.GetValue(PendingRefreshProperty) is DispatcherOperation { Status: DispatcherOperationStatus.Pending }) return;
         // WPF and taskbar/owner changes can update the native frame during Show. Renew
         // the material after that work, once per activation/show burst, without a timer.
@@ -132,11 +133,11 @@ public static class WindowSystemShadow
         {
             window.ClearValue(PendingRefreshProperty);
             if (GetEnable(window) && window.IsVisible && ThemeManager.IsGlassTheme)
-                Apply(window, renewBackdrop: true);
+                Apply(window);
         })));
     }
 
-    private static void Apply(Window window, bool renewBackdrop = false)
+    private static void Apply(Window window)
     {
         // AllowsTransparency disables DWM shadows; leave those windows alone.
         if (window.AllowsTransparency)
@@ -158,53 +159,15 @@ public static class WindowSystemShadow
         IntPtr hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero)
             return;
-        if (HwndSource.FromHwnd(hwnd) is { } source)
-            AttachNativeHook(window, source);
-
-        int backdrop = glass ? DwmSbtTransientWindow : DwmSbtNone; // Desktop Acrylic / none.
-        if (glass && renewBackdrop)
-        {
-            int none = DwmSbtNone;
-            _ = DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref none, sizeof(int));
-        }
-        int backdropResult = DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
-        if (glass)
-        {
-            var margins = new Margins { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-            int frameResult = DwmExtendFrameIntoClientArea(hwnd, ref margins);
-            if (frameResult < 0) backdropResult = frameResult;
-        }
-        int darkMode = ThemeManager.IsLightTheme ? 0 : 1;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
-        if (glass && backdropResult < 0)
-        {
-            // A failed backdrop must leave a readable solid surface, never an empty transparent HWND.
-            window.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(28, 28, 28));
-        }
-        else
-            window.ClearValue(Window.BackgroundProperty);
-        if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target)
-            target.BackgroundColor = glass && backdropResult >= 0 ? System.Windows.Media.Colors.Transparent
-                : ThemeManager.IsLightTheme ? System.Windows.Media.Color.FromRgb(245, 246, 248)
-                : System.Windows.Media.Color.FromRgb(28, 28, 28);
-
-        // Win11: round the HWND like a normal app window (~8px). Ignored on older OS builds.
-        int preference = DwmWcpRound;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref preference, sizeof(int));
-
-        // Hide the system 1px border (same look as matching border to window background).
-        uint borderColor = DwmwaColorNone;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaBorderColor, ref borderColor, sizeof(uint));
+        if (HwndSource.FromHwnd(hwnd) is not { } source) return;
+        AttachNativeHook(window, source);
+        // SetCurrentValue preserves resource expressions while removing any opaque local fill.
+        if (glass) window.SetCurrentValue(Window.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        else window.ClearValue(Window.BackgroundProperty);
+        if (!NativeWindowBackdrop.Apply(source, glass))
+            window.SetCurrentValue(Window.BackgroundProperty, new System.Windows.Media.SolidColorBrush(NativeWindowBackdrop.SolidBackground));
     }
 
-    private const int DwmwaSystemBackdropType = 38;
-    private const int DwmwaUseImmersiveDarkMode = 20;
-    private const int DwmSbtTransientWindow = 3;
-    private const int DwmSbtNone = 1;
-    private const int DwmwaWindowCornerPreference = 33;
-    private const int DwmWcpRound = 2;
-    private const int DwmwaBorderColor = 34;
-    private const uint DwmwaColorNone = 0xFFFFFFFE;
     private const int WmShowWindow = 0x0018;
     private const int WmWindowPosChanged = 0x0047;
     private const int WmDwmCompositionChanged = 0x031E;
@@ -220,17 +183,4 @@ public static class WindowSystemShadow
         public uint Flags;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Margins { public int Left, Right, Top, Bottom; }
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd, int attr, ref uint attrValue, int attrSize);
 }

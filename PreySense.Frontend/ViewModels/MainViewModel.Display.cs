@@ -216,7 +216,7 @@ namespace PreySense.Frontend.ViewModels
         {
             if (_isUpdatingRefreshRateSelection || string.IsNullOrWhiteSpace(value)) return;
             string numStr = value.Replace("Hz", "").Trim();
-            if (int.TryParse(numStr, out int hz) && hz > 0 && hz != CurrentRefreshRate)
+            if (int.TryParse(numStr, out int hz) && hz > 0)
             {
                 _ = SetRefreshRateAsync(hz);
             }
@@ -236,9 +236,9 @@ namespace PreySense.Frontend.ViewModels
             try
             {
                 using var hardwareLease = await PreySense.Core.Services.HardwareOperationGate.EnterDisplaySwitchAsync();
-                if (hz == CurrentRefreshRate) { UpdateLiveRefreshRate(CurrentRefreshRate); return; }
                 var result = await Task.Run(() =>
                 {
+                    if (_hw.GetDisplayRefreshRate() == hz) return (applied: true, actual: hz);
                     bool applied = _hw.SetDisplayRefreshRate(hz);
                     int actual = _hw.GetDisplayRefreshRate();
                     return (applied, actual);

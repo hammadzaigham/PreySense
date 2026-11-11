@@ -194,12 +194,88 @@ public class FanModeRuntimeTests
         finally { Run(vm, "DisposeFanTelemetry"); TelemetryCoordinator.Reset(); }
     }
 
+    [TestMethod]
+    [DoNotParallelize]
+    public void SavingADraftKeepsTheCurrentCurveFollowingTemperature()
+    {
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        TelemetryCoordinator.Reset();
+        try
+        {
+            Select(vm, FanControlMode.Custom);
+            Run(vm, "UpdateFanDemand");
+            var draft = FanCurveProfile.CreateDefault(1);
+            draft.ControlMode = FanControlMode.Auto;
+            vm.SaveFanProfile(1, draft);
+            Assert.AreEqual(FanControlMode.Auto, vm.LoadFanProfile(1).ControlMode);
+            Assert.AreEqual(TelemetryMetrics.Temperatures, TelemetryCoordinator.RequestedMetrics);
+            TelemetryCoordinator.ConfigureSampler(() => TelemetrySnapshot.Empty with
+            {
+                CpuTemp = 78, IsValid = true, IsFanOnly = true
+            });
+            TelemetryCoordinator.Poll();
+            CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+        }
+        finally
+        {
+            Run(vm, "DisposeFanTelemetry");
+            TelemetryCoordinator.Reset();
+            store.Save(original);
+        }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void FailedFanSavePreservesTheCommittedProfileAndCanBeRetried()
+    {
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var vm = Create(new RecordingFans());
+        try
+        {
+            store.Save(original);
+            var draft = vm.LoadFanProfile(1);
+            var priorMode = draft.ControlMode;
+            draft.ControlMode = priorMode == FanControlMode.Max ? FanControlMode.Auto : FanControlMode.Max;
+            using (var locked = System.IO.File.Open(store.ConfigPath, System.IO.FileMode.Open,
+                       System.IO.FileAccess.Read, System.IO.FileShare.Read))
+            {
+                Assert.ThrowsExactly<System.IO.IOException>(() => vm.SaveFanProfile(1, draft));
+                Assert.AreEqual(priorMode, vm.LoadFanProfile(1).ControlMode);
+            }
+            vm.SaveFanProfile(1, draft);
+            Assert.AreEqual(draft.ControlMode, vm.LoadFanProfile(1).ControlMode);
+        }
+        finally { store.Save(original); }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task FailedModeReadReleasesCustomFanDemand()
+    {
+        TelemetryCoordinator.Reset();
+        var vm = Create(new RecordingFans { ModeReadable = false });
+        try
+        {
+            Select(vm, FanControlMode.Custom);
+            Run(vm, "UpdateFanDemand");
+            Assert.AreEqual(TelemetryMetrics.Temperatures, TelemetryCoordinator.RequestedMetrics);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => vm.ApplyFanProfileAsync());
+            Assert.AreEqual(TelemetryMetrics.None, TelemetryCoordinator.RequestedMetrics);
+        }
+        finally { Run(vm, "DisposeFanTelemetry"); TelemetryCoordinator.Reset(); }
+    }
+
     private sealed class RecordingFans : MockHardwareService, IHardwareService
     {
         public List<string> Calls { get; } = new();
         public bool FailWrites { get; set; }
+        public bool ModeReadable { get; init; } = true;
         public int PowerModeReads { get; private set; }
-        public bool TryGetPowerMode(out byte mode) { PowerModeReads++; mode = 1; return true; }
+        public bool TryGetPowerMode(out byte mode) { PowerModeReads++; mode = 1; return ModeReadable; }
         public new bool SetFanMode(byte cpuMode, byte gpuMode) { Calls.Add($"mode:{cpuMode}"); return !FailWrites; }
         public new bool SetFanSpeeds(byte cpuPercentage, byte gpuPercentage) { Calls.Add($"curve:{cpuPercentage}/{gpuPercentage}"); return !FailWrites; }
     }

@@ -48,6 +48,10 @@ public partial class MainWindow
                     () =>
                     {
                         _visibilitySession.CompleteRestore(revision);
+                        // ShowInTaskbar, native restore and owner activation can replace the
+                        // compositor surface after Show; refresh the final visible window group.
+                        foreach (Window restored in Application.Current.Windows.Cast<Window>())
+                            if (restored.IsVisible) Services.WindowSystemShadow.RefreshAfterRestore(restored);
                         QueueAutoHide();
                     });
             }

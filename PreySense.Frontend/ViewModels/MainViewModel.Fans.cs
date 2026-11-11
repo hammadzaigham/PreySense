@@ -72,13 +72,6 @@ public partial class MainViewModel
     public void SaveFanProfile(byte mode, FanCurveProfile profile)
     {
         FanCurveStorage.Save(mode, profile);
-        lock (_fanControlGate)
-        {
-            if (_runningFanProfileMode == mode) ResetFanFollower();
-        }
-        UpdateFanDemand();
-        if (_runningFanProfileMode == mode && _runningFanProfile?.ControlMode != FanControlMode.Custom)
-            ProcessFanCurves(default);
         DiagnosticMessage = $"{ProfileManager.ModeToProfileName(mode)} fan settings saved.";
     }
     private void ResetFanFollower()
@@ -169,7 +162,12 @@ public partial class MainViewModel
         lock (_fanControlGate)
         {
             ResetFanFollower();
-            if (!_hw.TryGetPowerMode(out byte mode)) { _fanWriteFailed = true; return; }
+            if (!_hw.TryGetPowerMode(out byte mode))
+            {
+                _fanWriteFailed = true;
+                UpdateFanDemand();
+                return;
+            }
             _runningFanProfile = FanCurveStorage.Load(mode);
             _runningFanProfileMode = mode;
             _hw.InvalidateFanTargets();

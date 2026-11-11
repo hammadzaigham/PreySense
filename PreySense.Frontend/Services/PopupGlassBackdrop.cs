@@ -1,5 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
@@ -15,6 +15,25 @@ namespace PreySense.Frontend.Services;
 /// </summary>
 public static class PopupGlassBackdrop
 {
+    // Closed popup HWNDs are recreated on their next opening. Configure their window mode
+    // when the theme changes, before WPF creates that HWND; Opened is too late.
+    private static readonly List<WeakReference<Popup>> Popups = new();
+
+    internal static void RefreshTheme()
+    {
+        for (int index = Popups.Count - 1; index >= 0; index--)
+        {
+            if (!Popups[index].TryGetTarget(out var popup))
+            {
+                Popups.RemoveAt(index);
+                continue;
+            }
+            if (!popup.Dispatcher.CheckAccess() || !GetEnable(popup)) continue;
+            ConfigureForTheme(popup);
+            if (popup.IsOpen && ThemeManager.IsGlassTheme && !popup.AllowsTransparency)
+                ApplyAcrylic(popup);
+        }
+    }
     public static readonly DependencyProperty EnableProperty = DependencyProperty.RegisterAttached(
         "Enable",
         typeof(bool),
@@ -37,15 +56,18 @@ public static class PopupGlassBackdrop
 
         if (e.NewValue is true)
         {
+            Popups.Add(new WeakReference<Popup>(popup));
+            ConfigureForTheme(popup);
             popup.Opened += Popup_Opened;
             popup.Closed += Popup_Closed;
             // Child may not exist yet when the attached property is set from the template.
             popup.Dispatcher.BeginInvoke(
-                () => ConfigureForTheme(popup),
+                () => { if (GetEnable(popup)) ConfigureForTheme(popup); },
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
         else
         {
+            Popups.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, popup));
             popup.Opened -= Popup_Opened;
             popup.Closed -= Popup_Closed;
         }
@@ -103,50 +125,6 @@ public static class PopupGlassBackdrop
         if (PresentationSource.FromVisual(child) is not HwndSource source)
             return;
 
-        IntPtr hwnd = source.Handle;
-        if (hwnd == IntPtr.Zero)
-            return;
-
-        int backdrop = DwmSbtTransientWindow;
-        int result = DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
-        if (result >= 0)
-        {
-            var margins = new Margins { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-            _ = DwmExtendFrameIntoClientArea(hwnd, ref margins);
-        }
-
-        int darkMode = ThemeManager.IsLightTheme ? 0 : 1;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
-
-        int preference = DwmWcpRound;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref preference, sizeof(int));
-
-        uint borderColor = DwmwaColorNone;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaBorderColor, ref borderColor, sizeof(uint));
-
-        if (source.CompositionTarget is { } target)
-            target.BackgroundColor = result >= 0 ? Colors.Transparent : Color.FromRgb(0x29, 0x2D, 0x33);
+        _ = NativeWindowBackdrop.Apply(source, acrylic: true);
     }
-
-    private const int DwmwaSystemBackdropType = 38;
-    private const int DwmwaUseImmersiveDarkMode = 20;
-    private const int DwmSbtTransientWindow = 3;
-    private const int DwmwaWindowCornerPreference = 33;
-    private const int DwmWcpRound = 2;
-    private const int DwmwaBorderColor = 34;
-    private const uint DwmwaColorNone = 0xFFFFFFFE;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Margins { public int Left, Right, Top, Bottom; }
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd, int attr, ref uint attrValue, int attrSize);
 }

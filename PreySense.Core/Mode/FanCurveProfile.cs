@@ -196,17 +196,13 @@ public static class FanCurveStorage
     {
         var saved = profile.Copy();
         saved.Normalize(mode);
-        try
+        PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
         {
-            PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg =>
-            {
-                var fanMode = GetModeFanConfig(cfg, mode);
-                fanMode.ControlMode = (int)saved.ControlMode;
-                fanMode.RampUpSeconds = saved.RampUpSeconds;
-                fanMode.Stages = saved.Stages.Select(stage =>
-                    new PreySense.Core.Configuration.FanStageConfig(stage)).ToArray();
-            });
-        }
-        catch { }
+            var fanMode = GetModeFanConfig(cfg, mode);
+            fanMode.ControlMode = (int)saved.ControlMode;
+            fanMode.RampUpSeconds = saved.RampUpSeconds;
+            fanMode.Stages = saved.Stages.Select(stage =>
+                new PreySense.Core.Configuration.FanStageConfig(stage)).ToArray();
+        });
     }
 }

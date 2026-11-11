@@ -22,7 +22,8 @@ namespace PreySense.Core.Configuration
             DefaultIgnoreCondition = JsonIgnoreCondition.Never
         };
 
-        private static readonly Lazy<ConfigurationService> _instance = new(() => new ConfigurationService());
+        internal static string? SingletonConfigPath { private get; set; }
+        private static readonly Lazy<ConfigurationService> _instance = new(() => new ConfigurationService(SingletonConfigPath));
         public static ConfigurationService Instance => _instance.Value;
 
         private readonly object _gate = new();

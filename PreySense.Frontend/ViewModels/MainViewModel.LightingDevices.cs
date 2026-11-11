@@ -221,7 +221,7 @@ public partial class MainViewModel
     public bool IsLogoLightingDevice => SelectedLightingDevice != null && IsLogoLightingKind(SelectedLightingDevice);
     public bool IsLegacyKeyboardEditorVisible =>
         (!HasLightingDevices && IsKeyboardTabSelected)
-        || (ShowLegacyLightingControls && SelectedLightingDevice?.Kind == "Keyboard");
+        || (ShowLegacyLightingControls && SelectedLightingDevice is { Kind: "Keyboard", Leds.Count: 4 });
     public bool IsLegacyCoverEditorVisible =>
         (!HasLightingDevices && IsCoverTabSelected)
         || (ShowLegacyLightingControls && IsLogoLightingDevice && HasCoverLighting);
@@ -626,24 +626,27 @@ public partial class MainViewModel
     private void ApplySyncedModeKeyDevices(KeyboardLightingConfig keyboard)
     {
         if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-        var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
-        // Discover() is a cached snapshot after the one-time startup probe (no HID re-scan).
-        foreach (var device in hardware.DiscoverLightingDevices())
+        lock (ExtendedLightingWriteGate)
         {
-            if (!device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)) continue;
-            profiles.TryGetValue(device.Id, out var saved);
-            bool sync = saved?.SyncWithKeyboard == true
-                || (SelectedLightingDevice?.Id == device.Id && IsModeKeySyncWithKeyboard);
-            if (!sync) continue;
-            var settings = BuildSyncedModeKeySettings(keyboard, saved);
-            try
+            var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
+            // Discover() is a cached snapshot after the one-time startup probe (no HID re-scan).
+            foreach (var device in hardware.DiscoverLightingDevices())
             {
-                OemLightingController.Validate(settings);
-                hardware.ApplyLightingDevice(device.Id, settings);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"Mode Key sync with keyboard failed ({device.Name}): {ex.Message}");
+                if (!device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)) continue;
+                profiles.TryGetValue(device.Id, out var saved);
+                bool sync = saved?.SyncWithKeyboard == true
+                    || (SelectedLightingDevice?.Id == device.Id && IsModeKeySyncWithKeyboard);
+                if (!sync) continue;
+                var settings = BuildSyncedModeKeySettings(keyboard, saved);
+                try
+                {
+                    OemLightingController.Validate(settings);
+                    hardware.ApplyLightingDevice(device.Id, settings);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"Mode Key sync with keyboard failed ({device.Name}): {ex.Message}");
+                }
             }
         }
     }
@@ -710,24 +713,30 @@ public partial class MainViewModel
         if (!_disposed) await _extendedLightingWorker!.Submit(new() { [request.DeviceId] = request }).ConfigureAwait(false);
     }
 
+    // Serialize saved-profile reads and hardware writes with editor write-and-save transactions.
+    private static readonly object ExtendedLightingWriteGate = new();
+
     private void ApplyExtendedLightingRequest(ExtendedLightingRequest request)
     {
         if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
         try
         {
             var settings = JsonSerializer.Deserialize<DeviceLightingConfig>(request.SettingsJson)!;
-            hardware.ApplyLightingDevice(request.DeviceId, settings);
-            ConfigurationService.Instance.Update(config =>
+            lock (ExtendedLightingWriteGate)
             {
-                config.Lighting.Devices[request.DeviceId] = settings;
-                if (request.DisableCoverSync) config.Lighting.Cover.SyncWithKeyboard = false;
-            });
-            _dispatcher.BeginInvoke(() => { if (!_disposed) LightingDeviceStatus = "Lighting applied and saved."; });
+                hardware.ApplyLightingDevice(request.DeviceId, settings);
+                ConfigurationService.Instance.Update(config =>
+                {
+                    config.Lighting.Devices[request.DeviceId] = settings;
+                    if (request.DisableCoverSync) config.Lighting.Cover.SyncWithKeyboard = false;
+                });
+            }
+            _dispatcher.BeginInvoke(() => { if (!_disposed && SelectedLightingDevice?.Id == request.DeviceId) LightingDeviceStatus = "Lighting applied and saved."; });
         }
         catch (Exception ex)
         {
             AppLogger.Error($"Extended lighting update failed: {ex}");
-            _dispatcher.BeginInvoke(() => { if (!_disposed) LightingDeviceStatus = $"Lighting update failed: {ex.Message}"; });
+            _dispatcher.BeginInvoke(() => { if (!_disposed && SelectedLightingDevice?.Id == request.DeviceId) LightingDeviceStatus = $"Lighting update failed: {ex.Message}"; });
         }
     }
 
@@ -754,21 +763,36 @@ public partial class MainViewModel
 
     private async Task RestoreExtendedLightingAfterAsync(Task keyboardStartup)
     {
-        await keyboardStartup.ConfigureAwait(false);
-        if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-        var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
-        if (profiles.Count == 0) return;
-        await Task.Run(() =>
+        try
         {
-            var devices = hardware.DiscoverLightingDevices();
-            foreach (var device in devices)
+            await keyboardStartup.ConfigureAwait(false);
+            if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
+            if (ConfigurationService.Instance.GetCurrent().Lighting.Devices.Count == 0) return;
+            await Task.Run(() =>
             {
-                if (_disposed) return;
-                if (!profiles.TryGetValue(device.Id, out var settings)) continue;
-                try { hardware.ApplyLightingDevice(device.Id, settings); }
-                catch (Exception ex) { AppLogger.Log($"Saved device lighting unavailable ({device.Name}): {ex.Message}"); }
-            }
-        }).ConfigureAwait(false);
+                var devices = hardware.DiscoverLightingDevices();
+                lock (ExtendedLightingWriteGate)
+                {
+                    var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
+                    bool useLegacyEditors = !devices.Any(device => device.HasNamedKeys);
+                    foreach (var device in devices)
+                    {
+                        if (_disposed) return;
+                        // The four-zone editor owns this keyboard through Lighting.Keyboard. An old
+                        // device profile must not overwrite the settings just restored by that path.
+                        if (useLegacyEditors && device is { Kind: "Keyboard", Leds.Count: 4 } && _hw.IsRgbAvailable) continue;
+                        if (useLegacyEditors && IsLogoLightingKind(device) && _hw.IsCoverLightingAvailable) continue;
+                        if (!profiles.TryGetValue(device.Id, out var settings)) continue;
+                        try { hardware.ApplyLightingDevice(device.Id, settings); }
+                        catch (Exception ex) { AppLogger.Log($"Saved device lighting unavailable ({device.Name}): {ex.Message}"); }
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"Could not restore saved device lighting: {ex}");
+        }
     }
 
     /// <summary>
@@ -791,22 +815,25 @@ public partial class MainViewModel
             {
                 await Task.Delay(ModeKeyLighting.EcModeTransitionDelay).ConfigureAwait(false);
                 if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-                var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
-                var profiles = lighting.Devices;
-                if (profiles.Count == 0) return;
-                foreach (var device in hardware.DiscoverLightingDevices())
+                lock (ExtendedLightingWriteGate)
                 {
-                    if (_disposed) return;
-                    if (!device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!profiles.TryGetValue(device.Id, out var settings)) continue;
-                    try
+                    var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
+                    var profiles = lighting.Devices;
+                    if (profiles.Count == 0) return;
+                    foreach (var device in hardware.DiscoverLightingDevices())
                     {
-                        var apply = settings.SyncWithKeyboard
-                            ? BuildSyncedModeKeySettings(lighting.Keyboard, settings)
-                            : settings;
-                        hardware.ApplyLightingDevice(device.Id, apply);
+                        if (_disposed) return;
+                        if (!device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!profiles.TryGetValue(device.Id, out var settings)) continue;
+                        try
+                        {
+                            var apply = settings.SyncWithKeyboard
+                                ? BuildSyncedModeKeySettings(lighting.Keyboard, settings)
+                                : settings;
+                            hardware.ApplyLightingDevice(device.Id, apply);
+                        }
+                        catch (Exception ex) { AppLogger.Log($"Hotkey lighting restore after mode switch failed ({device.Name}): {ex.Message}"); }
                     }
-                    catch (Exception ex) { AppLogger.Log($"Hotkey lighting restore after mode switch failed ({device.Name}): {ex.Message}"); }
                 }
             }
             catch (Exception ex) { AppLogger.Log($"Hotkey lighting restore after mode switch failed: {ex.Message}"); }

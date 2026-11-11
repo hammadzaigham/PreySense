@@ -15,19 +15,19 @@ public static class ThemeManager
 
     private static readonly IReadOnlyDictionary<string, Color> GlassPalette = new Dictionary<string, Color>
     {
-        ["WindowBgColor"] = Parse("#30141820"),
-        ["ToastSurfaceColor"] = Parse("#D821252A"),
-        ["CardBgColor"] = Parse("#181C2632"),
-        ["ButtonMainColor"] = Parse("#25D8E8FF"),
-        ["ButtonSecondColor"] = Parse("#18B7CEE8"),
-        ["ButtonHoverColor"] = Parse("#42D8E8FF"),
+        ["WindowBgColor"] = Parse("#4508080C"),
+        ["ToastSurfaceColor"] = Parse("#D808080C"),
+        ["CardBgColor"] = Parse("#24101116"),
+        ["ButtonMainColor"] = Parse("#3514151C"),
+        ["ButtonSecondColor"] = Parse("#450A0B10"),
+        ["ButtonHoverColor"] = Parse("#5A12141A"),
         ["BorderMainColor"] = Parse("#60E1EFFF"),
         ["BorderSecondColor"] = Parse("#28E1EFFF"),
-        ["ControlTrackColor"] = Parse("#30506078"),
-        ["DisabledControlColor"] = Parse("#38636C80"),
-        ["ControlTrackFillColor"] = Parse("#A078879D"),
-        ["ControlSelectedColor"] = Parse("#58677790"),
-        ["ControlActiveColor"] = Parse("#70778DA9")
+        ["ControlTrackColor"] = Parse("#45282B32"),
+        ["DisabledControlColor"] = Parse("#453A3A3A"),
+        ["ControlTrackFillColor"] = Parse("#804A5260"),
+        ["ControlSelectedColor"] = Parse("#50333742"),
+        ["ControlActiveColor"] = Parse("#503E4450")
     };
 
     private static readonly IReadOnlyDictionary<string, (Color Dark, Color Light)> Palette =
@@ -96,16 +96,16 @@ public static class ThemeManager
                 SetBrush(key.Replace("Color", "Brush", StringComparison.Ordinal), color);
             }
 
-            SetBrush("SelectedTileGradientBrush", glass ? Parse("#22FFFFFF") : isLight ? Parse("#EAF1FE") : Parse("#141414"));
-            SetBrush("ButtonRaisedBgBrush", glass ? Parse("#25D8E8FF") : isLight ? Parse("#FFFFFF") : Parse("#141414"));
+            SetBrush("SelectedTileGradientBrush", glass ? Parse("#3514151C") : isLight ? Parse("#EAF1FE") : Parse("#141414"));
+            SetBrush("ButtonRaisedBgBrush", glass ? Parse("#3514151C") : isLight ? Parse("#FFFFFF") : Parse("#141414"));
             SetBrush("ButtonRaisedBorderBrush", glass ? Parse("#60E1EFFF") : isLight ? Parse("#C8CED6") : Parse("#2A2A2A"));
             SetBrush("WindowHostBgBrush", glass ? Colors.Transparent : isLight ? Parse("#F5F6F8") : Parse("#0A0A0A"));
             // Glass popups use a translucent tint over DWM acrylic (PopupGlassBackdrop).
-            SetBrush("PopupBgBrush", glass ? Parse("#8021252A") : isLight ? Parse("#F5F6F8") : Parse("#0A0A0A"));
+            SetBrush("PopupBgBrush", glass ? Parse("#E608080C") : isLight ? Parse("#F5F6F8") : Parse("#0A0A0A"));
             SetBrush("PopupBorderBrush", glass ? Parse("#40FFFFFF") : isLight ? Parse("#C8CED6") : Parse("#2A2A2A"));
-            SetBrush("PopupItemHoverBrush", glass ? Parse("#36FFFFFF") : isLight ? Palette["ButtonHoverColor"].Light : Palette["ButtonHoverColor"].Dark);
-            // Glass: selected items keep the same fill; Accent border marks active state.
-            SetBrush("PopupItemSelectedBrush", glass ? Parse("#36FFFFFF") : isLight ? Palette["ControlSelectedColor"].Light : Palette["ControlSelectedColor"].Dark);
+            SetBrush("PopupItemHoverBrush", glass ? Parse("#5A12141A") : isLight ? Palette["ButtonHoverColor"].Light : Palette["ButtonHoverColor"].Dark);
+            // Dropdowns retain their filled selected-item state in Glass.
+            SetBrush("PopupItemSelectedBrush", glass ? Parse("#5A12141A") : isLight ? Palette["ControlSelectedColor"].Light : Palette["ControlSelectedColor"].Dark);
             SetBrush("BorderSubtleBrush", glass ? GlassPalette["BorderSecondColor"] : isLight ? Palette["BorderSecondColor"].Light : Palette["BorderSecondColor"].Dark);
             SetBrush("ElevatedCardBgBrush", glass ? GlassPalette["ButtonSecondColor"] : isLight ? Palette["ButtonSecondColor"].Light : Palette["ButtonSecondColor"].Dark);
 
@@ -120,26 +120,26 @@ public static class ThemeManager
             if (glass)
             {
                 // A regular reading surface beneath the thinner control/navigation layer.
-                SetBrush("WindowShellBgBrush", Parse("#8021252A"));
-                SetBrush("InputBgBrush", Parse("#22FFFFFF"));
-                SetBrush("InputFocusBgBrush", Parse("#36FFFFFF"));
+                SetBrush("WindowShellBgBrush", Parse("#4508080C"));
+                SetBrush("InputBgBrush", Parse("#3514151C"));
+                SetBrush("InputFocusBgBrush", Parse("#5A12141A"));
 
                 foreach (string key in new[] { "ButtonMainBrush", "ButtonRaisedBgBrush", "ElevatedCardBgBrush" })
-                    SetBrush(key, Parse("#22FFFFFF"));
+                    SetBrush(key, Parse("#3514151C"));
 
-                SetBrush("SelectedTileGradientBrush", Parse("#22FFFFFF"));
-                SetBrush("ControlActiveBrush", Parse("#22FFFFFF"));
-                SetBrush("ControlSelectedBrush", Parse("#22FFFFFF"));
+                SetBrush("SelectedTileGradientBrush", Parse("#3514151C"));
+                SetBrush("ControlActiveBrush", Parse("#3514151C"));
+                SetBrush("ControlSelectedBrush", Parse("#3514151C"));
                 SetBrush("ControlSelectedBorderBrush", Parse("#3B82F6"));
                 SetBrush("ControlFocusedBorderBrush", Parse("#3B82F6"));
-                SetBrush("ControlThumbBrush", Parse("#C0DCE4EC"));
-                SetBrush("ControlThumbHoverBrush", Parse("#F0F4F8FC"));
-                SetBrush("ControlThumbPressedBrush", Parse("#FFE3EFF8"));
+                SetBrush("ControlThumbBrush", Parse("#C05C6576"));
+                SetBrush("ControlThumbHoverBrush", Parse("#E0758197"));
+                SetBrush("ControlThumbPressedBrush", Parse("#FF8B97AF"));
                 SetBrush("TextPrimaryBrush", Parse("#F5F5F7"));
-                SetBrush("ButtonHoverBrush", Parse("#36FFFFFF"));
-                SetBrush("CardBgBrush", Parse("#10FFFFFF"));
-                SetBrush("TextSecondaryBrush", Parse("#C9D4E2"));
-                SetBrush("TextMutedBrush", Parse("#92A0B3"));
+                SetBrush("ButtonHoverBrush", Parse("#5A12141A"));
+                SetBrush("CardBgBrush", Parse("#24101116"));
+                SetBrush("TextSecondaryBrush", Parse("#A8A8A8"));
+                SetBrush("TextMutedBrush", Parse("#787878"));
             }
 
             // Idle surfaces are borderless in every theme. Selection and focus keep their accent brushes.
@@ -148,7 +148,9 @@ public static class ThemeManager
                 SetBrush(key, Colors.Transparent);
 
             // Active performance modes keep the ordinary fill; colored/Accent border identifies selection.
-            SetBrush("PerformanceModeActiveBrush", glass ? Parse("#22FFFFFF") : isLight ? Parse("#EAF1FE") : Parse("#141414"));
+            SetBrush("PerformanceModeActiveBrush", glass ? Parse("#3514151C") : isLight ? Parse("#EAF1FE") : Parse("#141414"));
+
+            PopupGlassBackdrop.RefreshTheme();
 
             foreach (Window window in Application.Current.Windows)
             {

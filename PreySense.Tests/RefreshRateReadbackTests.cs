@@ -61,17 +61,30 @@ public class RefreshRateReadbackTests
         Assert.Contains("Could not change refresh rate", vm.DiagnosticMessage);
     }
 
+    [TestMethod]
+    [DataRow(60, 1)]
+    [DataRow(240, 0)]
+    public async Task CachedSelectionChecksTheLiveRateBeforeSkippingAWrite(int liveRate, int expectedWrites)
+    {
+        var hardware = new DisplayHardware { Rate = liveRate };
+        var vm = Create(hardware);
+        await vm.SetRefreshRateAsync(240);
+        Assert.HasCount(expectedWrites, hardware.Requests);
+        Assert.AreEqual(240, hardware.Rate);
+        Assert.AreEqual("240 Hz", vm.SelectedRefreshRateOption);
+    }
+
     private sealed class DisplayHardware : MockHardwareService, IHardwareService
     {
         public bool Accept = true, Change = true, Throw;
-        private int _rate = 240;
+        public int Rate = 240;
         public List<int> Requests = new();
-        public new int GetDisplayRefreshRate() => _rate;
+        public new int GetDisplayRefreshRate() => Rate;
         public new bool SetDisplayRefreshRate(int hz)
         {
             Requests.Add(hz);
             if (Throw) throw new InvalidOperationException("test rejection");
-            if (Accept && Change) _rate = hz;
+            if (Accept && Change) Rate = hz;
             return Accept;
         }
     }

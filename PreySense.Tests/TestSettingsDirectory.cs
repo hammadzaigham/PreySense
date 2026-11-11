@@ -13,6 +13,8 @@ public sealed class TestSettingsDirectory
         _originalDirectory = Directory.GetCurrentDirectory();
         _settingsDirectory = Path.Combine(Path.GetTempPath(), "PreySenseTests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_settingsDirectory);
+        PreySense.Core.Configuration.ConfigurationService.SingletonConfigPath =
+            Path.Combine(_settingsDirectory, PreySense.Core.Configuration.ConfigurationService.ConfigFileName);
         Directory.SetCurrentDirectory(_settingsDirectory);
     }
 

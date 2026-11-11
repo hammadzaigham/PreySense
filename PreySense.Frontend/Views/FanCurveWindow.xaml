@@ -32,6 +32,7 @@
                     <controls:SettingValueRow x:Name="RowDuty" Title="Duty" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
                     <controls:SettingValueRow x:Name="RowRpm" Title="RPM" Minimum="0" Maximum="6400" Unit="RPM" ValueCommitted="StageField_Committed"/>
                 </StackPanel>
+                <TextBlock x:Name="OperationError" Visibility="Collapsed" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>
             <UniformGrid x:Name="FooterPanel" Columns="3" Style="{StaticResource WindowFooterPanelStyle}">
                 <Button Content="Reset" Click="Reset_Click" Style="{StaticResource WindowFooterButtonStyle}"/>

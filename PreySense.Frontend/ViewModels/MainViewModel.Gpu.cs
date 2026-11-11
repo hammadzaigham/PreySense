@@ -138,20 +138,16 @@ namespace PreySense.Frontend.ViewModels
 
         private void ApplyDdsStatus(DdsStatus? status)
         {
-            if (!IsBiosDiscreteGpuActive && status is { IsSupported: true, KmdResponse: 0 })
+            if (IsBiosDiscreteGpuActive) return;
+            ActiveGpuMuxMode = status switch
             {
-                if (status.IsAutomatic) ActiveGpuMuxMode = 1;
-                else if (status.ActiveMux != DdsActiveMux.Unknown)
-                    ActiveGpuMuxMode = status.ActiveMux == DdsActiveMux.dGPU ? 2 : 0;
-                GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
-                NotifyGpuSelectionsChanged();
-            }
-            else if (!IsBiosDiscreteGpuActive)
-            {
-                ActiveGpuMuxMode = -1;
-                GpuMuxModeName = "N/A";
-                NotifyGpuSelectionsChanged();
-            }
+                { IsSupported: true, KmdResponse: 0, IsAutomatic: true } => 1,
+                { IsSupported: true, KmdResponse: 0, ActiveMux: DdsActiveMux.dGPU } => 2,
+                { IsSupported: true, KmdResponse: 0, ActiveMux: DdsActiveMux.Optimus } => 0,
+                _ => -1
+            };
+            GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
+            NotifyGpuSelectionsChanged();
         }
 
         private static string GetGpuModeName(int mode) => mode switch

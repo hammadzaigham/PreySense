@@ -159,6 +159,131 @@ public class ExtendedLightingEditorTests
         }
     }
 
+    [TestMethod]
+    [DataRow("Keyboard", 4, true, false)]
+    [DataRow("Keyboard", 4, false, true)]
+    [DataRow("Keyboard", 8, true, true)]
+    [DataRow("Lightbar", 4, true, true)]
+    [DataRow("Logo", 1, true, false)]
+    public async Task Restore_UsesOneAuthoritativeProfilePerLightingDevice(string kind, int leds, bool legacyAvailable, bool expectedWrite)
+    {
+        string id = "restore-" + Guid.NewGuid().ToString("N");
+        var device = new LightingDeviceInfo(id, "Test", kind,
+            Enumerable.Range(0, leds).Select(i => new LightingLedInfo(i, $"LED {i + 1}")).ToArray(), [new(-1, "Static")], "Test");
+        var hardware = new FakeLightingHardware { IsRgbAvailable = legacyAvailable, Devices = [device] };
+        hardware.Release.Set();
+        var vm = Create(hardware);
+        var store = ConfigurationService.Instance;
+        try
+        {
+            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#123456" });
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(vm, [ready.Task])!;
+            Assert.IsFalse(hardware.Entered.IsSet, "Device restoration must wait for the primary keyboard operation.");
+            ready.SetResult();
+            await restore.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.AreEqual(expectedWrite, hardware.Entered.IsSet);
+            if (expectedWrite) Assert.AreEqual("#123456", hardware.Applied!.ColorHex);
+            Assert.AreEqual("#123456", store.GetCurrent().Lighting.Devices[id].ColorHex, "Loading must not replace a stored profile.");
+        }
+        finally { store.Update(config => config.Lighting.Devices.Remove(id)); }
+    }
+
+    [TestMethod]
+    public void EditDuringRestoreDiscoveryWinsOnHardwareAndDisk()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        var device = new LightingDeviceInfo(id, "Bar", "Lightbar", [new(0, "LED")], [new(0, "Static")], "Test");
+        using var discovering = new ManualResetEventSlim();
+        using var finishDiscovery = new ManualResetEventSlim();
+        var hardware = new FakeLightingHardware
+        {
+            Devices = [device],
+            OnDiscover = () =>
+            {
+                discovering.Set();
+                if (!finishDiscovery.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+            }
+        };
+        hardware.Release.Set();
+        var vm = Create(hardware);
+        var store = ConfigurationService.Instance;
+        Task restore = Task.CompletedTask;
+        try
+        {
+            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#112233" });
+            vm.SelectedLightingDevice = device;
+            restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(vm, [Task.CompletedTask])!;
+            Assert.IsTrue(discovering.Wait(TimeSpan.FromSeconds(3)));
+            vm.DeviceLightingColorHex = "#ABCDEF";
+            Assert.IsTrue(vm.ApplySelectedLightingDeviceAsync().Wait(TimeSpan.FromSeconds(3)));
+            finishDiscovery.Set();
+            Assert.IsTrue(restore.Wait(TimeSpan.FromSeconds(3)));
+            Assert.AreEqual("#ABCDEF", hardware.Applied!.ColorHex);
+            Assert.AreEqual("#ABCDEF", store.GetCurrent().Lighting.Devices[id].ColorHex);
+        }
+        finally
+        {
+            finishDiscovery.Set();
+            restore.GetAwaiter().GetResult();
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            store.Update(config => config.Lighting.Devices.Remove(id));
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RestoreFailure_DoesNotEscapeTheBackgroundTaskOrChangeSavedSettings(bool keyboardStartupFails)
+    {
+        string id = "restore-failure-" + Guid.NewGuid().ToString("N");
+        var hardware = new FakeLightingHardware { DiscoveryFails = !keyboardStartupFails };
+        var vm = Create(hardware);
+        var store = ConfigurationService.Instance;
+        try
+        {
+            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#123456" });
+            Task keyboard = keyboardStartupFails ? Task.FromException(new IOException("Simulated keyboard startup failure")) : Task.CompletedTask;
+            var restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(vm, [keyboard])!;
+            await restore.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.IsFalse(hardware.Entered.IsSet);
+            Assert.AreEqual("#123456", store.GetCurrent().Lighting.Devices[id].ColorHex);
+        }
+        finally { store.Update(config => config.Lighting.Devices.Remove(id)); }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void PreviousDeviceCompletion_DoesNotReplaceTheCurrentDevicesStatus(bool fail)
+    {
+        string id = "status-" + Guid.NewGuid().ToString("N");
+        var hardware = new FakeLightingHardware { Fail = fail };
+        var vm = Create(hardware);
+        try
+        {
+            vm.SelectedLightingDevice = new(id, "First bar", "Lightbar", [new(0, "LED 1")], [new(-1, "Static")], "First device details");
+            Task apply = vm.ApplySelectedLightingDeviceAsync();
+            Assert.IsTrue(hardware.Entered.Wait(TimeSpan.FromSeconds(3)));
+            vm.SelectedLightingDevice = new(id + "-second", "Second bar", "Lightbar", [new(0, "LED 1")], [new(-1, "Static")], "Second device details");
+            hardware.Release.Set();
+            Assert.IsTrue(apply.Wait(TimeSpan.FromSeconds(3)));
+            var frame = new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+            Assert.AreEqual("Second device details", vm.LightingDeviceStatus);
+        }
+        finally
+        {
+            hardware.Release.Set();
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            ConfigurationService.Instance.Update(config => config.Lighting.Devices.Remove(id));
+        }
+    }
+
     private static MainViewModel Create(FakeLightingHardware hardware)
     {
         // Bypass application startup, watchers and native hardware initialization entirely.
@@ -179,8 +304,15 @@ public class ExtendedLightingEditorTests
         public ManualResetEventSlim Entered { get; } = new();
         public ManualResetEventSlim Release { get; } = new();
         public bool Fail { get; init; }
+        public bool DiscoveryFails { get; init; }
         public DeviceLightingConfig? Applied { get; private set; }
-        public IReadOnlyList<LightingDeviceInfo> DiscoverLightingDevices(bool refresh = false) => [];
+        public IReadOnlyList<LightingDeviceInfo> Devices { get; init; } = [];
+        public Action? OnDiscover { get; init; }
+        public IReadOnlyList<LightingDeviceInfo> DiscoverLightingDevices(bool refresh = false)
+        {
+            OnDiscover?.Invoke();
+            return DiscoveryFails ? throw new IOException("Simulated lighting discovery failure") : Devices;
+        }
         public void ApplyLightingDevice(string deviceId, DeviceLightingConfig settings)
         {
             Entered.Set();

@@ -36,6 +36,19 @@ public class GpuDisplayStateTests
     }
 
     [TestMethod]
+    public void UnknownManualRouteClearsThePreviouslyConfirmedGpuSelection()
+    {
+        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        var apply = typeof(MainViewModel).GetMethod("ApplyDdsStatus", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var manual = new DdsStatus(true, false, DdsActiveMux.dGPU, 0, 0);
+        apply.Invoke(vm, [manual]);
+        Assert.IsTrue(vm.IsGpuNvidiaOnlyActive);
+        apply.Invoke(vm, [manual with { ActiveMux = DdsActiveMux.Unknown }]);
+        Assert.AreEqual(-1, vm.ActiveGpuMuxMode);
+        Assert.AreEqual("N/A", vm.GpuMuxModeName);
+    }
+
+    [TestMethod]
     public void UnconfirmedOrFailedDriverStatesNeverMatchARequestedMode()
     {
         var status = new DdsStatus(true, false, DdsActiveMux.dGPU, 0, 0);

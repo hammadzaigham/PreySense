@@ -269,7 +269,7 @@ public partial class FanCurveWindow : Window
                 if (await EnsureModeActiveAsync(Vm))
                     await Vm.ApplyFanProfileAsync();
             }
-            catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+            catch (Exception ex) { ReportFailure(ex); }
             finally { SetApplying(false); }
         }
     }
@@ -324,12 +324,20 @@ public partial class FanCurveWindow : Window
             if (!await EnsureModeActiveAsync(Vm)) return;
             await Vm.ApplyFanProfileAsync();
         }
-        catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+        catch (Exception ex) { ReportFailure(ex); }
         finally { SetApplying(false); }
+    }
+
+    private void ReportFailure(Exception error)
+    {
+        AppLogger.Error($"Fan operation failed: {error}");
+        OperationError.Text = $"Fan operation failed: {error.Message}";
+        OperationError.Visibility = Visibility.Visible;
     }
 
     private void SetApplying(bool applying)
     {
+        if (applying) OperationError.Visibility = Visibility.Collapsed;
         _applying = applying;
         ProfileRow.IsEnabled = AutoOption.IsEnabled = MaxOption.IsEnabled = CustomOption.IsEnabled = !applying;
         FooterPanel.IsEnabled = !applying;
@@ -359,7 +367,7 @@ public partial class FanCurveWindow : Window
         if (_applying) return;
         SetApplying(true);
         try { await SaveAllAsync(); }
-        catch (Exception ex) { AppLogger.Error($"Fan save failed: {ex}"); }
+        catch (Exception ex) { ReportFailure(ex); }
         finally { SetApplying(false); }
     }
 
@@ -373,7 +381,7 @@ public partial class FanCurveWindow : Window
             if (!await EnsureModeActiveAsync(Vm)) return;
             await Vm.ApplyFanProfileAsync();
         }
-        catch (Exception ex) { AppLogger.Error($"Fan operation failed: {ex}"); }
+        catch (Exception ex) { ReportFailure(ex); }
         finally { SetApplying(false); }
     }
 }
