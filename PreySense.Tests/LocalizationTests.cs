@@ -34,7 +34,7 @@ public class LocalizationTests
                 labels.Add((string)choice.GetType().GetProperty("Label")!.GetValue(choice)!);
         }
         labels.UnionWith(new[] { "Run on Startup", "Slot #{0}", "Include PROCHOT offset", "Applied and read back successfully.", "Could not apply." });
-        foreach (string language in new[] { "zh-CN", "hi-IN", "es-ES", "fr-FR" })
+        foreach (string language in new[] { "zh-CN", "hi-IN", "es-ES", "fr-FR", "tr-TR" })
         {
             var table = UiText.For(language)!;
             foreach (string label in labels)
@@ -89,11 +89,19 @@ public class LocalizationTests
             Assert.AreEqual("PreySense • Éclairage", LocalizationService.Translate("PreySense • Lighting"));
             Assert.AreEqual(4, LocalizationService.LanguageIndex);
 
+            LocalizationService.SetLanguage("tr-TR", persist: false);
+            Assert.AreEqual("Çıkış", LocalizationService.Translate("Quit"));
+            Assert.AreEqual("Pil Sınırı", LocalizationService.Translate("Battery Limit"));
+            Assert.AreEqual("PreySense • Aydınlatma", LocalizationService.Translate("PreySense • Lighting"));
+            Assert.AreEqual(5, LocalizationService.LanguageIndex);
+
             Assert.AreEqual("en-US", LocalizationService.Normalize("en-GB"));
             Assert.AreEqual("zh-CN", LocalizationService.Normalize("zh-CN"));
             Assert.AreEqual("hi-IN", LocalizationService.Normalize("hi"));
             Assert.AreEqual("es-ES", LocalizationService.Normalize("es-MX"));
             Assert.AreEqual("fr-FR", LocalizationService.Normalize("fr-CA"));
+            Assert.AreEqual("tr-TR", LocalizationService.Normalize("tr-TR"));
+            Assert.AreEqual("tr-TR", LocalizationService.Normalize("tr"));
         }
         finally
         {

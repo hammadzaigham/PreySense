@@ -26,7 +26,7 @@
       "properties": {
         "Language": {
           "type": "string",
-          "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR).",
+          "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR, tr-TR).",
           "title": "Language"
         },
         "Theme": {

@@ -37,7 +37,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, G
 ### Battery and system
 - Charge limit (80% or 100%).
 - Run on Windows startup, light/dark theme
-- Languages: English, Simplified Chinese, Hindi, Spanish, French
+- Languages: English, Simplified Chinese, Hindi, Spanish, French, Turkish
 
 ## Screenshots
 

@@ -18,7 +18,7 @@ Identical saves leave the file untouched. Before skipping a write, the service c
 
 | Section | Purpose |
 | --- | --- |
-| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`), theme, Acer-service preference and tuning enable flag. |
+| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`, `tr-TR`), theme, Acer-service preference and tuning enable flag. |
 | `Display` | Automatic refresh-rate preference. |
 | `Battery` | Charge-limit, USB power-off charging and Windows Energy Saver preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |

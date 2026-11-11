@@ -45,6 +45,7 @@
                                 <ComboBoxItem Content="Hindi" Tag="hi-IN"/>
                                 <ComboBoxItem Content="Spanish" Tag="es-ES"/>
                                 <ComboBoxItem Content="French" Tag="fr-FR"/>
+                                <ComboBoxItem Content="Turkish" Tag="tr-TR"/>
                             </controls:SettingDropdownRow>
 
                             <controls:SettingDropdownRow x:Name="ThemeSelector" Title="Theme" DropdownWidth="110"

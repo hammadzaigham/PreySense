@@ -54,7 +54,7 @@ namespace PreySense.Core.Configuration
 
     public sealed class GeneralConfig
     {
-        /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR').</summary>
+        /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR', 'tr-TR').</summary>
         public string Language { get; set; } = "en-US";
 
         /// <summary>True for light theme, false for dark theme.</summary>
