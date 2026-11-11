@@ -101,14 +101,6 @@ namespace PreySense.Frontend
                             if (DataContext is MainViewModel mvm)
                                 mvm.HandleModeKeyPressed();
                         });
-                    },
-                    onBrightnessDelta: delta =>
-                    {
-                        RunOnUi(() =>
-                        {
-                            if (DataContext is MainViewModel mvm)
-                                mvm.StepKeyboardBrightness(delta);
-                        });
                     });
             }
             catch { }
@@ -214,6 +206,7 @@ namespace PreySense.Frontend
                 window = new TWindow { Owner = this, DataContext = DataContext, ShowInTaskbar = false };
                 _toolWindows.Add(typeof(TWindow), window);
                 window.Activated += (_, _) => _lastActiveWindow = window;
+                window.Closing += (_, _) => GuardToolWindowClose();
                 window.Closed += (_, _) => _toolWindows.Remove(typeof(TWindow));
             }
             window.Topmost = true;

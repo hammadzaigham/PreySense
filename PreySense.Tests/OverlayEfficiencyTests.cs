@@ -97,6 +97,30 @@ public class OverlayEfficiencyTests
         Assert.IsTrue(double.IsNaN(monitor.SampleFps()), "An older batch must become unavailable, not remain frozen.");
     }
 
+    [TestMethod]
+    [DataRow(-1920, 0, 2500, -500, -1915)]
+    [DataRow(0, 1280, 2000, 500, 5)]
+    [DataRow(0, 1280, 300, 2000, 975)]
+    [DataRow(-1920, 0, 300, -3000, -1915)]
+    public void OverlayPlacement_HandlesOversizedWindowsAndNegativeMonitorCoordinates(
+        int start, int end, int length, int requested, int expected)
+    {
+        var clamp = typeof(HardwareOverlay).GetMethod("ClampToDisplay", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Assert.AreEqual(expected, clamp.Invoke(null, [requested, start, end, length]));
+    }
+
+    [TestMethod]
+    public void OversizedOverlay_RestorePositionDoesNotThrow()
+    {
+        using var overlay = new HardwareOverlay();
+        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
+        overlay.Size = new System.Drawing.Size(bounds.Width + 100, bounds.Height + 100);
+        typeof(HardwareOverlay).GetMethod("RestorePosition", PrivateInstance)!.Invoke(overlay,
+            [new OverlayConfig { PositionHorizontal = "Right", PositionVertical = "Bottom" }]);
+        Assert.AreEqual(bounds.Left + 5, overlay.X);
+        Assert.AreEqual(bounds.Top + 5, overlay.Y);
+    }
+
     private static void Set(HardwareOverlay overlay, string field, object value) =>
         typeof(HardwareOverlay).GetField(field, PrivateInstance)!.SetValue(overlay, value);
     private static void Deliver(HardwareOverlay overlay, TelemetrySnapshot snapshot) =>

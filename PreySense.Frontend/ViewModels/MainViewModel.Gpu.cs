@@ -1,7 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,7 +12,6 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel
     {
-        private int _gpuProcessRefreshInProgress;
         private int _gpuSwitchInProgress;
         private int _gpuDisplayRevision;
 
@@ -47,13 +43,7 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                int? baseline = GpuPowerBaseline.ReadWatts();
-                if (!baseline.HasValue)
-                {
-                    int? detected = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
-                    if (detected.HasValue)
-                        baseline = GpuPowerBaseline.SaveOnce(detected.Value);
-                }
+                int? baseline = ReadOrCaptureGpuBaseline();
 
                 if (_disposed)
                     return;
@@ -74,8 +64,6 @@ namespace PreySense.Frontend.ViewModels
         }
 
         [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(ShowIgpuOnlyTile))]
-        [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuNvidiaOnlyActive))]
@@ -89,9 +77,6 @@ namespace PreySense.Frontend.ViewModels
         [NotifyPropertyChangedFor(nameof(IsGpuEnduranceActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuStandardActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuUltimateActive))]
-        [NotifyPropertyChangedFor(nameof(ShowIgpuOnlyTile))]
-        [NotifyPropertyChangedFor(nameof(ShowAdvancedOptimusTile))]
-        [NotifyPropertyChangedFor(nameof(ShowDgpuOnlyTile))]
         [NotifyPropertyChangedFor(nameof(GpuModeTileColumns))]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]
@@ -101,107 +86,46 @@ namespace PreySense.Frontend.ViewModels
         private bool _isBiosDiscreteGpuActive;
 
         public bool ShowDdsGpuTiles => !IsBiosDiscreteGpuActive;
-        public bool ShowIgpuOnlyTile => ShowDdsGpuTiles && !IsGpuNvidiaOnlyActive;
-        public bool ShowAdvancedOptimusTile => ShowDdsGpuTiles && !IsGpuIgpuOnlyActive;
-        public bool ShowDgpuOnlyTile => !IsGpuIgpuOnlyActive;
-        public int GpuModeTileColumns
-        {
-            get
-            {
-                int count = 1; // Auto
-                if (ShowIgpuOnlyTile) count += 1; // iGPU Only
-                if (ShowDdsGpuTiles) count += 1; // Hybrid
-                if (ShowAdvancedOptimusTile) count += 1; // Advanced Optimus
-                if (ShowDgpuOnlyTile) count += 1; // dGPU Only
-                return Math.Max(1, count);
-            }
-        }
+        public int GpuModeTileColumns => IsBiosDiscreteGpuActive ? 2 : 4;
 
         // GPU selection flags (0=Optimus, 1=Automatic, 2=NVIDIA Only)
-        public bool IsGpuEnduranceActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 0;
-        public bool IsGpuStandardActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 1;
-        public bool IsGpuUltimateActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 2;
-        public bool IsGpuOptimusActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 0;
-        public bool IsGpuAutoActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 1;
-        public bool IsGpuNvidiaOnlyActive => !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && ActiveGpuMuxMode == 2;
-        public bool IsGpuAdvancedOptimusActive => ActiveGpuMuxMode == 2 && !IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive;
-        [ObservableProperty]
-        private bool _isGpuIgpuOnlyActive;
-
-        partial void OnIsGpuIgpuOnlyActiveChanged(bool value)
-        {
-            // iGPU-only is a separate state from the Advanced Optimus mode
-            // index, so all normal GPU tiles must be refreshed when it changes.
-            NotifyGpuSelectionsChanged();
-        }
-
+        public bool IsGpuEnduranceActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 0;
+        public bool IsGpuStandardActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 1;
+        public bool IsGpuUltimateActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 2;
+        public bool IsGpuOptimusActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 0;
+        public bool IsGpuAutoActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 1;
+        public bool IsGpuNvidiaOnlyActive => !IsBiosDiscreteGpuActive && ActiveGpuMuxMode == 2;
+        public bool IsGpuAdvancedOptimusActive => ActiveGpuMuxMode == 2 && !IsBiosDiscreteGpuActive;
         partial void OnIsBiosDiscreteGpuActiveChanged(bool value)
         {
             if (value)
                 GpuMuxModeName = "dGPU Only";
         }
 
-        /// <summary>
-        /// Re-reads the actual Windows PnP state after a GPU transition.  The
-        /// device enable/disable operation is asynchronous from Windows' point
-        /// of view, so the command result alone is not reliable enough to drive
-        /// the selected tile.
-        /// </summary>
-        private async Task RefreshGpuDeviceModeStateAsync(int attempts = 1, bool duringSwitch = false, bool? expectedDisabled = null)
+        private async Task RefreshGpuModeStateAsync(bool duringSwitch = false)
         {
             using var readLease = duringSwitch ? null : HardwareOperationGate.TryEnterTelemetry();
             if (!duringSwitch && readLease == null) return;
             int revision = System.Threading.Volatile.Read(ref _gpuDisplayRevision);
-            for (int attempt = 0; attempt < Math.Max(1, attempts); attempt++)
+            var state = await Task.Run(() =>
             {
-                if (attempt > 0)
-                    await Task.Delay(350);
-
-                var state = await Task.Run(() =>
-                {
-                    bool biosDiscrete = false;
-                    bool? nvidiaDisabled = null;
-                    try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
-                    try { nvidiaDisabled = _hw.IsDiscreteGpuDisabled; } catch { }
-                    DdsStatus? dds = null;
-                    if (nvidiaDisabled != true && !biosDiscrete)
-                        try { dds = _hw.GetDdsStatus(); } catch { }
-                    return (biosDiscrete, nvidiaDisabled, dds);
-                });
-
-                if (_disposed)
-                    return;
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    if (_disposed || revision != System.Threading.Volatile.Read(ref _gpuDisplayRevision)) return;
-                    IsBiosDiscreteGpuActive = state.biosDiscrete;
-                    // Do not clear a confirmed state when WMI is temporarily
-                    // unavailable during a device restart.
-                    if (state.nvidiaDisabled.HasValue)
-                        IsGpuIgpuOnlyActive = state.nvidiaDisabled.Value && !state.biosDiscrete;
-                    if (IsBiosDiscreteGpuActive)
-                        GpuMuxModeName = "dGPU Only";
-                    else if (IsGpuIgpuOnlyActive)
-                        GpuMuxModeName = "iGPU Only";
-                    ApplyDdsStatus(state.dds);
-                    NotifyGpuSelectionsChanged();
-                });
-
-                if (!expectedDisabled.HasValue || state.nvidiaDisabled == expectedDisabled.Value)
-                    break;
-            }
+                bool biosDiscrete = _hw.IsBiosDiscreteGpuActive;
+                return (biosDiscrete, dds: biosDiscrete ? null : _hw.GetDdsStatus());
+            });
+            if (_disposed) return;
+            await _dispatcher.InvokeAsync(() =>
+            {
+                if (_disposed || revision != System.Threading.Volatile.Read(ref _gpuDisplayRevision)) return;
+                IsBiosDiscreteGpuActive = state.biosDiscrete;
+                if (state.biosDiscrete) GpuMuxModeName = "dGPU Only";
+                ApplyDdsStatus(state.dds);
+                NotifyGpuSelectionsChanged();
+            });
         }
-
-        // dGPU Battery Sentinel
-        public ObservableCollection<PreySense.Gpu.GpuProcessInfo> ActiveGpuProcesses { get; } = new();
 
         private void NotifyGpuSelectionsChanged()
         {
             OnPropertyChanged(nameof(ShowDdsGpuTiles));
-            OnPropertyChanged(nameof(ShowIgpuOnlyTile));
-            OnPropertyChanged(nameof(ShowAdvancedOptimusTile));
-            OnPropertyChanged(nameof(ShowDgpuOnlyTile));
             OnPropertyChanged(nameof(GpuModeTileColumns));
             OnPropertyChanged(nameof(IsGpuEnduranceActive));
             OnPropertyChanged(nameof(IsGpuStandardActive));
@@ -210,12 +134,11 @@ namespace PreySense.Frontend.ViewModels
             OnPropertyChanged(nameof(IsGpuAutoActive));
             OnPropertyChanged(nameof(IsGpuNvidiaOnlyActive));
             OnPropertyChanged(nameof(IsGpuAdvancedOptimusActive));
-            OnPropertyChanged(nameof(IsGpuIgpuOnlyActive));
         }
 
         private void ApplyDdsStatus(DdsStatus? status)
         {
-            if (!IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive && status is { IsSupported: true, KmdResponse: 0 })
+            if (!IsBiosDiscreteGpuActive && status is { IsSupported: true, KmdResponse: 0 })
             {
                 if (status.IsAutomatic) ActiveGpuMuxMode = 1;
                 else if (status.ActiveMux != DdsActiveMux.Unknown)
@@ -223,7 +146,7 @@ namespace PreySense.Frontend.ViewModels
                 GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
                 NotifyGpuSelectionsChanged();
             }
-            else if (!IsBiosDiscreteGpuActive && !IsGpuIgpuOnlyActive)
+            else if (!IsBiosDiscreteGpuActive)
             {
                 ActiveGpuMuxMode = -1;
                 GpuMuxModeName = "N/A";
@@ -263,12 +186,6 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task SetGpuMuxModeAsync(object? muxParam)
         {
-            if (muxParam is string text && string.Equals(text, "igpu", StringComparison.OrdinalIgnoreCase))
-            {
-                await ApplyIgpuOnlyAsync();
-                return;
-            }
-
             int muxVal = muxParam switch
             {
                 int i => i,
@@ -295,27 +212,13 @@ namespace PreySense.Frontend.ViewModels
                 DiagnosticMessage = "GPU mode switch already in progress.";
                 return;
             }
-            bool leavingIgpuOnly = IsGpuIgpuOnlyActive;
             System.Threading.Interlocked.Increment(ref _gpuDisplayRevision);
             DiagnosticMessage = $"Switching GPU mode to {GetGpuModeName(muxVal)}...";
             IsBusy = true;
             try
             {
                 using var hardwareLease = await HardwareOperationGate.EnterDisplaySwitchAsync();
-                if (leavingIgpuOnly)
-                {
-                    bool enabled = await Task.Run(() => _hw.EnableDiscreteGpu());
-                    if (!enabled) { DiagnosticMessage = "Could not enable the NVIDIA GPU."; return; }
-                    await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
-                    if (IsGpuIgpuOnlyActive) { DiagnosticMessage = "Windows still shows the NVIDIA GPU as disabled."; return; }
-                }
-                DdsStatus? current = null;
-                for (int attempt = 0; attempt < (leavingIgpuOnly ? 8 : 1); attempt++)
-                {
-                    current = await Task.Run(() => _hw.IsDdsAvailable ? _hw.GetDdsStatus() : null);
-                    if (current?.IsSupported == true) break;
-                    if (leavingIgpuOnly && attempt < 7) await Task.Delay(250);
-                }
+                var current = await Task.Run(() => _hw.IsDdsAvailable ? _hw.GetDdsStatus() : null);
                 if (current?.IsSupported != true)
                 {
                     DiagnosticMessage = "NVIDIA Advanced Optimus is not available.";
@@ -379,100 +282,6 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        private async Task ApplyIgpuOnlyAsync()
-        {
-            if (IsBiosDiscreteGpuActive || IsGpuIgpuOnlyActive)
-                return;
-            if (!await ConfirmGpuBatterySwitchIfNeededAsync())
-                return;
-
-            if (System.Threading.Interlocked.CompareExchange(ref _gpuSwitchInProgress, 1, 0) != 0) return;
-            System.Threading.Interlocked.Increment(ref _gpuDisplayRevision);
-            IsBusy = true;
-            try
-            {
-                using var hardwareLease = await HardwareOperationGate.EnterDisplaySwitchAsync();
-                bool ok = await Task.Run(() =>
-                {
-                    try { PreySense.Gpu.NvidiaGpuControl.Shared.KillGPUApps(); } catch { }
-                    try { PreySense.Gpu.NvidiaGpuControl.StopNVService(); } catch { }
-                    return PreySense.Helpers.DeviceHelper.SetDeviceState("VEN_10DE", false);
-                });
-                if (ok)
-                {
-                    // PnP state is authoritative. Give Windows a moment to
-                    // publish the disable and then refresh the tile from it.
-                    await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: true);
-                    if (!IsGpuIgpuOnlyActive)
-                    {
-                        DiagnosticMessage = "Windows did not confirm disabling the NVIDIA GPU.";
-                        return;
-                    }
-                    DiagnosticMessage = "GPU mode set to iGPU Only.";
-                }
-                else
-                {
-                    DiagnosticMessage = "Could not disable the NVIDIA GPU.";
-                }
-            }
-            catch (Exception ex) { DiagnosticMessage = $"GPU mode error: {ex.Message}"; }
-            finally
-            {
-                IsBusy = false;
-                System.Threading.Volatile.Write(ref _gpuSwitchInProgress, 0);
-            }
-        }
-
-        /// <summary>
-        /// Shows CustomModalDialog when user-facing processes still hold the dGPU.
-        /// </summary>
-        private async Task<bool> ConfirmGpuBatterySwitchIfNeededAsync()
-        {
-            try
-            {
-                var processes = await Task.Run(() => _hw.GetActiveGpuProcesses());
-                if (processes.Count == 0)
-                    return true;
-
-                bool? result = false;
-                void Show()
-                {
-                    bool previousAutoHideSuppression = App.SuppressAutoHide;
-                    App.SuppressAutoHide = true;
-                    try
-                    {
-                        var names = string.Join(", ", processes.Take(5).Select(p => p.ProcessName));
-                        if (processes.Count > 5) names += $" and {processes.Count - 5} more";
-                        var dialog = new Views.CustomModalDialog
-                        {
-                            Owner = System.Windows.Application.Current?.MainWindow,
-                            Title = "PreySense • dGPU Processes Active",
-                            HeaderSubtitle = " • Switch to iGPU Only",
-                            Message = $"The following processes are currently using the dGPU:\n\n{names}\n\nSwitching to iGPU-only mode may interrupt or close GPU workloads. Do you still want to switch?",
-                            ConfirmText = "Switch Anyway",
-                            CancelText = "Cancel",
-                            ShowCancelButton = true
-                        };
-                        result = dialog.ShowDialog();
-                    }
-                    finally
-                    {
-                        App.SuppressAutoHide = previousAutoHideSuppression;
-                    }
-                }
-
-                var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                if (dispatcher == null) return false;
-                if (dispatcher.CheckAccess()) Show(); else dispatcher.Invoke(Show);
-                return result == true;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"iGPU-only safety confirmation failed: {ex.Message}");
-                return false;
-            }
-        }
-
         [RelayCommand]
         public async Task RestartDiscreteGpuAsync()
         {
@@ -487,7 +296,7 @@ namespace PreySense.Frontend.ViewModels
                 using (await HardwareOperationGate.EnterDisplaySwitchAsync())
                 {
                     (ok, msg) = await Task.Run(() => _hw.RestartDiscreteGpu());
-                    await RefreshGpuDeviceModeStateAsync(attempts: 3, duringSwitch: true, expectedDisabled: false);
+                    await RefreshGpuModeStateAsync(duringSwitch: true);
                 }
                 DiagnosticMessage = msg;
                 var showModal = () =>
@@ -617,57 +426,5 @@ namespace PreySense.Frontend.ViewModels
         }
 
 
-        [RelayCommand]
-        public async Task RefreshGpuProcessesAsync()
-        {
-            // Process enumeration can be expensive (NVML + Process APIs). Do not
-            // allow a second refresh to start while one is already in flight.
-            if (System.Threading.Interlocked.Exchange(ref _gpuProcessRefreshInProgress, 1) != 0)
-                return;
-
-            try
-            {
-                var processes = await Task.Run(() => _hw.GetActiveGpuProcesses());
-                var byPid = new Dictionary<uint, PreySense.Gpu.GpuProcessInfo>(processes.Count);
-                foreach (var process in processes)
-                    byPid[process.ProcessId] = process;
-
-                for (int i = ActiveGpuProcesses.Count - 1; i >= 0; i--)
-                {
-                    if (!byPid.ContainsKey(ActiveGpuProcesses[i].ProcessId))
-                        ActiveGpuProcesses.RemoveAt(i);
-                }
-
-                var existingByPid = new Dictionary<uint, PreySense.Gpu.GpuProcessInfo>(ActiveGpuProcesses.Count);
-                foreach (var existing in ActiveGpuProcesses)
-                    existingByPid[existing.ProcessId] = existing;
-
-                foreach (var process in processes)
-                {
-                    if (!existingByPid.TryGetValue(process.ProcessId, out var existing))
-                        ActiveGpuProcesses.Add(process);
-                    else if (!string.Equals(existing.ProcessName, process.ProcessName, StringComparison.Ordinal))
-                        existing.ProcessName = process.ProcessName;
-                }
-
-                DiagnosticMessage = ActiveGpuProcesses.Count > 0
-                    ? $"{ActiveGpuProcesses.Count} process(es) holding discrete GPU active"
-                    : "No background processes keeping discrete GPU awake (0W D3Cold ready)";
-            }
-            finally
-            {
-                System.Threading.Interlocked.Exchange(ref _gpuProcessRefreshInProgress, 0);
-            }
-        }
-
-        [RelayCommand]
-        public async Task KillGpuProcessAsync(object? param)
-        {
-            if (param is uint pid)
-            {
-                await Task.Run(() => _hw.KillProcess(pid));
-                await RefreshGpuProcessesAsync();
-            }
-        }
     }
 }

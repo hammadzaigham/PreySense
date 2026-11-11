@@ -118,7 +118,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-processor-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <controls:ThemedIcon Source="pack://application:,,,/PreySense;component/Resources/icons8-processor-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="CPU Power Limits" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                     </StackPanel>
                                     <controls:RectangularSwitch x:Name="SwitchApplyCpuLimits" Grid.Column="1"
@@ -161,6 +161,39 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
+                            <StackPanel>
+                                <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <controls:ThemedIcon Source="pack://application:,,,/PreySense;component/Resources/icons8-gauge-32.png"
+                                            Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="GPU Overclocking" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                    </StackPanel>
+                                    <controls:RectangularSwitch x:Name="SwitchGpuOverclocking" Grid.Column="1"
+                                        Width="56" Height="28"
+                                        AutomationProperties.AutomationId="EnableGpuOverclocking"
+                                        AutomationProperties.Name="Apply GPU clock offsets"
+                                        Checked="GpuOverclockingToggle_Changed" Unchecked="GpuOverclockingToggle_Changed"/>
+                                </Grid>
+                                <StackPanel x:Name="GpuOverclockingPanel" IsEnabled="False">
+                                    <controls:SettingSliderRow x:Name="RowGpuCoreClock" Title="Core Clock Offset"
+                                        ValueText="N/A" Minimum="0" Maximum="500" Margin="0,4,0,8"
+                                        SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True"
+                                        AutomationProperties.AutomationId="GpuCoreClockOffset"
+                                        ValueChanged="GpuClockOffset_ValueChanged"/>
+                                    <controls:SettingSliderRow x:Name="RowGpuMemoryClock" Title="Memory Clock Offset"
+                                        ValueText="N/A" Minimum="0" Maximum="0" Margin="0,4,0,8"
+                                        SmallChange="100" LargeChange="100" TickFrequency="100" IsSnapToTickEnabled="True"
+                                        AutomationProperties.AutomationId="GpuMemoryClockOffset"
+                                        ValueChanged="GpuClockOffset_ValueChanged"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                         <!-- GPU POWER LIMITS & DYNAMIC BOOST -->
                         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
                             <StackPanel>
@@ -170,7 +203,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-video-card-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <controls:ThemedIcon Source="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="GPU Power Limits" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                     </StackPanel>
                                     <controls:RectangularSwitch x:Name="SwitchApplyGpuLimits" Grid.Column="1"
@@ -215,6 +248,8 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
+
                     </StackPanel>
                 </ScrollViewer>
 

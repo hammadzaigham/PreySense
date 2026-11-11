@@ -123,20 +123,19 @@ public static class LocalizationService
     private static void LocalizeTree(DependencyObject? element)
     {
         if (element == null) return;
-        Apply(element, ToolTipService.ToolTipProperty);
         Apply(element, System.Windows.Automation.AutomationProperties.NameProperty);
 
         switch (element)
         {
             case SettingSwitchRow row:
-                Apply(row, SettingSwitchRow.TitleProperty); Apply(row, SettingSwitchRow.DescriptionProperty);
+                Apply(row, SettingSwitchRow.TitleProperty);
                 Apply(row, SettingSwitchRow.OnTextProperty); Apply(row, SettingSwitchRow.OffTextProperty); return;
             case SettingSliderRow slider:
-                Apply(slider, SettingSliderRow.TitleProperty); Apply(slider, SettingSliderRow.DescriptionProperty); break;
+                Apply(slider, SettingSliderRow.TitleProperty); break;
             case SettingDropdownRow row:
-                Apply(row, SettingDropdownRow.TitleProperty); Apply(row, SettingDropdownRow.DescriptionProperty); break;
+                Apply(row, SettingDropdownRow.TitleProperty); break;
             case SettingActionRow row:
-                Apply(row, SettingActionRow.TitleProperty); Apply(row, SettingActionRow.DescriptionProperty); Apply(row, SettingActionRow.ActionTextProperty); return;
+                Apply(row, SettingActionRow.TitleProperty); Apply(row, SettingActionRow.ActionTextProperty); return;
             case SettingValueRow row:
                 Apply(row, SettingValueRow.TitleProperty); return;
             case WindowTitleBar bar:

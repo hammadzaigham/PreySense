@@ -22,17 +22,17 @@ Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
 - Apply for a live test, Save to persist; saved profiles follow mode changes, startup, and resume when Enable Tuning is on
 
 ### GPU and display
-- GPU modes: Auto, iGPU Only, Hybrid, Advanced Optimus, and dGPU Only
+- GPU modes: Auto, Hybrid, Advanced Optimus, and dGPU Only
 - Refresh rate control, Auto refresh rate to 60Hz on battery.
 
 ### Fans
 Per-mode Auto, Max, or Custom EC-style stages for Eco, Quiet, Balanced, Performance, and Turbo. CPU/GPU graphs set separate temps and duties; both fans run at the higher duty, with a shared 0–5 s stage delay. Fans keep running while the app is in the tray.
 
 ### Lighting
-Four-zone keyboard RGB plus cover logo lighting, with static colors, hardware effects, software animations, and optional logo sync.
+Automatically detected RGB devices, including supported per-key keyboards, four-zone keyboards, light bars, logos, and mode/turbo keys. The themed keyboard editor supports click, Ctrl-click, Shift-click, and drag selection; color changes apply automatically. Existing four-zone effects and logo sync remain available. See [lighting support](docs/lighting_devices.md) for compatibility and verification limits.
 
 ### Overlay
-Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, separate GPU Active / Effective clocks, and CPU VID when the driver can read it.
+Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, GPU Clock, CPU Active Clock, and CPU Effective Clock, and CPU VID when the driver can read it.
 
 ### Battery and system
 - Charge limit (80% or 100%).
@@ -90,3 +90,7 @@ Output: `dist\PreySense.exe`
 ## License
 
 See [LICENSE](LICENSE).
+
+### Appearance
+
+Settings → Theme offers Dark, Light, and Glass. Glass uses the Windows 11 Desktop Acrylic backdrop with translucent controls and applies immediately to open windows. Windows 11 build 22621 or later is required for the native backdrop; older Windows versions keep a readable solid dark surface. Dropdown popups share the control material tint. The choice is saved in `General.Theme`; existing settings without that field retain their `LightTheme` preference.

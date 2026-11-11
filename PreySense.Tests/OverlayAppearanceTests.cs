@@ -77,6 +77,28 @@ public class OverlayAppearanceTests
         Assert.IsGreaterThan(0, (int)bitmap.GetPixel(overlay.Width / 2, overlay.Height / 2).A);
     }
 
+    [TestMethod]
+    [DataRow(0, 50)]
+    [DataRow(20, 50)]
+    [DataRow(80, 100)]
+    public void BackgroundOpacity_DoesNotFadeOpaqueText(int backgroundOpacity, int scale)
+    {
+        using var overlay = new PaintableOverlay();
+        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        typeof(HardwareOverlay).GetField("_scalePercent", flags)!.SetValue(overlay, scale);
+        typeof(HardwareOverlay).GetMethod("ApplyColors", flags)!.Invoke(overlay,
+            [new OverlayConfig { BackgroundAlphaPercent = backgroundOpacity, TextAlphaPercent = 100 }]);
+        using var bitmap = new Bitmap(1200, 300, PixelFormat.Format32bppPArgb);
+        using var graphics = Graphics.FromImage(bitmap);
+        overlay.Paint(graphics);
+        int opaqueGlyphPixels = 0;
+        for (int y = 0; y < overlay.Height; y++)
+            for (int x = 0; x < overlay.Width; x++)
+                if (bitmap.GetPixel(x, y).A == 255) opaqueGlyphPixels++;
+        Assert.IsGreaterThan(0, opaqueGlyphPixels, "Text must remain opaque even on a fully transparent background.");
+        Assert.AreEqual(System.Drawing.Text.TextRenderingHint.AntiAliasGridFit, graphics.TextRenderingHint);
+    }
+
     private sealed class PaintableOverlay : HardwareOverlay
     {
         public void Paint(Graphics graphics) => PerformPaint(new PaintEventArgs(graphics, Bound));

@@ -110,6 +110,7 @@ namespace PreySense.Frontend.Views
         int backgroundOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_alpha", 50));
         int textOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_text_alpha", 100));
 
+        DropdownOverlayTheme.SelectedIndex = (int)ConfigurationService.Instance.GetCurrent().Overlay.Theme;
         CheckEnableOverlay.IsChecked = overlayEnabled;
         CheckShowFps.IsChecked = showFps;
         SliderHudScale.Value = scalePercent;
@@ -122,6 +123,30 @@ namespace PreySense.Frontend.Views
         DropdownVerticalPos.ItemsSource = VerticalPositions;
         DropdownHorizontalPos.SelectedItem = AppConfig.GetString("overlay_pos_horizontal", "Left");
         DropdownVerticalPos.SelectedItem = AppConfig.GetString("overlay_pos_vertical", "Top");
+    }
+
+    private void OverlayTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isInitializing || DropdownOverlayTheme.SelectedIndex < 0) return;
+        var theme = (OverlayTheme)DropdownOverlayTheme.SelectedIndex;
+        // Re-selecting the same theme must not wipe hand-edited colors/opacity.
+        if (theme == ConfigurationService.Instance.GetCurrent().Overlay.Theme) return;
+        _isInitializing = true;
+        try
+        {
+            ConfigurationService.Instance.Update(config => config.Overlay.ApplyTheme(theme));
+            LoadSettings();
+            HardwareOverlayManager.RefreshDisplayFlags();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"Could not apply overlay theme: {ex}");
+            LoadSettings();
+            if (IsLoaded)
+                new CustomModalDialog { Owner = this, HeaderSubtitle = LocalizationService.Translate("Overlay"),
+                    Message = ex.Message, ConfirmText = LocalizationService.Translate("OK"), ShowCancelButton = false }.ShowDialog();
+        }
+        finally { _isInitializing = false; }
     }
 
     // Older preferences store opacity as an alpha byte; current preferences use percent.
@@ -236,8 +261,7 @@ namespace PreySense.Frontend.Views
 				FontSize = fontSize,
 				FontWeight = FontWeights.Bold,
 				VerticalAlignment = VerticalAlignment.Center,
-				HorizontalAlignment = HorizontalAlignment.Right,
-				ToolTip = "Remove slot"
+				HorizontalAlignment = HorizontalAlignment.Right
 			};
 			removeButton.Click += (_, _) =>
 			{

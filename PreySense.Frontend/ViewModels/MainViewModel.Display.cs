@@ -97,12 +97,10 @@ namespace PreySense.Frontend.ViewModels
             var result = await Task.Run(() =>
             {
                 bool biosDiscrete = false;
-                bool? nvidiaDisabled = null;
                 try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
-                try { nvidiaDisabled = _hw.IsDiscreteGpuDisabled; } catch { }
 
                 DdsStatus? dds = null;
-                if (nvidiaDisabled != true && !biosDiscrete && _hw.IsDdsAvailable && _hw.IsDdsSupported())
+                if (!biosDiscrete && _hw.IsDdsAvailable && _hw.IsDdsSupported())
                 {
                     try { dds = _hw.GetDdsStatus(); }
                     catch (Exception ex) { AppLogger.Error($"GPU display status read failed: {ex.Message}"); }
@@ -120,7 +118,7 @@ namespace PreySense.Frontend.ViewModels
                     AppLogger.Error($"Display refresh rate read failed: {ex.Message}");
                 }
 
-                return (biosDiscrete, nvidiaDisabled, dds, supportedRates, currentRate);
+                return (biosDiscrete, dds, supportedRates, currentRate);
             });
 
             if (_disposed || Volatile.Read(ref _gpuSwitchInProgress) != 0 ||
@@ -138,7 +136,7 @@ namespace PreySense.Frontend.ViewModels
         }
 
         private void ApplyDisplayAndDdsState(
-            (bool biosDiscrete, bool? nvidiaDisabled, DdsStatus? dds, System.Collections.Generic.List<int>? supportedRates, int currentRate) result,
+            (bool biosDiscrete, DdsStatus? dds, System.Collections.Generic.List<int>? supportedRates, int currentRate) result,
             int revision)
         {
             if (_disposed || Volatile.Read(ref _gpuSwitchInProgress) != 0 ||
@@ -146,19 +144,12 @@ namespace PreySense.Frontend.ViewModels
                 return;
 
             IsBiosDiscreteGpuActive = result.biosDiscrete;
-            if (result.nvidiaDisabled.HasValue)
-                IsGpuIgpuOnlyActive = result.nvidiaDisabled.Value && !result.biosDiscrete;
             if (IsBiosDiscreteGpuActive)
                 GpuMuxModeName = "dGPU Only";
-            else if (IsGpuIgpuOnlyActive)
-                GpuMuxModeName = "iGPU Only";
 
             if (result.dds != null)
             {
                 ApplyDdsStatus(result.dds);
-            }
-            else
-            {
             }
             NotifyGpuSelectionsChanged();
 

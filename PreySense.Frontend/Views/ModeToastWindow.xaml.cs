@@ -35,8 +35,8 @@ namespace PreySense.Frontend.Views
             App.Current?.Dispatcher?.InvokeAsync(() =>
             {
                 _currentToast ??= new ModeToastWindow();
-                var (label, icon, borderBrushKey) = GetModeAppearance(mode, modeName);
-                _currentToast.Display(label, icon, borderBrushKey);
+                var (icon, borderBrushKey) = GetModeAppearance(mode);
+                _currentToast.Display(modeName, icon, borderBrushKey);
             });
         }
 
@@ -75,7 +75,7 @@ namespace PreySense.Frontend.Views
 
             ModeLabel.Text = modeName;
             IconPathShape.Data = Geometry.Parse(iconPath);
-            ToastBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, borderBrushKey);
+            ToastBorder.BorderThickness = new Thickness(0);
             Opacity = 0;
 
             if (!IsVisible)
@@ -134,14 +134,14 @@ namespace PreySense.Frontend.Views
             Top = workBottom - ActualHeight - (BottomOffsetPhysicalPixels / scale);
         }
 
-        private static (string Label, string Icon, string BorderBrushKey) GetModeAppearance(byte mode, string fallbackName) => mode switch
+        private static (string Icon, string BorderBrushKey) GetModeAppearance(byte mode) => mode switch
         {
-            0x00 => ("Quiet", ModeIconData.Quiet, "ModeEcoBrush"),
-            0x01 => ("Balanced", ModeIconData.Balanced, "AccentBrush"),
-            0x04 => ("Performance", ModeIconData.Performance, "ModePerformanceBrush"),
-            0x05 => ("Turbo", ModeIconData.Turbo, "ModeTurboBrush"),
-            0x06 => ("Eco", ModeIconData.Eco, "ModeEcoBrush"),
-            _ => (fallbackName, ModeIconData.Balanced, "AccentBrush")
+            0x00 => (ModeIconData.Quiet, "ModeQuietBrush"),
+            0x01 => (ModeIconData.Balanced, "ModeBalancedBrush"),
+            0x04 => (ModeIconData.Performance, "ModePerformanceBrush"),
+            0x05 => (ModeIconData.Turbo, "ModeTurboBrush"),
+            0x06 => (ModeIconData.Eco, "ModeEcoBrush"),
+            _ => (ModeIconData.Balanced, "AccentBrush")
         };
 
         [StructLayout(LayoutKind.Sequential)]

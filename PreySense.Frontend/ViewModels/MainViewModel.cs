@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Win32;
 using PreySense.Core.Driver;
+using PreySense.Core.Hardware;
 using PreySense.Core.Services;
 using PreySense;
 using PreySense.Frontend.Services;
@@ -127,8 +128,8 @@ namespace PreySense.Frontend.ViewModels
         {
             _hw = hw;
             _lightingWorker = new(ApplyLightingRequest,
-                (pending, latest) => latest with { Work = pending.Work | latest.Work });
-            _isLightTheme = ThemeManager.LoadAndApply();
+                MergeLightingRequests);
+            _selectedThemeIndex = (int)ThemeManager.LoadAndApply();
             AttachSessionLifecycleHooks();
 
             _dispatcher = Dispatcher.CurrentDispatcher;
@@ -141,8 +142,8 @@ namespace PreySense.Frontend.ViewModels
             {
                 _turboKeyWatcher.Start();
             }
-            _hidModeKeyWatcher = new HidModeKeyWatcher(HandleModeKeyPressed, StepKeyboardBrightness);
-            _turboKeyWatcher.BrightnessKeyPressed += OnBrightnessKeyPressed;
+            // Mode key only — do not monitor Fn RGB brightness keys; firmware owns those.
+            _hidModeKeyWatcher = new HidModeKeyWatcher(HandleModeKeyPressed);
 
             UpdateFanDemand();
 
@@ -260,12 +261,12 @@ namespace PreySense.Frontend.ViewModels
                 int? liveDdsMode = null;
                 DdsStatus? liveDdsStatus = null;
                 bool? biosDiscrete = null;
-                bool? igpuOnly = null;
                 System.Collections.Generic.List<int>? rates = null;
                 int refreshRate = 0;
                 try
                 {
-                    if (_hw.IsDdsAvailable && _hw.IsDdsSupported())
+                    using var gpuLease = HardwareOperationGate.TryEnterTelemetry();
+                    if (gpuLease != null && _hw.IsDdsAvailable && _hw.IsDdsSupported())
                     {
                         var status = _hw.GetDdsStatus();
                         liveDdsStatus = status;
@@ -275,14 +276,13 @@ namespace PreySense.Frontend.ViewModels
                 }
                 catch { }
                 try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
-                try { igpuOnly = _hw.IsDiscreteGpuDisabled; } catch { }
                 try
                 {
                     rates = _hw.GetSupportedRefreshRates();
                     refreshRate = _hw.GetDisplayRefreshRate();
                 }
                 catch { }
-                return (liveDdsMode, liveDdsStatus, biosDiscrete, igpuOnly, rates, refreshRate);
+                return (liveDdsMode, liveDdsStatus, biosDiscrete, rates, refreshRate);
             });
 
             if (_disposed) return;
@@ -297,12 +297,6 @@ namespace PreySense.Frontend.ViewModels
                 }
                 if (result.biosDiscrete.HasValue)
                     IsBiosDiscreteGpuActive = result.biosDiscrete.Value;
-                IsGpuIgpuOnlyActive = result.igpuOnly == true && !IsBiosDiscreteGpuActive;
-                if (IsGpuIgpuOnlyActive)
-                {
-                    GpuMuxModeName = "iGPU Only";
-                    NotifyGpuSelectionsChanged();
-                }
                 ApplyDdsStatus(result.liveDdsStatus);
                 ApplyRefreshRateOptions(result.rates, result.refreshRate);
             });
@@ -320,27 +314,23 @@ namespace PreySense.Frontend.ViewModels
                 // PreySense owns the chassis Mode / Turbo key. Ignore OEM firmware
                 // echoes while a local cycle is pending or just queued.
                 if (IsModeSelectionPending()
-                    || (DateTime.UtcNow - _lastPhysicalModeKeyUtc).TotalMilliseconds < 1500
+                    || (DateTime.UtcNow - _lastPhysicalModeKeyUtc).TotalMilliseconds < AcerOperatingModeTiming.TransitionMilliseconds
                     || ActivePowerMode == mode)
                     return;
-                _ = Task.Run(RestoreFanMode);
                 if (IsHardwareTuningEnabled)
                 {
+                    // ApplyModeSwitchCoreAsync already calls RestoreFanMode after the switch.
                     await ApplyModeSwitchAsync(mode);
                     return;
                 }
-                ActivePowerMode = mode;
+                NotifyConfirmedPowerMode(mode);
                 await ApplyCpuBoostForModeAsync(mode);
-                UpdateModeName(mode);
-                NotifyModeSelectionsChanged();
+                await Task.Run(RestoreFanMode);
                 PersistSessionSettings();
-                Views.ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
             });
         }
 
         private void OnTurboKeyPressed(object? sender, HotKeyEventArgs e) => HandleModeKeyPressed();
-
-        private void OnBrightnessKeyPressed(object? sender, int delta) => StepKeyboardBrightness(delta);
 
         public void HandleModeKeyPressed()
         {
@@ -360,29 +350,30 @@ namespace PreySense.Frontend.ViewModels
         public void Dispose()
         {
             if (_disposed) return;
+            // Save before the disposed guard suppresses persistence; lighting is drained below.
+            PersistSessionSettings(includeLighting: false);
             SetMainWindowTelemetryVisible(false);
-            // Capture the last edit, including changes still inside the debounce window.
+            // Capture the last edit, including a mode still waiting on the trailing apply.
             // Only explicit shutdown waits: the worker never awaits the dispatcher.
             _lightingDebouncer.Cancel();
             _ = QueueLighting(LightingWork.Save);
             _lightingWorker.StopAsync(drainPending: true).GetAwaiter().GetResult();
+            StopExtendedLightingAsync().GetAwaiter().GetResult();
             _disposed = true;
+            // Stop mode-switch work before tearing down hardware / the gate itself.
+            DrainAndDisposeModeSwitchGate();
             _applicationReady.TrySetResult();
             DisposeFanTelemetry();
             ReleaseCustomFans();
             PreySense.Core.Hardware.CpuDriverRuntime.Dispose();
-            PersistSessionSettings();
             DetachSessionLifecycleHooks();
             _hw.PowerModeChanged -= OnPowerModeChanged;
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             DisposeDisplaySettingsWatcher();
             _turboKeyWatcher.TurboKeyPressed -= OnTurboKeyPressed;
-            _turboKeyWatcher.BrightnessKeyPressed -= OnBrightnessKeyPressed;
             _turboKeyWatcher.PowerSourceReceived -= OnAcerPowerSourceReceived;
             _turboKeyWatcher.Dispose();
             _hidModeKeyWatcher.Dispose();
-            CancelPendingModeSwitch();
-            _modeSwitchGate.Dispose();
             _lightingDebouncer.Dispose();
             _energySaverWorker.StopAsync().GetAwaiter().GetResult();
             if (_coverSyncFrameHooked && _hw is ProductionHardwareService hooked)

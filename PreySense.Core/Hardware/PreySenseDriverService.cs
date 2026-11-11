@@ -81,6 +81,52 @@ public class PreySenseDriverService : IPreySenseDriverService
         }
     }
 
+    internal static string NormalizeDriverPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return string.Empty;
+        string s = path.Trim().Trim('"');
+        if (s.StartsWith(@"\??\", StringComparison.OrdinalIgnoreCase))
+            s = s.Substring(4);
+        try { return Path.GetFullPath(s); }
+        catch { return s; }
+    }
+
+    private static bool DriverPathsEqual(string? left, string? right) =>
+        string.Equals(NormalizeDriverPath(left), NormalizeDriverPath(right), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMissingDriverBinaryError(string? detail) =>
+        !string.IsNullOrWhiteSpace(detail) &&
+        (detail.Contains("ERROR_FILE_NOT_FOUND", StringComparison.OrdinalIgnoreCase) ||
+         detail.Contains("Win32 Error 2", StringComparison.OrdinalIgnoreCase));
+
+    private bool RegisterServiceAt(string extractedPath, out string? errorMessage)
+    {
+        errorMessage = null;
+        if (_deviceOps.ServiceExists(_serviceName))
+            _deviceOps.TryDeleteService(_serviceName, out _);
+
+        if (_deviceOps.TryCreateService(_serviceName, DefaultDisplayName, extractedPath, out string? createError))
+            return true;
+
+        errorMessage = $"Failed to register driver service '{_serviceName}' at '{extractedPath}': {createError}";
+        return false;
+    }
+
+    private bool ServiceRegistrationNeedsRepair(string extractedPath)
+    {
+        if (!_deviceOps.ServiceExists(_serviceName))
+            return true;
+
+        string? registeredPath = _deviceOps.QueryServiceBinaryPath(_serviceName);
+        if (string.IsNullOrWhiteSpace(registeredPath))
+            return true;
+        if (!DriverPathsEqual(registeredPath, extractedPath))
+            return true;
+        // Stale SCM ImagePath: service points at our path but the .sys was deleted.
+        return !File.Exists(NormalizeDriverPath(registeredPath));
+    }
+
     public bool EnsureServiceRunning(out string? errorMessage)
     {
         errorMessage = null;
@@ -102,37 +148,46 @@ public class PreySenseDriverService : IPreySenseDriverService
 
             EnsureInstanceRegistration();
 
-            if (!_extractor.EnsureDriverExtracted(out string? extractedPath, out string? extractError))
+            if (!_extractor.EnsureDriverExtracted(out string? extractedPath, out string? extractError) ||
+                string.IsNullOrWhiteSpace(extractedPath))
             {
                 errorMessage = "Failed to extract bundled driver: " + extractError;
                 return false;
             }
 
-            if (!_deviceOps.ServiceExists(_serviceName))
+            if (ServiceRegistrationNeedsRepair(extractedPath))
             {
-                if (!_deviceOps.TryCreateService(_serviceName, DefaultDisplayName, extractedPath!, out string? createError))
-                {
-                    errorMessage = $"Failed to register driver service '{_serviceName}': {createError}";
+                if (!RegisterServiceAt(extractedPath, out errorMessage))
                     return false;
-                }
-            }
-            else
-            {
-                string? registeredPath = _deviceOps.QueryServiceBinaryPath(_serviceName);
-                if (!string.IsNullOrWhiteSpace(registeredPath) &&
-                    !string.Equals(registeredPath, extractedPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    _deviceOps.TryDeleteService(_serviceName, out _);
-                    if (!_deviceOps.TryCreateService(_serviceName, DefaultDisplayName, extractedPath!, out string? recreateError))
-                    {
-                        errorMessage = $"Failed to update driver service '{_serviceName}': {recreateError}";
-                        return false;
-                    }
-                }
             }
 
             if (!_deviceOps.TryStartService(_serviceName, out string? startError))
             {
+                // Common after upgrades / ProgramData cleanup: SCM still has PreySenseDriver but ImagePath is gone.
+                if (IsMissingDriverBinaryError(startError))
+                {
+                    if (!_extractor.EnsureDriverExtracted(out extractedPath, out extractError) ||
+                        string.IsNullOrWhiteSpace(extractedPath))
+                    {
+                        errorMessage = "Failed to re-extract bundled driver after ERROR_FILE_NOT_FOUND: " + extractError;
+                        return false;
+                    }
+
+                    if (!RegisterServiceAt(extractedPath, out errorMessage))
+                        return false;
+
+                    if (_deviceOps.TryStartService(_serviceName, out startError))
+                    {
+                        _serviceOwnership = DriverServiceOwnership.PreySenseOwned;
+                        return true;
+                    }
+
+                    errorMessage =
+                        $"Failed to start driver service '{_serviceName}' after repairing the ImagePath: {startError} " +
+                        $"Expected driver binary at '{extractedPath}'.";
+                    return false;
+                }
+
                 errorMessage = $"Failed to start driver service '{_serviceName}': {startError}";
                 return false;
             }

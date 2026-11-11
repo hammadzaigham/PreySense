@@ -46,19 +46,6 @@ namespace PreySense.Frontend.Controls
             set => SetValue(TitleProperty, value);
         }
 
-        public static readonly DependencyProperty DescriptionProperty =
-            DependencyProperty.Register(
-                nameof(Description),
-                typeof(string),
-                typeof(SettingValueRow),
-                new PropertyMetadata(string.Empty));
-
-        public string Description
-        {
-            get => (string)GetValue(DescriptionProperty);
-            set => SetValue(DescriptionProperty, value);
-        }
-
         public static readonly DependencyProperty ValueProperty =
             DependencyProperty.Register(
                 nameof(Value),

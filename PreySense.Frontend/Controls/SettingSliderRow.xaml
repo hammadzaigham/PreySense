@@ -7,7 +7,7 @@
             <TextBlock Text="{Binding Title, ElementName=RootSliderRow}" Style="{DynamicResource SettingLabelStyle}" HorizontalAlignment="Left" />
             <TextBlock>
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource SettingValueStyle}">
                         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -23,6 +23,9 @@
                                 <Setter Property="Text" Value="{Binding BadgeText, ElementName=RootSliderRow}" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             </DataTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                            </Trigger>
                         </Style.Triggers>
                     </Style>
                 </TextBlock.Style>

@@ -26,7 +26,7 @@ public class TuningCalibrationTests
         _store = new ConfigurationService(Path.Combine(_directory, "preysense.json"));
         _vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
         typeof(MainViewModel).GetField("_modeSwitchGate", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(_vm, new SemaphoreSlim(1, 1));
-        typeof(MainViewModel).GetField("_modeSwitchDebounceLock", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(_vm, new object());
+        typeof(MainViewModel).GetField("_modeSwitchLock", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(_vm, new object());
         _vm.TuningConfigurationStore = _store;
     }
     [TestCleanup] public void Cleanup() => Directory.Delete(_directory, recursive: true);

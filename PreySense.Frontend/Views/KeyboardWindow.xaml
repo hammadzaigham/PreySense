@@ -8,12 +8,14 @@
         Title="PreySense • Lighting"
         Width="500"
         SizeToContent="Height"
+        MaxHeight="900"
         WindowStartupLocation="CenterOwner"
         Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{StaticResource AppFontFamily}"
         ResizeMode="NoResize">
 
     <Window.Resources>
+        <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter"/>
         <Style x:Key="ZoneColorButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -97,23 +99,60 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="{StaticResource WindowContentMargin}">
 
-                <!-- Global keyboard brightness and timeout controls remain visible above the target tabs. -->
-                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
-                    <StackPanel>
-                        <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding RgbBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </Grid>
-                        <Slider Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay}"
-                                SmallChange="25" LargeChange="25" TickFrequency="25" IsSnapToTickEnabled="True"
-                                IsMoveToPointEnabled="True"/>
-                    </StackPanel>
+                <!-- Detected devices replace Keyboard/Logo when OEM lighting targets are present. -->
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
+                        Visibility="{Binding ShowLightingDeviceTabs, Converter={StaticResource BoolToVis}}">
+                    <ListBox ItemsSource="{Binding LightingDevices}" SelectedItem="{Binding SelectedLightingDevice, Mode=TwoWay}"
+                             SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="0"
+                             HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1" Columns="{Binding DataContext.LightingDeviceTabColumns, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="2,0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <RadioButton Style="{StaticResource SegmentedTabRadioStyle}" GroupName="LightingDeviceTabs"
+                                             IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}"
+                                             HorizontalAlignment="Stretch" Margin="0">
+                                    <TextBlock Text="{Binding DisplayName, Converter={StaticResource TranslateConverter}}" Margin="8,0" TextTrimming="CharacterEllipsis"
+                                               TextAlignment="Center" HorizontalAlignment="Center"/>
+                                </RadioButton>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Border>
 
-                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                <!-- Fallback Keyboard/Logo tabs when discovery finds no OEM devices. -->
+                <controls:LabeledTabSwitcher x:Name="TabLightingTarget"
+                                             Visibility="{Binding ShowLegacyTargetTabs, Converter={StaticResource BoolToVis}}"
+                                             Margin="{StaticResource StandardSectionMargin}"
+                                             LeftText="Keyboard"
+                                             RightText="Logo"
+                                             LeftIcon="pack://application:,,,/Resources/icons8-keyboard-32.png"
+                                             RightIcon="pack://application:,,,/Resources/icons8-laptop-32.png"
+                                             SelectedIndex="{Binding SelectedLightingTab, Mode=TwoWay}"/>
+
+                <!-- Single EC keyboard idle timeout (no separate Cover Logo timeout). -->
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}"
+                        Visibility="{Binding ShowBacklightTimeout, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -128,27 +167,22 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Lighting Target Tab Selector (Keyboard vs Logo) -->
-                <controls:LabeledTabSwitcher x:Name="TabLightingTarget"
-                                             Margin="{StaticResource StandardSectionMargin}"
-                                             LeftText="Keyboard"
-                                             RightText="Logo"
-                                             LeftIcon="pack://application:,,,/Resources/icons8-keyboard-32.png"
-                                             RightIcon="pack://application:,,,/Resources/icons8-laptop-32.png"
-                                             SelectedIndex="{Binding SelectedLightingTab, Mode=TwoWay}"/>
-
-                <!-- SECTION 1: KEYBOARD LIGHTING CONTROLS -->
-                <StackPanel x:Name="SectionKeyboard">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Visible"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsKeyboardTabSelected}" Value="False">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
+                <!-- SECTION 1: KEYBOARD LIGHTING CONTROLS (4-zone / software effects) -->
+                <StackPanel x:Name="SectionKeyboard" Visibility="{Binding IsLegacyKeyboardEditorVisible, Converter={StaticResource BoolToVis}}">
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding RgbBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Grid>
+                        <Slider Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay}"
+                                SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
+                                IsMoveToPointEnabled="True"/>
+                    </StackPanel>
+                </Border>
 
                     <!-- Lighting Mode Dropdown (Static vs Dynamic) - Clean Row Layout -->
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
@@ -168,7 +202,7 @@
                             </ComboBox>
                         </Grid>
                     </Border>
-                    
+
                     <!-- Zone Selection & Palette (Static Mode Only) -->
                     <Border x:Name="PanelStaticControls" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
                         <StackPanel>
@@ -266,7 +300,7 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding SelectedHexColor, FallbackValue='#00E5FF'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding SelectedHexColor, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextHexColorInput" Text="{Binding SelectedHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -301,7 +335,7 @@
                                 </ComboBox>
                             </Grid>
 
-                            <!-- Dynamic Effect Speed -->
+                            <!-- Dynamic Animation Speed -->
                             <Grid Margin="{StaticResource StandardRowMargin}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -310,12 +344,12 @@
                                 <Grid Grid.Row="0" Margin="0,8,0,0">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Effect Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Animation Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding RgbSpeed, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding KeyboardAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay}"
-                                        SmallChange="25" LargeChange="25" TickFrequency="25" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
+                                <Slider Grid.Row="1" Minimum="1" Maximum="10" Value="{Binding KeyboardAnimationSpeedLevel, Mode=TwoWay}"
+                                        SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -351,7 +385,7 @@
                                 </ComboBox>
                             </Grid>
 
-                            <!-- Software Effect Speed -->
+                            <!-- Software Animation Speed -->
                             <Grid Margin="{StaticResource StandardRowMargin}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -360,12 +394,12 @@
                                 <Grid Grid.Row="0" Margin="0,8,0,0">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Effect Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Animation Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding RgbSpeed, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding RgbSpeed}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
                                 <Slider Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay}"
-                                        SmallChange="25" LargeChange="25" TickFrequency="25" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
+                                        SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -373,25 +407,35 @@
                 </StackPanel>
 
                 <!-- SECTION 2: LOGO BACKLIGHT CONTROLS -->
-                <StackPanel x:Name="SectionCover">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsCoverTabSelected}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
+                <StackPanel x:Name="SectionCover" Visibility="{Binding IsLegacyCoverEditorVisible, Converter={StaticResource BoolToVis}}">
 
-                    <!-- Logo Master Power Switch -->
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
+                        <controls:SettingSwitchRow Title="Sync With Keyboard"
+                                                  IsChecked="{Binding IsCoverSyncWithKeyboard, Mode=TwoWay}"/>
+                    </Border>
+
+                    <Border x:Name="PanelCoverBrightness" Margin="0,0,0,8">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCoverSyncWithKeyboard}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
                         <StackPanel>
-                            <controls:SettingSwitchRow Title="Logo Backlight"
-                                                      IsChecked="{Binding IsCoverLightingEnabled, Mode=TwoWay}"/>
-                            <controls:SettingSwitchRow Title="Sync With Keyboard"
-                                                      IsChecked="{Binding IsCoverSyncWithKeyboard, Mode=TwoWay}"/>
+                            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding CoverBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </Grid>
+                            <Slider Minimum="0" Maximum="100" Value="{Binding CoverBrightness, Mode=TwoWay}"
+                                    SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    IsMoveToPointEnabled="True"/>
                         </StackPanel>
                     </Border>
 
@@ -489,7 +533,7 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding CoverHexColor, FallbackValue='#00E5FF'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding CoverHexColor, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextCoverHexColorInput" Text="{Binding CoverHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -508,12 +552,207 @@
                                     <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Animation Speed" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding CoverSpeed, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding LogoAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
                             <Grid Margin="0,0,0,2">
-                                <Slider Minimum="0" Maximum="100" Value="{Binding CoverSpeed, Mode=TwoWay}"
-                                        SmallChange="25" LargeChange="25" TickFrequency="25" IsSnapToTickEnabled="True" Margin="0"/>
+                                <Slider Minimum="1" Maximum="5" Value="{Binding LogoAnimationSpeedLevel, Mode=TwoWay}"
+                                        SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0"/>
                             </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- SECTION 3: OEM device editor (Mode key, lightbars, per-key keyboards, etc.) -->
+                <StackPanel Visibility="{Binding IsDeviceLightingEditorVisible, Converter={StaticResource BoolToVis}}">
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
+                            Visibility="{Binding IsModeKeyLightingDevice, Converter={StaticResource BoolToVis}}">
+                        <controls:SettingSwitchRow Title="Sync With Keyboard"
+                                                   IsChecked="{Binding IsModeKeySyncWithKeyboard, Mode=TwoWay}"/>
+                    </Border>
+
+                    <Border Margin="0,0,0,8">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsModeKeySyncWithKeyboard}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Lighting Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding LightingDeviceModes}" SelectedItem="{Binding SelectedLightingDeviceMode}"
+                                      DisplayMemberPath="Name" MinWidth="210" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      FontSize="{DynamicResource FontSizeControl}"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Margin="0,0,0,8">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsModeKeySyncWithKeyboard}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding DeviceLightingBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </Grid>
+                            <Slider Minimum="0" Maximum="100"
+                                    SmallChange="{Binding DeviceLightingBrightnessStep}"
+                                    LargeChange="{Binding DeviceLightingBrightnessStep}"
+                                    TickFrequency="{Binding DeviceLightingBrightnessStep}"
+                                    IsSnapToTickEnabled="True"
+                                    Value="{Binding DeviceLightingBrightness}"
+                                    IsMoveToPointEnabled="True"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
+                            Visibility="{Binding HasDeviceLightingSpeed, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Animation Speed" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding DeviceLightingSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </Grid>
+                            <Slider Minimum="{Binding DeviceLightingSpeedMinimum}" Maximum="{Binding DeviceLightingSpeedMaximum}"
+                                    SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding DeviceLightingSpeedLevel}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
+                        <StackPanel>
+                            <controls:SettingSwitchRow Title="Random colors" IsChecked="{Binding DeviceLightingRandomColors}"
+                                Visibility="{Binding HasDeviceLightingRandomColors, Converter={StaticResource BoolToVis}}" Margin="0,0,0,6"/>
+
+                            <StackPanel Margin="0,2,0,6"
+                                        Visibility="{Binding ShowModePowerModeColors, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl ItemsSource="{Binding ModePowerModeColorEditors}" Margin="0,0,0,8">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Rows="1" Columns="5"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Name}" Height="32" Margin="2,0"
+                                                    Background="{Binding ColorHex}" Foreground="{Binding ForegroundHex}"
+                                                    Click="ModePowerModeColor_Click" Tag="{Binding}"
+                                                    Style="{StaticResource ZoneColorButtonStyle}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
+                                        IsEnabled="{Binding HasSelectedModePowerModeColor}"
+                                        SelectedColor="{Binding SelectedModePowerModeColor.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
+                                                Background="{Binding SelectedModePowerModeColor.ColorHex, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding SelectedModePowerModeColor.ColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
+                                                 Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
+                                                 FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
+                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                 IsEnabled="{Binding HasSelectedModePowerModeColor}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel HorizontalAlignment="Center" Margin="0,2,0,6"
+                                        Visibility="{Binding ShowDeviceColorFields, Converter={StaticResource BoolToVis}}">
+                                <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
+                                    Visibility="{Binding ShowDeviceColorWheel, Converter={StaticResource BoolToVis}}"
+                                    SelectedColor="{Binding DeviceLightingColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="{Binding ShowDeviceColorWheel, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
+                                            Background="{Binding DeviceLightingColorHex, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding DeviceLightingColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
+                                             Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
+                                             FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
+                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Visibility="{Binding ShowKeyboardLayout, Converter={StaticResource BoolToVis}}">
+                                <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center">
+                                    <controls:RgbKeyboardLayout KeysSource="{Binding LightingLedEditors}"
+                                        CommonColorHex="{Binding DeviceLightingColorHex}" UseIndividualColors="{Binding DeviceLightingIndividualColors}"
+                                        SelectedKeys="{Binding SelectedLightingKeys}"
+                                        SelectedKey="{Binding SelectedLightingKey, Mode=TwoWay}"/>
+                                </Viewbox>
+
+                            </StackPanel>
+
+                            <ListBox x:Name="IndividualLedGrid" ItemsSource="{Binding LightingLedEditors}"
+                                     SelectedItem="{Binding SelectedLightingKey, Mode=TwoWay}"
+                                     Visibility="{Binding ShowIndividualLedGrid, Converter={StaticResource BoolToVis}}"
+                                     Background="Transparent" BorderThickness="0" Padding="0" Margin="-2,4,-2,0"
+                                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Margin" Value="2"/>
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding Name}" Background="{Binding ColorHex}" Foreground="{Binding ForegroundHex}"
+                                                Tag="{Binding}" Click="DeviceLed_Click" HorizontalAlignment="Stretch">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource ZoneColorButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                            <Setter Property="BorderThickness" Value="2"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Visibility="{Binding ShowIndividualLightingEditors, Converter={StaticResource BoolToVis}}">
+                                <controls:ColorWheelControl x:Name="IndividualLightingColorWheel" Width="160" Height="160" HorizontalAlignment="Center" Margin="0,16,0,10"
+                                    ColorPicked="DeviceKeyColor_Picked"
+                                    IsEnabled="{Binding HasSelectedLightingKey}"
+                                    SelectedColor="{Binding SelectedLightingKey.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                            IsEnabled="{Binding HasSelectedLightingKey}" Margin="0,0,0,8">
+                                    <TextBlock Text="Color:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox Width="90" Height="26" Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
+                                             Text="{Binding SelectedLightingKey.ColorHex, UpdateSourceTrigger=LostFocus}"
+                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

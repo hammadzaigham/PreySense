@@ -51,9 +51,6 @@
       </Trigger>
     </Style.Triggers>
   </Style>
-  <Style x:Key="SettingDescriptionStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource CaptionTextStyle}">
-    <Setter Property="TextWrapping" Value="Wrap" />
-  </Style>
   <Style x:Key="SettingValueStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SettingLabelStyle}">
     <Setter Property="HorizontalAlignment" Value="Right" />
     <Setter Property="TextAlignment" Value="Right" />

@@ -27,9 +27,7 @@
                         Minimum="0" Maximum="5" SmallChange="1" LargeChange="1" TickFrequency="1"
                         IsSnapToTickEnabled="True" Value="0" ValueText="0 s"
                         ValueChanged="DelayRow_ValueChanged" Margin="0,0,0,8"/>
-                    <Border BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="1" CornerRadius="4" Padding="4">
-                        <controls:WpfFanCurveControl x:Name="Curve" Height="260"/>
-                    </Border>
+                    <controls:WpfFanCurveControl x:Name="Curve" Height="260"/>
                     <controls:SettingValueRow x:Name="RowTemp" Title="Temp" Minimum="40" Maximum="100" Unit="&#xB0;C" ValueCommitted="StageField_Committed" Margin="0,8,0,0"/>
                     <controls:SettingValueRow x:Name="RowDuty" Title="Duty" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
                     <controls:SettingValueRow x:Name="RowRpm" Title="RPM" Minimum="0" Maximum="6400" Unit="RPM" ValueCommitted="StageField_Committed"/>

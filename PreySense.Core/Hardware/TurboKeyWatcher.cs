@@ -42,7 +42,6 @@ namespace PreySense
         private bool _isDisposed;
 
         public event EventHandler<HotKeyEventArgs>? TurboKeyPressed;
-        public event EventHandler<int>? BrightnessKeyPressed;
         public event EventHandler<HotKeyEventArgs>? HotKeyReceived;
         public event EventHandler<PreySense.Core.Services.PowerSourceKind>? PowerSourceReceived;
 
@@ -194,25 +193,6 @@ namespace PreySense
             return false;
         }
 
-        public static bool TryGetBrightnessDelta(byte category, byte subEventId, out int delta)
-        {
-            delta = 0;
-            // Acer WMI function 1: 0x1A keyboard illum down, 0x1B up (acer_wmi / PHN16).
-            if (category != 0x01)
-                return false;
-            if (subEventId is 0x1A or 0x44 or 0x57)
-            {
-                delta = -1;
-                return true;
-            }
-            if (subEventId is 0x1B or 0x45 or 0x58)
-            {
-                delta = 1;
-                return true;
-            }
-            return false;
-        }
-
         private void OnEventArrived(object sender, EventArrivedEventArgs e)
         {
             try
@@ -248,11 +228,7 @@ namespace PreySense
                     AppLogger.Log("TurboKey: chassis Mode / Turbo key detected.");
                     TurboKeyPressed?.Invoke(this, args);
                 }
-                else if (TryGetBrightnessDelta(category, subEventId, out int brightnessDelta))
-                {
-                    AppLogger.Log($"TurboKey: Fn brightness WMI 0x{category:X2}/0x{subEventId:X2} delta={brightnessDelta}.");
-                    BrightnessKeyPressed?.Invoke(this, brightnessDelta);
-                }
+                // Fn RGB brightness keys are left to firmware; PreySense does not monitor or replay them.
             }
             catch (Exception ex)
             {

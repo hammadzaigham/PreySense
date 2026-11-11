@@ -17,11 +17,12 @@ namespace PreySense.Frontend.Views
         public KeyboardWindow()
         {
             InitializeComponent();
+            MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 32);
             Loaded += KeyboardWindow_Loaded;
             Closed += KeyboardWindow_Closed;
         }
 
-        private void KeyboardWindow_Loaded(object sender, RoutedEventArgs e)
+        private async void KeyboardWindow_Loaded(object sender, RoutedEventArgs e)
         {
             if (DataContext is MainViewModel vm)
             {
@@ -78,7 +79,45 @@ namespace PreySense.Frontend.Views
                 SyncCoverPresetSelection(vm);
                 RestoreLightingModeUi(vm);
                 _isLoaded = true;
+                PreySense.Core.Hardware.HidArrivalHub.Arrived += OnLightingDevicesChanged;
+                await vm.DetectLightingDevicesAsync();
+                UpdateLightingWindowWidth(vm);
             }
+        }
+
+        private void OnLightingDevicesChanged()
+        {
+            _ = Dispatcher.InvokeAsync(async () =>
+            {
+                if (IsVisible && DataContext is MainViewModel vm) await vm.DetectLightingDevicesAsync();
+            });
+        }
+
+        private void DeviceKeyColor_Picked(object? sender, System.Windows.Media.Color color)
+        {
+            if (DataContext is MainViewModel vm)
+                vm.SetSelectedLightingKeysColor($"#{color.R:X2}{color.G:X2}{color.B:X2}");
+        }
+
+        private void DeviceLed_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is MainViewModel vm && sender is FrameworkElement { Tag: LightingLedEditor led })
+            {
+                vm.SelectedLightingKeys.Clear();
+                vm.SelectedLightingKey = led;
+            }
+        }
+
+        private void ModePowerModeColor_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is MainViewModel vm && sender is FrameworkElement { Tag: ModePowerModeColorEditor editor })
+                vm.SelectModePowerModeColor(editor);
+        }
+
+        private void UpdateLightingWindowWidth(MainViewModel vm)
+        {
+            Width = vm.ShowKeyboardLayout ? Math.Min(1040, Math.Max(500, SystemParameters.WorkArea.Width - 48)) : 500;
+            MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 48);
         }
 
         private void RestoreLightingModeUi(MainViewModel vm)
@@ -249,7 +288,7 @@ namespace PreySense.Frontend.Views
 
                 string presetHex = tag switch
                 {
-                    "Predator" => "#00E5FF",
+                    "Predator" => "#3B82F6",
                     "Fire" => "#FF0033",
                     "Amber" => "#F59E0B",
                     "Neon" => "#FF007F",
@@ -315,6 +354,7 @@ namespace PreySense.Frontend.Views
 
         private void KeyboardWindow_Closed(object? sender, EventArgs e)
         {
+            PreySense.Core.Hardware.HidArrivalHub.Arrived -= OnLightingDevicesChanged;
             if (_boundVm == null)
                 return;
             _boundVm.PropertyChanged -= OnLightingVmPropertyChanged;
@@ -323,6 +363,8 @@ namespace PreySense.Frontend.Views
 
         private void OnLightingVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName == nameof(MainViewModel.ShowKeyboardLayout) && DataContext is MainViewModel lightingVm)
+                UpdateLightingWindowWidth(lightingVm);
             if ((e.PropertyName == nameof(MainViewModel.IsCoverSyncWithKeyboard) ||
                  e.PropertyName == nameof(MainViewModel.CoverLightingMode)) &&
                 DataContext is MainViewModel vm)

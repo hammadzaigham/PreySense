@@ -38,11 +38,19 @@ public partial class HardwareOverlay
 
     private int RightInset(float sc)
     {
-        // Trim one base pixel only when the final visible column ends in a graph.
+        // Trim two base pixels when the final visible column ends in a graph.
         for (int i = _columnCpu.Length - 1; i >= 0; i--)
             if (ColumnWidth(i, sc) > 0)
-                return S(sc, BasePadX) + S(sc, BaseInnerPadX) - (_columnGraphs[i] ? S(sc, 1) : 0);
+                return S(sc, BasePadX) + S(sc, BaseInnerPadX) - (_columnGraphs[i] ? S(sc, 2) : 0);
         return S(sc, BasePadX) + S(sc, BaseInnerPadX);
+    }
+
+    private static int ClampToDisplay(int position, int start, int end, int overlayLength)
+    {
+        const int margin = 5;
+        int minimum = start + margin;
+        // An oversized overlay cannot fit; keep its leading edge reachable instead of throwing.
+        return Math.Clamp(position, minimum, Math.Max(minimum, end - overlayLength - margin));
     }
 
     private static int S(float sc, int v) => (int)(v * sc);

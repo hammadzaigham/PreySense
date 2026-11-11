@@ -18,7 +18,7 @@
                 <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
                 <Setter Property="WindowStyle" Value="None" />
                 <Setter Property="AllowsTransparency" Value="False" />
-                <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
+                <Setter Property="Background" Value="{DynamicResource WindowHostBgBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource WindowBgBrush}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="services:WindowSystemShadow.Enable" Value="True" />

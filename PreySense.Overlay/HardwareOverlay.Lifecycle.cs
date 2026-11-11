@@ -49,10 +49,10 @@ public partial class HardwareOverlay
         bool isRight = (anchor & 1) != 0, isBottom = (anchor & 2) != 0;
         int x = isRight ? screen.Bounds.Right - Width - offsetX : screen.Bounds.X + offsetX;
         int y = isBottom ? screen.Bounds.Bottom - Height - offsetY : screen.Bounds.Y + offsetY;
-        const int margin = 5;
+
         Location = new Point(
-            Math.Clamp(x, screen.Bounds.Left + margin, screen.Bounds.Right - Width - margin),
-            Math.Clamp(y, screen.Bounds.Top + margin, screen.Bounds.Bottom - Height - margin));
+            ClampToDisplay(x, screen.Bounds.Left, screen.Bounds.Right, Width),
+            ClampToDisplay(y, screen.Bounds.Top, screen.Bounds.Bottom, Height));
     }
 
     public void StartOverlay()
@@ -134,7 +134,7 @@ public partial class HardwareOverlay
         ClearGraphHistory();
         _dragModeActive = false; _dragging = false; _fps?.Dispose(); _fps = null; ResetFpsDisplayState();
         _font?.Dispose(); _font = null; _rpmFont?.Dispose(); _rpmFont = null; _unitFont?.Dispose(); _unitFont = null;
-        _fpsBold?.Dispose(); _fpsBold = null; _axPen?.Dispose(); _axPen = null;
+        _fpsBold?.Dispose(); _fpsBold = null;
         _lastScale = 0f; base.Hide();
     }
 }

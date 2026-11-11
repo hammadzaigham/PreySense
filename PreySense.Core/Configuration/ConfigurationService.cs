@@ -7,7 +7,7 @@ namespace PreySense.Core.Configuration
 {
     /// <summary>
     /// Thread-safe configuration service providing typed access, atomic saves,
-    /// validation, and isolated file storage strictly in `preysense.json` in the current working directory.
+    /// validation, and isolated file storage in `preysense.json` next to the app binaries.
     /// </summary>
     public sealed class ConfigurationService
     {
@@ -32,11 +32,23 @@ namespace PreySense.Core.Configuration
 
         public string ConfigPath => _configFilePath;
 
+        /// <summary>Directory that holds the default <c>preysense.json</c> (app base, not process CWD).</summary>
+        public static string DefaultConfigDirectory
+        {
+            get
+            {
+                string? baseDir = AppContext.BaseDirectory;
+                if (string.IsNullOrWhiteSpace(baseDir))
+                    baseDir = Path.GetDirectoryName(Environment.ProcessPath);
+                return string.IsNullOrWhiteSpace(baseDir) ? Directory.GetCurrentDirectory() : baseDir;
+            }
+        }
+
         public ConfigurationService(string? customPath = null)
         {
             _configFilePath = !string.IsNullOrWhiteSpace(customPath)
                 ? customPath
-                : Path.Combine(Directory.GetCurrentDirectory(), ConfigFileName);
+                : Path.Combine(DefaultConfigDirectory, ConfigFileName);
 
             _currentConfig = LoadOrInitialize();
         }
@@ -87,7 +99,7 @@ namespace PreySense.Core.Configuration
                     return;
                 }
 
-                string dir = Path.GetDirectoryName(_configFilePath) ?? Directory.GetCurrentDirectory();
+                string dir = Path.GetDirectoryName(_configFilePath) ?? DefaultConfigDirectory;
                 if (!Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
@@ -167,6 +179,8 @@ namespace PreySense.Core.Configuration
         /// </summary>
         public static void Validate(PreySenseConfig config)
         {
+            if (config.General.Theme is { } theme && !Enum.IsDefined(theme))
+                throw new ArgumentOutOfRangeException("General.Theme", "Choose Dark, Light, or Glass.");
             if (config.SchemaVersion != PreySenseConfig.CurrentSchemaVersion)
                 throw new ArgumentOutOfRangeException(nameof(config.SchemaVersion),
                     $"This build requires SchemaVersion {PreySenseConfig.CurrentSchemaVersion}; older and newer configuration files are not migrated.");
@@ -209,6 +223,8 @@ namespace PreySense.Core.Configuration
                 throw new ArgumentOutOfRangeException(nameof(config.Session.GpuModePreference), "GpuModePreference must be 0, 1, or 2.");
 
             // Overlay validation
+            if (!Enum.IsDefined(config.Overlay.Theme))
+                throw new ArgumentOutOfRangeException("Overlay.Theme", "Choose Dark or White.");
             if (config.Overlay.ScalePercent is < 50 or > 200)
                 throw new ArgumentOutOfRangeException(nameof(config.Overlay.ScalePercent), "Overlay scale percent must be between 50 and 200.");
 
@@ -240,6 +256,9 @@ namespace PreySense.Core.Configuration
             }
 
             // Lighting validation
+            config.Lighting.Devices ??= new();
+            if (config.Lighting.Devices.Count > 128) throw new ArgumentException("Too many lighting device profiles.");
+            foreach (var profile in config.Lighting.Devices.Values) PreySense.Rgb.OemLightingController.Validate(profile);
             if (config.Lighting.Keyboard.Brightness is < 0 or > 100)
                 throw new ArgumentOutOfRangeException(nameof(config.Lighting.Keyboard.Brightness), "Keyboard brightness must be 0-100.");
 
@@ -271,6 +290,12 @@ namespace PreySense.Core.Configuration
 
             if (mode.TauSeconds is < 0 or > 449)
                 throw new ArgumentOutOfRangeException($"Tuning.{modeName}.TauSeconds", $"Tau for {modeName} must be between 0s and 449s.");
+
+            if (mode.GpuCoreClockOffsetMhz is < 0 or > Gpu.GpuClockTuningState.MaximumCoreOffsetMhz)
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuCoreClockOffsetMhz", "GPU core offset must be between 0 and +500 MHz.");
+            // Hardware-specific lower/upper bounds are checked against fresh NVAPI readback before writing.
+            if (mode.GpuMemoryClockOffsetMhz is < 0 or > 2147483)
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuClockOffsets", "GPU memory offset must be nonnegative and representable in kHz.");
 
             if (mode.CpuBoostMode is < 0 or > 6)
                 throw new ArgumentOutOfRangeException($"Tuning.{modeName}.CpuBoostMode", $"CpuBoostMode for {modeName} must be between 0 and 6.");
@@ -346,10 +371,15 @@ namespace PreySense.Core.Configuration
                 loaded.Tuning.Eco ??= new ModeTuningConfig();
                 loaded.Tuning.Balanced ??= new ModeTuningConfig();
                 loaded.Tuning.Performance ??= new ModeTuningConfig();
-                loaded.Tuning.Turbo ??= new ModeTuningConfig();
+                loaded.Tuning.Turbo ??= new ModeTuningConfig
+                {
+                    GpuCoreClockOffsetMhz = 100,
+                    GpuMemoryClockOffsetMhz = 200
+                };
 
                 loaded.Lighting.Keyboard ??= new KeyboardLightingConfig();
                 loaded.Lighting.Cover ??= new CoverLightingConfig();
+                loaded.Lighting.Devices ??= new();
 
                 loaded.Overlay.Slots ??= OverlayConfig.CreateDefaultSlots();
 

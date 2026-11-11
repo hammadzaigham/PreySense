@@ -25,7 +25,7 @@ public class AutomaticDriverTuningTests
             .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, value);
         Set("_hw", new MockHardwareService());
         Set("_modeSwitchGate", new SemaphoreSlim(1, 1));
-        Set("_modeSwitchDebounceLock", new object());
+        Set("_modeSwitchLock", new object());
         Set("_isHardwareTuningEnabled", true);
         vm.TuningConfigurationReader = () => config;
         return vm;
@@ -73,7 +73,7 @@ public class AutomaticDriverTuningTests
             var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
             typeof(MainViewModel).GetField("_modeSwitchGate", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(vm, new SemaphoreSlim(1, 1));
-            typeof(MainViewModel).GetField("_modeSwitchDebounceLock", BindingFlags.NonPublic | BindingFlags.Instance)!
+            typeof(MainViewModel).GetField("_modeSwitchLock", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(vm, new object());
             vm.TuningConfigurationStore = new ConfigurationService(path);
             vm.TuningConfigurationStore.Update(cfg =>
@@ -137,6 +137,8 @@ public class AutomaticDriverTuningTests
     {
         var vm = Create(new());
         int calls = 0;
+        int toasts = 0;
+        vm.ModeToastPresenter = (_, _) => toasts++;
         vm.DriverTuningExecutor = _ => { calls++; return new(false, "readback failed"); };
         await vm.ApplyModeSwitchAsync(5);
         Assert.AreEqual(1, calls);
@@ -144,6 +146,64 @@ public class AutomaticDriverTuningTests
         Assert.IsFalse(vm.IsBusy);
         await vm.ApplyModeSwitchAsync(4);
         Assert.AreEqual(2, calls, "A failed tuning operation must not retain the mode gate.");
+        Assert.AreEqual(0, toasts, "Failed hardware application must not display a success toast.");
+    }
+
+    [TestMethod]
+    [DataRow(0, "Quiet")] [DataRow(1, "Balanced")] [DataRow(4, "Performance")]
+    [DataRow(5, "Turbo")] [DataRow(6, "Eco")]
+    public void ConfirmedMode_NotifiesToastAfterUpdatingTheActiveMode(int mode, string expectedName)
+    {
+        var vm = Create(new());
+        int notifications = 0;
+        vm.ModeToastPresenter = (actualMode, title) =>
+        {
+            notifications++;
+            Assert.AreEqual((byte)mode, actualMode);
+            Assert.AreEqual((byte)mode, vm.ActivePowerMode);
+            Assert.AreEqual(expectedName, title);
+            Assert.AreEqual(expectedName, vm.PowerModeName);
+        };
+        vm.NotifyConfirmedPowerMode((byte)mode);
+        Assert.AreEqual(1, notifications);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task HardwareModeException_DoesNotEscapeOrRetainTheGate(bool readbackFails)
+    {
+        var vm = Create(new());
+        var hardware = DispatchProxy.Create<IHardwareService, FailingModeHardware>();
+        var recorder = (FailingModeHardware)hardware;
+        recorder.ReadbackFails = readbackFails;
+        typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, hardware);
+        typeof(MainViewModel).GetField("_isHardwareTuningEnabled", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, false);
+        int toasts = 0;
+        vm.ModeToastPresenter = (_, _) => toasts++;
+        await vm.ApplyModeSwitchAsync(5);
+        Assert.Contains("Simulated hardware failure", vm.DiagnosticMessage);
+        Assert.AreEqual(readbackFails ? (byte)0xFF : (byte)1, vm.ActivePowerMode);
+        await vm.ApplyModeSwitchAsync(4);
+        Assert.AreEqual(2, recorder.Attempts, "The failed call must release the mode-switch gate.");
+        Assert.AreEqual(0, toasts);
+    }
+
+    public class FailingModeHardware : DispatchProxy
+    {
+        public bool ReadbackFails;
+        public int Attempts;
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method!.Name == "SetPowerMode") { Attempts++; throw new InvalidOperationException("Simulated hardware failure"); }
+            if (method.Name == "TryGetPowerMode")
+            {
+                if (ReadbackFails) throw new InvalidOperationException("Simulated readback failure");
+                args![0] = (byte)1;
+                return true;
+            }
+            return method.ReturnType == typeof(void) ? null : method.ReturnType.IsValueType ? Activator.CreateInstance(method.ReturnType) : null;
+        }
     }
 
     [TestMethod]
@@ -220,8 +280,8 @@ public class AutomaticDriverTuningTests
         var vm = Create(new());
         typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(vm, hw);
-        vm.DriverTuningExecutor = null;
-        Assert.IsFalse(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
+        vm.DriverTuningExecutor = _ => new(true, "verified");
+        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
             applyCpuLimits: true, applyGpuLimits: false));
         Assert.AreEqual(before, hw.CurrentPowerMode);
     }

@@ -1,8 +1,8 @@
 # Acer WMI and OEM services
 
-Modes, fans, sensors, battery, USB charging, and overdrive use `root\WMI`. Lighting does not.
+Modes, fans, sensors, battery, USB charging, and overdrive use `root\WMI`. Verified EC lighting also uses Acer gaming WMI methods when firmware and method schemas confirm support.
 
-There is no AcerService TCP client in PreySense.
+There is no AcerService TCP client in PreySense. Additional lighting controllers can use the local named pipe of an already-running Acer Lighting Service. Native HID/USB and EC transports work independently; discovery does not start or re-enable OEM services. See [lighting devices](lighting_devices.md).
 
 ---
 
@@ -20,9 +20,11 @@ Namespace is always `root\WMI`.
 
 ## Power mode
 
+Acer `AcerHardwareService` / `AcerSysHardwareService` use the same WMI getters and setters on every model (`kSvcCmdGetOperationMode` / `kSvcCmdSetOperationMode`). There is no alternate `GetCurrentPowerMode` path: both call `GetGamingMiscSetting` / `SetGamingMiscSetting` with index `0x0B`. `GetGamingProfile` is a different configuration API and does not report the live operating mode.
+
 ```text
 SetGamingMiscSetting( 0x0B | (mode << 8) )
-GetGamingMiscSetting( 0x0B )  →  mode in bits 8..15
+GetGamingMiscSetting( 0x0B )  →  status in bits 0..7, mode in bits 8..15
 ```
 
 | Mode | Byte |
@@ -32,6 +34,8 @@ GetGamingMiscSetting( 0x0B )  →  mode in bits 8..15
 | Performance | `0x04` |
 | Turbo | `0x05` |
 | Eco | `0x06` |
+
+Some firmwares accept Set but refuse Get (or return an unknown mode byte). PreySense caches the last known Quiet/Balanced/Performance/Turbo/Eco value after a successful set or read, and GPU profile apply tolerates a missing readback so wattage / ERM4 apply is not blocked.
 
 After a successful set, PreySense applies a Windows overlay scheme:
 

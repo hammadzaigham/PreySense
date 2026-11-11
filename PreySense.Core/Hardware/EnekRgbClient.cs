@@ -34,7 +34,7 @@ namespace PreySense
 
         private static readonly byte[] ZoneMasks = { 0x01, 0x02, 0x04, 0x08 };
 
-        private readonly object _lock = new();
+        private readonly object _lock = PreySense.Rgb.AcerLightingTransportGate.Sync;
         private readonly Func<byte, byte, byte, byte, byte, bool> _sendStaticZone;
         private SafeFileHandle? _deviceHandle;
         private bool _isDisposed;

@@ -9,24 +9,11 @@
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
-            <TextBlock Text="{Binding Title, ElementName=RootSwitchRow}" Style="{DynamicResource SettingLabelStyle}" />
-            <TextBlock Text="{Binding Description, ElementName=RootSwitchRow}"
-                       Margin="0,2,0,0">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource SettingDescriptionStyle}">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Description, ElementName=RootSwitchRow}" Value="">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding Description, ElementName=RootSwitchRow}" Value="{x:Null}">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </StackPanel>
+        <TextBlock Grid.Column="0"
+                   Text="{Binding Title, ElementName=RootSwitchRow}"
+                   Style="{DynamicResource SettingLabelStyle}"
+                   VerticalAlignment="Center"
+                   Margin="0,0,12,0" />
 
         <controls:RectangularSwitch x:Name="InnerSwitch" Grid.Column="1" VerticalAlignment="Center"
                                     MinWidth="{Binding SwitchWidth, ElementName=RootSwitchRow}"

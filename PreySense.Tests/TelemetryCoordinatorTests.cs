@@ -26,6 +26,25 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
+        public void FailedHeartbeat_DoesNotBlockOtherConsumersOrHardwareSampling()
+        {
+            int samples = 0, heartbeats = 0, deliveries = 0;
+            TelemetryCoordinator.ConfigureSampler(() =>
+            {
+                samples++;
+                return TelemetrySnapshot.Empty with { IsValid = true, TimestampTicks = Stopwatch.GetTimestamp() };
+            });
+            TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, true);
+            TelemetryCoordinator.Heartbeat += () => throw new InvalidOperationException("Simulated overlay failure");
+            TelemetryCoordinator.Heartbeat += () => heartbeats++;
+            TelemetryCoordinator.SnapshotAvailable += _ => deliveries++;
+            TelemetryCoordinator.RunMasterCycle();
+            Assert.AreEqual(1, samples);
+            Assert.AreEqual(1, heartbeats);
+            Assert.AreEqual(1, deliveries);
+        }
+
+        [TestMethod]
         public void SharedSnapshot_BroadcastsIdenticalSnapshot_ToMultipleSubscribers()
         {
             int hardwareReadCount = 0;

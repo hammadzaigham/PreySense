@@ -15,7 +15,7 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
     public const int MaxGpuDynamicBoostWatts = 25;
 
     /// <summary>Wait after Acer mode switch before reading live MMIO (EC reloads package limits).</summary>
-    public const int LiveModeSettleMilliseconds = 2000;
+    public const int LiveModeSettleMilliseconds = AcerOperatingModeTiming.TransitionMilliseconds;
 
     /// <summary>Test hook: when &gt;= 0, overrides <see cref="LiveModeSettleMilliseconds"/>.</summary>
     internal static int LiveModeSettleOverrideMilliseconds { get; set; } = -1;

@@ -61,8 +61,11 @@ public sealed class WpfFanCurveControl : FrameworkElement
         Cursor = Cursors.Arrow;
         SetResourceReference(AccentProperty, "AccentBrush");
         SetResourceReference(TextBrushProperty, "TextSecondaryBrush");
-        SetResourceReference(GridBrushProperty, "BorderSecondBrush");
-        SetResourceReference(SurfaceProperty, "CardBgBrush");
+        // SeparatorBrush stays visible in Glass (Border* brushes are cleared there).
+        SetResourceReference(GridBrushProperty, "SeparatorBrush");
+        // Transparent so the window shell shows through (Glass shell is already tinted;
+        // painting WindowShellBgBrush again would double the alpha).
+        SetResourceReference(SurfaceProperty, "TransparentBrush");
     }
 
     public const int MinCelsius = 40;

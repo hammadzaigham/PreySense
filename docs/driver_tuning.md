@@ -2,6 +2,10 @@
 
 PreySense applies per-mode CPU and GPU power limits through the bundled **PreySenseDriver**. There is no bootloader, ACPI overlay, or alternate WMI injection path.
 
+## Driver service
+
+PreySense extracts `PreySenseDriver.sys` to `%ProgramData%\PreySense\Drivers` and registers the demand-start kernel service `PreySenseDriver`. If Windows returns **ERROR_FILE_NOT_FOUND (2)** on start, the SCM `ImagePath` is usually stale (upgrade, cleaned ProgramData, or a leftover service with a missing `.sys`). PreySense re-extracts the binary, recreates the service, and retries once. Run as Administrator if recreation is denied.
+
 ## Enablement and persistence
 
 Enable Tuning is stored as `General.HardwareTuningEnabled` in `preysense.json`. When it is on, mode changes, AC/battery source profiles, startup, and resume apply that mode's saved CPU PL1/PL2/Tau and GPU Delta/Dynamic Boost values from JSON. Unsaved editor values are not used for automatic restores.
@@ -64,3 +68,24 @@ Startup requests one capture when factory profiles or static CPU limits are inco
 A successful capture replaces the complete factory-profile set and its global metadata in one validated JSON update. It does not merge old optional readings: an unavailable PROCHOT offset, lock or TjMax remains null. Invalid or interrupted captures do not commit partial results. User tuning controls remain separate from captured factory defaults.
 
 Enabling tuning waits for any active capture and requires both complete mode defaults and valid static CPU limits. It does not initiate calibration. Startup session restoration does not hide a calibration failure behind a generic success message. No calibration prompt, progress UI or retry control is added.
+
+## GPU overclocking
+
+The tuning window has a separate GPU Overclocking section for each performance mode.
+Its switch defaults to off. Off skips NVAPI clock writes completely, including reset-to-zero writes.
+Saved core/memory offsets stay null until explicitly applied and saved; editor values may initially show current NVAPI offsets.
+Saving with every section off persists the skip switches without hardware writes.
+
+Core offset is limited to +450 MHz or the NVIDIA-reported maximum, whichever is lower.
+Memory offset uses NVAPI P0 memory `freqDelta_kHz.valueRange`; there is no fixed +1000 MHz cap.
+Both offsets have a minimum of zero; a positive minimum reported by NVAPI is also respected. These are driver-exposed allowable ranges, not a stability guarantee or a direct VBIOS dump.
+Unavailable/asleep/unsupported adapters show N/A and disable the overclocking controls. Opening the tuning window performs one background capability read; no additional polling timer is created.
+
+Apply validates current ranges before other tuning writes, then writes graphics/memory P0 deltas through `SetPerformanceStates20` and verifies exact kHz readback.
+A rejected write or mismatched readback fails the operation and is not persisted as successful tuning. If earlier power tuning already applied, the clock failure reports that partial state.
+Enabled saved offsets are reapplied during startup/mode restoration. Explicit Reset clears enabled clock offsets to zero and disables their saved apply switch; Reset skips clocks when that section is off.
+The units are the NVAPI frequency-delta MHz, not multiplied effective memory data-rate units.
+
+Reference: [NVIDIA P-state clock entries](https://docs.nvidia.com/nvapi/struct_n_v___g_p_u___p_s_t_a_t_e20___c_l_o_c_k___e_n_t_r_y___v1.html).
+
+The clock editors use the existing slider control: core moves in 15 MHz steps and memory in 100 MHz steps, aligned to zero. Slider bounds round inward to the nearest legal step, so the +450 MHz core cap permits a highest slider value of +450 MHz. Saved JSON offsets are still validated against the native ranges before every write.

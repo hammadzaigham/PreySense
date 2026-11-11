@@ -26,7 +26,7 @@ public class PreySenseDriverLifecycleTests
         }
     }
 
-    private sealed class MockDeviceOps : IPreySenseDriverDeviceOperations
+    private class MockDeviceOps : IPreySenseDriverDeviceOperations
     {
         public bool IsOpen { get; set; }
         public string? OpenedPath { get; private set; }
@@ -44,7 +44,7 @@ public class PreySenseDriverLifecycleTests
 
         public bool StartServiceShouldSucceed { get; set; } = true;
         public string? StartServiceErrorDetail { get; set; }
-        public int StartServiceCallCount { get; private set; }
+        public int StartServiceCallCount { get; protected set; }
 
         public bool StopServiceShouldSucceed { get; set; } = true;
         public string? StopServiceErrorDetail { get; set; }
@@ -85,7 +85,7 @@ public class PreySenseDriverLifecycleTests
             return ServiceIsRunning;
         }
 
-        public bool TryCreateService(string serviceName, string displayName, string binaryPath, out string? errorDetail)
+        public virtual bool TryCreateService(string serviceName, string displayName, string binaryPath, out string? errorDetail)
         {
             CreateServiceCallCount++;
             errorDetail = CreateServiceErrorDetail;
@@ -98,7 +98,7 @@ public class PreySenseDriverLifecycleTests
             return false;
         }
 
-        public bool TryStartService(string serviceName, out string? errorDetail)
+        public virtual bool TryStartService(string serviceName, out string? errorDetail)
         {
             StartServiceCallCount++;
             errorDetail = StartServiceErrorDetail;
@@ -284,6 +284,86 @@ public class PreySenseDriverLifecycleTests
         Assert.AreEqual(1, mockOps.DeleteServiceCallCount, "Should delete obsolete service registration");
         Assert.AreEqual(1, mockOps.CreateServiceCallCount, "Should recreate with updated binary path");
         Assert.AreEqual(@"C:\NewPath\PreySenseDriver.sys", mockOps.ServiceBinaryPath);
+    }
+
+    [TestMethod]
+    public void ServiceManager_MissingImagePath_RepairsRegistrationBeforeStart()
+    {
+        var mockOps = new MockDeviceOps
+        {
+            ServiceExistsResult = true,
+            ServiceIsRunning = false,
+            ServiceBinaryPath = null
+        };
+        var mockExt = new MockExtractor { DriverFilePath = @"C:\ProgramData\PreySense\Drivers\PreySenseDriver.sys" };
+
+        using var svc = new PreySenseDriverService("PreySenseDriver", mockOps, mockExt);
+
+        bool started = svc.EnsureServiceRunning(out string? err);
+        Assert.IsTrue(started, err);
+        Assert.AreEqual(1, mockOps.DeleteServiceCallCount);
+        Assert.AreEqual(1, mockOps.CreateServiceCallCount);
+        Assert.AreEqual(1, mockOps.StartServiceCallCount);
+    }
+
+    [TestMethod]
+    public void ServiceManager_StartFileNotFound_ReextractsRecreatesAndRetries()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "PreySenseDriverLifecycle", Guid.NewGuid().ToString("N"), "PreySenseDriver.sys");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, new byte[] { 1, 2, 3, 4 });
+        try
+        {
+            var ops = new FileNotFoundThenRecoverOps(path);
+            var mockExt = new MockExtractor { DriverFilePath = path };
+
+            using var svc = new PreySenseDriverService("PreySenseDriver", ops, mockExt);
+            bool started = svc.EnsureServiceRunning(out string? err);
+            Assert.IsTrue(started, err);
+            Assert.AreEqual(2, ops.StartServiceCallCount);
+            Assert.IsGreaterThanOrEqualTo(1, ops.DeleteServiceCallCount);
+            Assert.AreEqual(2, mockExt.ExtractionCallCount);
+        }
+        finally
+        {
+            try { Directory.Delete(Path.GetDirectoryName(path)!, true); } catch { }
+        }
+    }
+
+    private sealed class FileNotFoundThenRecoverOps : MockDeviceOps
+    {
+        public FileNotFoundThenRecoverOps(string path)
+        {
+            ServiceExistsResult = true;
+            ServiceIsRunning = false;
+            // Path matches extract target and exists, so first pass skips pre-start repair.
+            ServiceBinaryPath = path;
+        }
+
+        public override bool TryStartService(string serviceName, out string? errorDetail)
+        {
+            StartServiceCallCount++;
+            if (StartServiceCallCount == 1)
+            {
+                errorDetail = "StartService('PreySenseDriver') failed with Win32 Error 2 (ERROR_FILE_NOT_FOUND). The driver file was not found.";
+                return false;
+            }
+
+            errorDetail = null;
+            ServiceIsRunning = true;
+            return true;
+        }
+    }
+
+    [TestMethod]
+    public void NormalizeDriverPath_StripsNtPrefixAndQuotes()
+    {
+        Assert.AreEqual(
+            PreySenseDriverService.NormalizeDriverPath(@"C:\ProgramData\PreySense\Drivers\PreySenseDriver.sys"),
+            PreySenseDriverService.NormalizeDriverPath(@"\??\C:\ProgramData\PreySense\Drivers\PreySenseDriver.sys"));
+        Assert.AreEqual(
+            PreySenseDriverService.NormalizeDriverPath(@"C:\ProgramData\PreySense\Drivers\PreySenseDriver.sys"),
+            PreySenseDriverService.NormalizeDriverPath(@"""C:\ProgramData\PreySense\Drivers\PreySenseDriver.sys"""));
     }
 
     [TestMethod]

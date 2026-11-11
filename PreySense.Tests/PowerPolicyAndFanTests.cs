@@ -164,8 +164,10 @@ namespace PreySense.Tests
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
             string modeSettingsCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml.cs"));
 
-            // ApplyModeSwitchAsync cancels pending debounce timer immediately
-            Assert.Contains("CancelPendingModeSwitch();\n            await _modeSwitchGate.WaitAsync();", powerModesCs.Replace("\r\n", "\n"));
+            // ApplyModeSwitchAsync cancels pending trailing mode apply immediately
+            Assert.Contains("CancelPendingModeSwitch();\n            if (!await TryEnterModeSwitchGateAsync()) return;", powerModesCs.Replace("\r\n", "\n"));
+            Assert.Contains("AcerOperatingModeTiming.TransitionDelay", powerModesCs);
+            Assert.DoesNotContain("ModeSwitchDebounceMilliseconds", powerModesCs);
 
             // Fan mode toggle synchronizes draft profile immediately
             Assert.Contains("SaveDraft();\n        UpdateEditor();", fanWindowCs.Replace("\r\n", "\n"));

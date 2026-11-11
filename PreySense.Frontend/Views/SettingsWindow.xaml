@@ -38,7 +38,7 @@
 
                             <controls:SettingDropdownRow x:Name="LanguageSelector"
                                                          Title="Language"
-                                                         DropdownWidth="220"
+                                                         DropdownWidth="150"
                                                          SelectionChanged="LanguageSelector_SelectionChanged">
                                 <ComboBoxItem Content="English" Tag="en-US"/>
                                 <ComboBoxItem Content="Simplified Chinese" Tag="zh-CN"/>
@@ -47,11 +47,12 @@
                                 <ComboBoxItem Content="French" Tag="fr-FR"/>
                             </controls:SettingDropdownRow>
 
-                            <controls:SettingSwitchRow Title="Theme"
-                                                      IsChecked="{Binding IsLightTheme, Mode=TwoWay}"
-                                                      OnText="Light"
-                                                      OffText="Dark"
-                                                      SwitchWidth="92"/>
+                            <controls:SettingDropdownRow x:Name="ThemeSelector" Title="Theme" DropdownWidth="110"
+                                                         SelectedIndex="{Binding SelectedThemeIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Dark"/>
+                                <ComboBoxItem Content="Light"/>
+                                <ComboBoxItem Content="Glass"/>
+                            </controls:SettingDropdownRow>
 
                             <controls:SettingSwitchRow Title="Acer Services"
                                                       IsChecked="{Binding IsAcerServicesEnabled, Mode=OneWay}"

@@ -50,4 +50,9 @@ internal sealed class LatestBackgroundWorker<T>(Action<T> execute, Func<T, T, T>
             return _completion;
         }
     }
+
+    public Task WhenIdleAsync()
+    {
+        lock (_gate) return _completion;
+    }
 }

@@ -17,21 +17,18 @@
         ResizeMode="NoResize">
 
     <Border x:Name="ToastBorder"
-            Background="#E6181A20"
-            BorderBrush="#1FFFFFFF"
-            BorderThickness="1"
+            Background="{DynamicResource ToastSurfaceBrush}"
+            BorderBrush="Transparent"
+            BorderThickness="0"
             CornerRadius="20"
             Padding="12,0">
-        <Border.Effect>
-            <DropShadowEffect Color="#000000" BlurRadius="8" ShadowDepth="2" Direction="270" Opacity="0.3"/>
-        </Border.Effect>
         <StackPanel Orientation="Horizontal"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">
             <Path x:Name="IconPathShape" Width="18" Height="18" Stretch="Uniform"
-                  Fill="#FFFFFF" VerticalAlignment="Center"/>
+                  Fill="{DynamicResource IconForegroundBrush}" VerticalAlignment="Center"/>
             <TextBlock x:Name="ModeLabel" Text="Balanced" Margin="9,0,0,0"
-                       Foreground="#F5F7FA" TextAlignment="Center"
+                       Foreground="{DynamicResource TextPrimaryBrush}" TextAlignment="Center"
                        VerticalAlignment="Center" FontFamily="Segoe UI"
                        FontSize="{DynamicResource FontSizeBody}" FontWeight="Medium"/>
         </StackPanel>

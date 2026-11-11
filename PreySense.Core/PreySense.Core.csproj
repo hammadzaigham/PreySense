@@ -18,6 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\Rgb\OemUsbKeyboardLayouts.json" LogicalName="PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json" />
     <EmbeddedResource Include="Resources\PreySenseDriver.sys" LogicalName="PreySense.Core.Resources.PreySenseDriver.sys" />
   </ItemGroup>
 

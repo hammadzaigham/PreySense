@@ -6,7 +6,7 @@ using PreySense.Core.Hardware;
 namespace PreySense.Frontend.Services;
 
 /// <summary>
-/// Registers for HID interface arrival via WM_DEVICECHANGE and wakes waiters
+/// Registers for HID interface arrival/removal via WM_DEVICECHANGE and wakes waiters
 /// instead of SetupDi polling.
 /// </summary>
 internal sealed class HidDeviceArrivalWatcher : IDisposable
@@ -14,6 +14,7 @@ internal sealed class HidDeviceArrivalWatcher : IDisposable
     private static readonly Guid GuidDevInterfaceHid = new("4D1E55B2-F16F-11CF-88CB-001111000030");
     private const int WmDeviceChange = 0x0219;
     private const int DbtDeviceArrival = 0x8000;
+    private const int DbtDeviceRemoveComplete = 0x8004;
     private const int DbtDevtypDeviceInterface = 0x00000005;
 
     private readonly HwndSource _source;
@@ -47,7 +48,7 @@ internal sealed class HidDeviceArrivalWatcher : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WmDeviceChange && wParam.ToInt32() == DbtDeviceArrival && lParam != IntPtr.Zero)
+        if (msg == WmDeviceChange && wParam.ToInt32() is DbtDeviceArrival or DbtDeviceRemoveComplete && lParam != IntPtr.Zero)
         {
             int deviceType = Marshal.ReadInt32(lParam, 4);
             if (deviceType == DbtDevtypDeviceInterface)

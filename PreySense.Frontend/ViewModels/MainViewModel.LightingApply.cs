@@ -9,7 +9,16 @@ public partial class MainViewModel
 {
     [Flags]
     internal enum LightingWork { None = 0, Keyboard = 1, Cover = 2, Save = 4, Brightness = 8, Frame = 16 }
-    internal sealed record LightingRequest(KeyboardLightingConfig Keyboard, CoverLightingConfig Cover, LightingWork Work);
+    internal sealed record LightingRequest(KeyboardLightingConfig Keyboard, CoverLightingConfig Cover, LightingWork Work,
+        int? SavedKeyboardBrightness = null);
+
+    internal static LightingRequest MergeLightingRequests(LightingRequest pending, LightingRequest latest)
+    {
+        // Animation samples are transient: they must never replace or inherit a settings save.
+        if (latest.Work == LightingWork.Frame && pending.Work != LightingWork.Frame) return pending;
+        if (pending.Work == LightingWork.Frame && latest.Work != LightingWork.Frame) return latest;
+        return latest with { Work = pending.Work | latest.Work };
+    }
     private readonly LatestBackgroundWorker<LightingRequest> _lightingWorker;
 
     // Only the dispatcher captures mutable editor state; the worker owns these copies.
@@ -21,18 +30,35 @@ public partial class MainViewModel
             if (IsCoverSyncWithKeyboard && (work & (LightingWork.Keyboard | LightingWork.Cover | LightingWork.Brightness)) != 0)
                 MirrorCoverFromKeyboard();
             UpdateCoverSyncFrameHook();
+
+            string selected = SelectedHexColor;
+            string z1 = _zoneHexColors[0], z2 = _zoneHexColors[1], z3 = _zoneHexColors[2], z4 = _zoneHexColors[3];
+            int brightness = RgbBrightness;
+            bool dyn = _lightingEffectTag.StartsWith("DYN:", StringComparison.Ordinal);
+            bool idleOff = dyn && _hw is ProductionHardwareService prod && prod.LightingEngine.IsIdleDimmed;
+
+            // Software-frame sync: stamp the live averaged frame so Mode Key matches Logo,
+            // and force keyboard brightness 0 while software idle has the backlight off.
+            // Cover Enabled/Brightness stay at the UI values so idle never persists Enabled=false.
+            if (work.HasFlag(LightingWork.Frame) && dyn)
+            {
+                string live = AverageZoneHexColor();
+                selected = z1 = z2 = z3 = z4 = live;
+            }
+            if (idleOff)
+                brightness = 0;
+
             return new(new()
             {
-                Brightness = RgbBrightness, Speed = RgbSpeed, BacklightTimeoutSeconds = KbdTimeoutSeconds,
-                SelectedColorHex = SelectedHexColor, SelectedZone = SelectedRgbZone, SyncZones = IsRgbSyncZonesEnabled,
-                Zone1ColorHex = _zoneHexColors[0], Zone2ColorHex = _zoneHexColors[1],
-                Zone3ColorHex = _zoneHexColors[2], Zone4ColorHex = _zoneHexColors[3],
+                Brightness = brightness, Speed = RgbSpeed, BacklightTimeoutSeconds = KbdTimeoutSeconds,
+                SelectedColorHex = selected, SelectedZone = SelectedRgbZone, SyncZones = IsRgbSyncZonesEnabled,
+                Zone1ColorHex = z1, Zone2ColorHex = z2, Zone3ColorHex = z3, Zone4ColorHex = z4,
                 EffectTag = _lightingEffectTag, PresetTheme = _selectedZonePreset
             }, new()
             {
-                Enabled = IsCoverLightingEnabled, Mode = CoverLightingMode, ColorHex = CoverHexColor,
+                Enabled = CoverBrightness > 0, Mode = CoverLightingMode, ColorHex = CoverHexColor,
                 Brightness = CoverBrightness, Speed = CoverSpeed, SyncWithKeyboard = IsCoverSyncWithKeyboard
-            }, work);
+            }, work, SavedKeyboardBrightness: RgbBrightness);
         }
         finally { _isApplyingLighting = false; }
     }
@@ -96,18 +122,28 @@ public partial class MainViewModel
             prod.Wmi.NoteBrightness(brightness);
             if (prod.LightingEngine.IsRunning) prod.LightingEngine.SetBrightness(brightness);
         }
-        bool coverWrite = request.Work.HasFlag(LightingWork.Cover) || ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness)) && cover.SyncWithKeyboard);
-        bool frameWrite = request.Work.HasFlag(LightingWork.Frame) && cover.SyncWithKeyboard && keyboard.EffectTag.StartsWith("DYN:");
-        if (coverWrite || frameWrite)
+        bool dynFrame = request.Work.HasFlag(LightingWork.Frame)
+            && keyboard.EffectTag.StartsWith("DYN:", StringComparison.Ordinal);
+        bool coverWrite = request.Work.HasFlag(LightingWork.Cover)
+            || ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness)) && cover.SyncWithKeyboard);
+        bool coverFrameWrite = dynFrame && cover.SyncWithKeyboard;
+        if ((coverWrite || coverFrameWrite) && _hw.IsCoverLightingAvailable)
         {
-            int mode = !cover.Enabled ? 0 : frameWrite ? 1 : cover.Mode;
+            int mode = !cover.Enabled ? 0 : coverFrameWrite ? 1 : cover.Mode;
             _hw.SetCoverLogoLighting(mode, ColorTranslator.FromHtml(cover.ColorHex),
                 (byte)Math.Clamp(cover.SyncWithKeyboard ? keyboard.Brightness : cover.Brightness, 0, 100),
                 ToHidLogoSpeed(cover.SyncWithKeyboard ? keyboard.Speed : cover.Speed), cover.Enabled);
         }
+        // Mode Key frame sync must run even when Cover sync is off (idle-off included).
+        if ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness) || dynFrame)
+            && AnyModeKeySyncWithKeyboard())
+            ApplySyncedModeKeyDevices(keyboard);
         if (request.Work.HasFlag(LightingWork.Save))
             ConfigurationService.Instance.Update(config =>
             {
+                // Idle dimming affects hardware output, never the user's saved brightness.
+                if (request.SavedKeyboardBrightness is int savedBrightness)
+                    keyboard.Brightness = savedBrightness;
                 config.Lighting.Keyboard = keyboard;
                 config.Lighting.Cover = cover;
             });

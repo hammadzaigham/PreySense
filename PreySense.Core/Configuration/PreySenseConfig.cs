@@ -49,6 +49,9 @@ namespace PreySense.Core.Configuration
         public OverlayConfig Overlay { get; set; } = new();
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter<ApplicationTheme>))]
+    public enum ApplicationTheme { Dark, Light, Glass }
+
     public sealed class GeneralConfig
     {
         /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR').</summary>
@@ -56,6 +59,9 @@ namespace PreySense.Core.Configuration
 
         /// <summary>True for light theme, false for dark theme.</summary>
         public bool LightTheme { get; set; } = false;
+
+        /// <summary>Selected appearance. Null retains a legacy light preference; otherwise the default is Dark.</summary>
+        public ApplicationTheme? Theme { get; set; }
 
         /// <summary>Whether Acer OEM background services are debloated (stopped and disabled).</summary>
         public bool AcerServicesDebloated { get; set; } = false;
@@ -182,7 +188,12 @@ namespace PreySense.Core.Configuration
         public ModeTuningConfig Performance { get; set; } = new();
 
         [JsonPropertyOrder(6)]
-        public ModeTuningConfig Turbo { get; set; } = new();
+        // Acer Predator service stock Turbo OC (+100 / +200); apply stays off until the user enables it.
+        public ModeTuningConfig Turbo { get; set; } = new()
+        {
+            GpuCoreClockOffsetMhz = 100,
+            GpuMemoryClockOffsetMhz = 200
+        };
     }
 
     public sealed class ModeTuningConfig
@@ -201,9 +212,10 @@ namespace PreySense.Core.Configuration
         /// <summary>True when at least one apply flag is on and that side has complete values.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasValues =>
-            (ApplyCpuLimits || ApplyGpuLimits)
+            (ApplyCpuLimits || ApplyGpuLimits || ApplyGpuClockOffsets)
             && (!ApplyCpuLimits || HasCpuLimitValues)
-            && (!ApplyGpuLimits || HasGpuLimitValues);
+            && (!ApplyGpuLimits || HasGpuLimitValues)
+            && (!ApplyGpuClockOffsets || HasGpuClockValues);
 
         /// <summary>Windows PERFBOOSTMODE 0–6 from <see cref="CpuBoostMode"/>, or legacy on/off <see cref="CpuBoost"/>.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
@@ -260,6 +272,18 @@ namespace PreySense.Core.Configuration
         /// <summary>Apply GPU limits flag for this profile.</summary>
         [JsonPropertyOrder(6)]
         public bool ApplyGpuLimits { get; set; } = false;
+
+        [JsonPropertyOrder(11)]
+        public bool ApplyGpuClockOffsets { get; set; }
+
+        [JsonPropertyOrder(12)]
+        public int? GpuCoreClockOffsetMhz { get; set; }
+
+        [JsonPropertyOrder(13)]
+        public int? GpuMemoryClockOffsetMhz { get; set; }
+
+        [JsonIgnore]
+        public bool HasGpuClockValues => GpuCoreClockOffsetMhz.HasValue && GpuMemoryClockOffsetMhz.HasValue;
     }
 
     public sealed class FanConfig
@@ -373,6 +397,26 @@ namespace PreySense.Core.Configuration
     {
         public KeyboardLightingConfig Keyboard { get; set; } = new();
         public CoverLightingConfig Cover { get; set; } = new();
+        public Dictionary<string, DeviceLightingConfig> Devices { get; set; } = new();
+    }
+
+    /// <summary>Explicit settings for a detected device; discovery never creates profiles.</summary>
+    public sealed class DeviceLightingConfig
+    {
+        public int Mode { get; set; } = -1;
+        public int Brightness { get; set; } = 100;
+        public int Speed { get; set; } = 50;
+        /// <summary>Exact native animation level selected in the UI; null uses the existing normalized Speed.</summary>
+        public int? AnimationSpeedLevel { get; set; }
+
+        public string ColorHex { get; set; } = "#3B82F6";
+        public bool IndividualColors { get; set; }
+        public bool RandomColors { get; set; }
+        public Dictionary<int, string> LedColors { get; set; } = new();
+        /// <summary>Per Acer operating-mode colors for Mode Key "Mode" lighting (keys are hex mode bytes, e.g. "05").</summary>
+        public Dictionary<string, string> PowerModeColors { get; set; } = new();
+        /// <summary>When true (Mode Key / Turbo Key), follow the keyboard color and brightness.</summary>
+        public bool SyncWithKeyboard { get; set; }
     }
 
     public sealed class KeyboardLightingConfig
@@ -380,13 +424,13 @@ namespace PreySense.Core.Configuration
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         public int BacklightTimeoutSeconds { get; set; } = 30;
-        public string SelectedColorHex { get; set; } = "#00E5FF";
+        public string SelectedColorHex { get; set; } = "#3B82F6";
         public int SelectedZone { get; set; } = 1;
         public bool SyncZones { get; set; } = false;
-        public string Zone1ColorHex { get; set; } = "#00E5FF";
-        public string Zone2ColorHex { get; set; } = "#00E5FF";
-        public string Zone3ColorHex { get; set; } = "#00E5FF";
-        public string Zone4ColorHex { get; set; } = "#FFFFFF";
+        public string Zone1ColorHex { get; set; } = "#3B82F6";
+        public string Zone2ColorHex { get; set; } = "#3B82F6";
+        public string Zone3ColorHex { get; set; } = "#3B82F6";
+        public string Zone4ColorHex { get; set; } = "#3B82F6";
         public string EffectTag { get; set; } = "HW:0";
         public string PresetTheme { get; set; } = "Predator";
     }
@@ -395,14 +439,37 @@ namespace PreySense.Core.Configuration
     {
         public bool Enabled { get; set; } = true;
         public int Mode { get; set; } = 1;
-        public string ColorHex { get; set; } = "#00E5FF";
+        public string ColorHex { get; set; } = "#3B82F6";
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         public bool SyncWithKeyboard { get; set; } = false;
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter<OverlayTheme>))]
+    public enum OverlayTheme
+    {
+        Dark = 0,
+        White = 1
+    }
+
     public sealed class OverlayConfig
     {
+        public OverlayTheme Theme { get; set; } = OverlayTheme.Dark;
+
+        /// <summary>Apply an appearance preset without changing metrics, layout, or polling.</summary>
+        public void ApplyTheme(OverlayTheme theme)
+        {
+            if (!Enum.IsDefined(theme)) throw new ArgumentOutOfRangeException(nameof(theme));
+            Theme = theme;
+            BackgroundColorHex = theme == OverlayTheme.Dark ? "#000000" : "#F5F5F7";
+            CpuTextColorHex = GpuTextColorHex = theme == OverlayTheme.Dark ? "#F5F5F7" : "#17191C";
+            BackgroundAlphaPercent = 100;
+            TextAlphaPercent = 100;
+            CpuGraphColorHex = "#2C7CB4";
+            GpuGraphColorHex = theme == OverlayTheme.Dark ? "#3AAA54" : "#218739";
+            ShowBackgroundShading = false;
+        }
+
         /// <summary>Master toggle for hardware overlay.</summary>
         public bool Enabled { get; set; } = false;
 
@@ -414,16 +481,17 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Background opacity percent (0-100%).</summary>
         [JsonPropertyName("BackgroundOpacityPercent")]
-        public int BackgroundAlphaPercent { get; set; } = 50;
+        public int BackgroundAlphaPercent { get; set; } = 100;
 
         /// <summary>Text opacity percent (0-100%).</summary>
         [JsonPropertyName("TextOpacityPercent")]
         public int TextAlphaPercent { get; set; } = 100;
 
         // Advanced appearance settings are intentionally JSON-only.
+        // Defaults match OverlayTheme.Dark (ApplyTheme) so a fresh config is consistent.
         public string BackgroundColorHex { get; set; } = "#000000";
-        public string CpuTextColorHex { get; set; } = "#FFFFFF";
-        public string GpuTextColorHex { get; set; } = "#FFFFFF";
+        public string CpuTextColorHex { get; set; } = "#F5F5F7";
+        public string GpuTextColorHex { get; set; } = "#F5F5F7";
         public string CpuGraphColorHex { get; set; } = "#2C7CB4";
         public string GpuGraphColorHex { get; set; } = "#3AAA54";
         /// <summary>Corner radius in base overlay pixels, scaled with ScalePercent.</summary>

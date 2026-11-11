@@ -68,8 +68,6 @@ namespace PreySense.Core.Services
 
         private Gpu.DdsDisplayMode _mockDdsMode = Gpu.DdsDisplayMode.Automatic;
         public bool IsDdsAvailable => true;
-        public bool EnableDiscreteGpu() => true;
-        public bool? IsDiscreteGpuDisabled { get; set; } = false;
         public bool IsDdsSupported() => true;
         public Gpu.DdsStatus? GetDdsStatus() => new Gpu.DdsStatus(
             IsSupported: true,
@@ -95,6 +93,7 @@ namespace PreySense.Core.Services
         public int SetRgbAllZonesCount { get; private set; }
         public int SetRgbHardwareEffectCount { get; private set; }
         public int SetRgbBrightnessCount { get; private set; }
+        public bool IsCoverLightingAvailable => true;
         public int SetCoverLogoLightingCount { get; private set; }
 
         public void SetRgbStatic(byte zone, Color color) => SetRgbStaticCount++;
@@ -139,7 +138,5 @@ namespace PreySense.Core.Services
         public bool SetDisplayRefreshRate(int hz) { _mockRefreshRate = hz; return true; }
         public System.Collections.Generic.List<int> GetSupportedRefreshRates() => new() { 60, 120, 240 };
 
-        public System.Collections.Generic.List<Gpu.GpuProcessInfo> GetActiveGpuProcesses() => new();
-        public bool KillProcess(uint pid) => true;
     }
 }

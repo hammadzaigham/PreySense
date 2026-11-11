@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using PreySense.Core.Configuration;
 using PreySense.Core.Hardware;
+using PreySense.Frontend.Services;
 using PreySense.Mode;
 
 namespace PreySense.Frontend.ViewModels;
@@ -69,7 +70,15 @@ public partial class MainViewModel
     {
         public bool TryGetAcerPowerMode(out byte mode)
         {
-            try { return owner._hw.TryGetPowerMode(out mode) && mode is 0 or 1 or 4 or 5 or 6; }
+            try
+            {
+                // Some firmwares accept Set but fail Get / return unknown bytes. Prefer a live
+                // WMI read, then last-known after a successful Set/Get, then the session UI mode.
+                if (owner._hw.TryGetPowerMode(out mode) && mode is 0 or 1 or 4 or 5 or 6)
+                    return true;
+                mode = owner.ActivePowerMode;
+                return mode is 0 or 1 or 4 or 5 or 6;
+            }
             catch { mode = 0; return false; }
         }
         public bool SetAcerPowerMode(byte mode) => owner._hw.SetPowerMode(mode);
@@ -141,13 +150,16 @@ public partial class MainViewModel
         };
         int? prochot = tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null;
         bool applyGpu = profile.ApplyGpuLimits && IsGpuProfileTuningAvailable;
+        if (profile.ApplyGpuClockOffsets && !profile.HasGpuClockValues)
+            return new(false, "Set GPU core and memory offsets before applying.");
+        DriverTuningResult ApplyProfile(DriverTuningRequest request) => ExecuteRequestedTuning(request,
+            profile.ApplyGpuClockOffsets, profile.HasGpuClockValues
+                ? new(profile.GpuCoreClockOffsetMhz!.Value, profile.GpuMemoryClockOffsetMhz!.Value) : null);
         if (!profile.ApplyCpuLimits && !applyGpu)
         {
             if (!_hw.SetPowerMode(mode))
                 return new(false, "Could not switch Acer mode.");
-            if (prochot is null)
-                return new(true, "Acer mode selected.");
-            return ExecuteDriverTuning(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
+            return ApplyProfile(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
         }
         if (!profile.HasValues)
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected.")
@@ -155,7 +167,7 @@ public partial class MainViewModel
         // GPU apply switches Acer mode itself; CPU/PROCHOT-only restores must switch first.
         if (!applyGpu && !_hw.SetPowerMode(mode))
             return new(false, "Could not switch Acer mode.");
-        return ExecuteDriverTuning(new(mode,
+        return ApplyProfile(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,
             new(profile.GpuDeltaWatts ?? 0, profile.GpuDynamicBoostWatts ?? 0, profile.PlatformPowerOffsetWatts ?? 0),
             prochot, profile.ApplyCpuLimits, applyGpu));
@@ -210,6 +222,9 @@ public partial class MainViewModel
                 profile.PlatformPowerOffsetWatts = null;
                 profile.ApplyCpuLimits = false;
                 profile.ApplyGpuLimits = false;
+                profile.ApplyGpuClockOffsets = false;
+                profile.GpuCoreClockOffsetMhz = null;
+                profile.GpuMemoryClockOffsetMhz = null;
             }
             cfg.Tuning.ProchotOffsetCelsius = null;
             cfg.Tuning.ApplyProchotOffset = false;
@@ -229,17 +244,13 @@ public partial class MainViewModel
     internal async Task<bool> ApplyTuningProfileAsync(byte mode, int pl1, int pl2, int tau,
         PreySense.Core.Driver.GpuPowerOffsets offsets, bool persist, int? prochotOffsetCelsius = null, bool applyProchotOffset = false,
         bool applyCpuLimits = true, bool applyGpuLimits = true, bool persistApplySwitches = true,
-        bool restoreMsrToStaticFloor = false)
+        bool restoreMsrToStaticFloor = false,
+        PreySense.Gpu.GpuClockOffsets? clockOffsets = null, bool applyGpuClockOffsets = false)
     {
         applyProchotOffset &= !IsProchotOffsetLocked;
         if (applyProchotOffset && prochotOffsetCelsius is null)
         {
             DiagnosticMessage = "Enter a PROCHOT offset, or turn its switch off.";
-            return false;
-        }
-        if (!applyCpuLimits && !applyGpuLimits && !applyProchotOffset)
-        {
-            DiagnosticMessage = "Turn on CPU limits, GPU limits, or PROCHOT first.";
             return false;
         }
         if (!IsHardwareTuningEnabled || IsBusy)
@@ -248,14 +259,37 @@ public partial class MainViewModel
             AppLogger.Error($"[Tuning] {DiagnosticMessage}");
             return false;
         }
+        if (!applyCpuLimits && !applyGpuLimits && !applyProchotOffset && !applyGpuClockOffsets)
+        {
+            if (!persist) { DiagnosticMessage = "Turn on CPU limits, GPU limits, GPU overclocking, or PROCHOT first."; return false; }
+            try
+            {
+                TuningStore.Update(cfg =>
+                {
+                    var profile = mode switch { 0 => cfg.Tuning.Quiet, 1 => cfg.Tuning.Balanced,
+                        4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
+                        _ => throw new ArgumentOutOfRangeException(nameof(mode)) };
+                    profile.ApplyCpuLimits = profile.ApplyGpuLimits = profile.ApplyGpuClockOffsets = false;
+                    cfg.Tuning.ApplyProchotOffset = false;
+                });
+                DiagnosticMessage = "Saved. Disabled tuning sections were skipped.";
+                return true;
+            }
+            catch (Exception ex) { DiagnosticMessage = $"Could not save tuning: {ex.Message}"; return false; }
+        }
         CancelPendingModeSwitch();
-        await _modeSwitchGate.WaitAsync();
+        if (!await TryEnterModeSwitchGateAsync())
+        {
+            DiagnosticMessage = "Tuning stays off — PreySense is shutting down.";
+            return false;
+        }
         IsBusy = true;
         try
         {
             AppLogger.Log($"[Tuning] Apply mode=0x{mode:X2} CPU={(applyCpuLimits ? $"{pl1}/{pl2}/τ{tau}" : "off")} GPU={(applyGpuLimits ? $"Δ{offsets.DeltaWatts}/DB{offsets.DynamicBoostWatts}/CP{offsets.PlatformOffsetWatts}" : "off")}");
-            var applied = await Task.Run(() => ExecuteDriverTuning(new(mode, pl1, pl2, tau, offsets,
-                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits, restoreMsrToStaticFloor)));
+            var applied = await Task.Run(() => ExecuteRequestedTuning(new(mode, pl1, pl2, tau, offsets,
+                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits, restoreMsrToStaticFloor),
+                applyGpuClockOffsets, clockOffsets));
             if (!applied.Success) throw new InvalidOperationException(applied.Status);
             ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode);
             UpdateModeName(ActivePowerMode);
@@ -274,6 +308,12 @@ public partial class MainViewModel
                         _ => throw new ArgumentOutOfRangeException(nameof(mode)) };
                     profile.ApplyCpuLimits = saveCpu;
                     profile.ApplyGpuLimits = saveGpu;
+                    profile.ApplyGpuClockOffsets = persistApplySwitches && applyGpuClockOffsets;
+                    if (applyGpuClockOffsets)
+                    {
+                        profile.GpuCoreClockOffsetMhz = clockOffsets!.Value.CoreMhz;
+                        profile.GpuMemoryClockOffsetMhz = clockOffsets.Value.MemoryMhz;
+                    }
                     profile.CpuPl1Watts = pl1; profile.CpuPl2Watts = pl2; profile.TauSeconds = tau;
                     cfg.Tuning.ProchotOffsetCelsius = prochotOffsetCelsius;
                     cfg.Tuning.ApplyProchotOffset = saveProchot;
@@ -301,6 +341,6 @@ public partial class MainViewModel
             try { ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode); UpdateModeName(ActivePowerMode); NotifyModeSelectionsChanged(); } catch { }
             return false;
         }
-        finally { IsBusy = false; _modeSwitchGate.Release(); }
+        finally { IsBusy = false; ExitModeSwitchGate(); }
     }
 }

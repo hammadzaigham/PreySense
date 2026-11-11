@@ -1,6 +1,6 @@
 # Keyboard and cover lighting
 
-Both surfaces use the **ENEK5130** HID controller. ACPI-WMI has no verified RGB contract on this hardware. OpenRGB and Acer Lighting TCP are not used.
+The existing four-zone keyboard and cover editor uses **ENEK5130** HID. Additional detected devices use verified Acer HID targets, Acer/Darfon/Sunrex USB protocols, firmware-declared EC lighting, or the named pipe of an already-running Acer Lighting Service. PreySense does not launch OpenRGB or send AcerService TCP commands. See [device support and the per-key editor](lighting_devices.md).
 
 ---
 
@@ -85,14 +85,15 @@ The lid LED only implements Off, Static, Breathing, Neon. It cannot play Wave or
 
 `IsCoverSyncWithKeyboard`:
 
-| Keyboard effect | Logo |
+| Keyboard effect | Logo / Mode Key |
 | :--- | :--- |
-| Static | Same color, logo static |
-| Breathing | Same color, logo breathing |
-| Neon | Same color, logo neon |
-| Other hardware + all software | Average of the four zone RGB, logo **static** |
+| Static | Average of the four zone RGB, **static** |
+| Software | Average of the four zone RGB (live frame), **static** |
+| Breathing | Selected keyboard color, **breathing** |
+| Neon | Selected keyboard color, **neon** |
+| Other hardware (Wave, Ripple, …) | Selected keyboard color, **static** |
 
-Average source:
+Average source (Static / software only):
 
 - Software engine running → last 4-zone frame
 - Otherwise pending zone preset or stored zone hex colors

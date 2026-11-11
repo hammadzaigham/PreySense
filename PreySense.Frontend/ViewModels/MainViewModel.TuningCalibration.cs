@@ -55,9 +55,9 @@ public partial class MainViewModel
         bool wasBusy = IsBusy;
         try
         {
-            await _modeSwitchGate.WaitAsync();
+            if (!await TryEnterModeSwitchGateAsync()) return;
             gateHeld = true;
-            if (_disposed || HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning)) return;
+            if (HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning)) return;
             wasBusy = IsBusy;
             IsBusy = true;
             busyChanged = true;
@@ -101,7 +101,7 @@ public partial class MainViewModel
             if (gateHeld)
             {
                 if (busyChanged) IsBusy = wasBusy;
-                _modeSwitchGate.Release();
+                ExitModeSwitchGate();
             }
         }
     }
@@ -128,8 +128,7 @@ public partial class MainViewModel
         int? gpuBaselineWatts = GpuBasePowerWatts;
         if (!gpuBaselineWatts.HasValue)
         {
-            int? detectedGpu = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
-            if (detectedGpu.HasValue) gpuBaselineWatts = GpuPowerBaseline.SaveOnce(detectedGpu.Value);
+            gpuBaselineWatts = ReadOrCaptureGpuBaseline();
         }
         var backend = CpuDriverRuntime.Backend ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var calibration = new DriverFactoryCalibration(backend, backend);
@@ -145,15 +144,14 @@ public partial class MainViewModel
         bool gateHeld = false;
         try
         {
-            await _modeSwitchGate.WaitAsync();
-            gateHeld = true;
-            if (_disposed)
+            if (!await TryEnterModeSwitchGateAsync())
             {
                 SetTuningEnabledState(false);
                 try { TuningStore.Update(cfg => cfg.General.HardwareTuningEnabled = false); } catch { }
                 DiagnosticMessage = "Tuning stays off — PreySense is shutting down.";
                 return;
             }
+            gateHeld = true;
 
             if (!HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning))
             {
@@ -174,7 +172,7 @@ public partial class MainViewModel
         }
         finally
         {
-            if (gateHeld) _modeSwitchGate.Release();
+            if (gateHeld) ExitModeSwitchGate();
             _tuningEnablePending = false;
         }
     }
@@ -208,7 +206,10 @@ public partial class MainViewModel
             GpuDynamicBoostWatts = saved.GpuDynamicBoostWatts ?? factory?.GpuDynamicBoostWatts,
             PlatformPowerOffsetWatts = saved.PlatformPowerOffsetWatts ?? factory?.PlatformPowerOffsetWatts,
             ApplyCpuLimits = saved.ApplyCpuLimits,
-            ApplyGpuLimits = saved.ApplyGpuLimits
+            ApplyGpuLimits = saved.ApplyGpuLimits,
+            ApplyGpuClockOffsets = saved.ApplyGpuClockOffsets,
+            GpuCoreClockOffsetMhz = saved.GpuCoreClockOffsetMhz,
+            GpuMemoryClockOffsetMhz = saved.GpuMemoryClockOffsetMhz
         };
     }
 

@@ -14,7 +14,7 @@ public class GlobalProchotTuningTests
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
         void Set(string name, object value) => typeof(MainViewModel).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(vm, value);
         Set("_hw", new MockHardwareService()); Set("_modeSwitchGate", new SemaphoreSlim(1, 1));
-        Set("_modeSwitchDebounceLock", new object()); Set("_isHardwareTuningEnabled", true);
+        Set("_modeSwitchLock", new object()); Set("_isHardwareTuningEnabled", true);
         vm.TuningConfigurationReader = () => config;
         return vm;
     }

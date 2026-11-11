@@ -212,6 +212,35 @@ public class LatestBackgroundWorkerTests
         finally { release.Set(); await worker.StopAsync(); }
     }
 
+    [TestMethod]
+    public void AnimationFrames_CannotReplaceSettingsOrInheritSaveWork()
+    {
+        var settings = new MainViewModel.LightingRequest(new() { Zone1ColorHex = "#123456", Brightness = 75 },
+            new(), MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Save);
+        var frame = new MainViewModel.LightingRequest(new() { Zone1ColorHex = "#ABCDEF", Brightness = 0 },
+            new(), MainViewModel.LightingWork.Frame);
+        Assert.AreSame(settings, MainViewModel.MergeLightingRequests(settings, frame));
+        Assert.AreSame(settings, MainViewModel.MergeLightingRequests(frame, settings));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void IdleDimmedLighting_DoesNotPersistZeroBrightness()
+    {
+        var hardware = DispatchProxy.Create<IHardwareService, LightingHardwareProxy>();
+        var store = ConfigurationService.Instance;
+        var previous = store.GetCurrent().Lighting;
+        try
+        {
+            CreateLightingViewModel(hardware).ApplyLightingRequest(new(new() { Brightness = 0 },
+                new(), MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Save, SavedKeyboardBrightness: 75));
+            var write = ((LightingHardwareProxy)hardware).Calls.Single(call => call.Name == "SetRgbAllZones");
+            Assert.AreEqual((byte)0, write.Arguments[4], "Idle dimming must still reach the hardware.");
+            Assert.AreEqual(75, store.GetCurrent().Lighting.Keyboard.Brightness);
+        }
+        finally { store.Update(config => config.Lighting = previous); }
+    }
+
     private static MainViewModel CreateLightingViewModel(IHardwareService hardware)
     {
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
@@ -220,13 +249,14 @@ public class LatestBackgroundWorkerTests
     }
 
     private static LatestBackgroundWorker<MainViewModel.LightingRequest> CreateLightingWorker(Action<MainViewModel.LightingRequest> execute) =>
-        new(execute, (pending, latest) => latest with { Work = pending.Work | latest.Work });
+        new(execute, MainViewModel.MergeLightingRequests);
 
     public class LightingHardwareProxy : DispatchProxy
     {
         public readonly ConcurrentQueue<(string Name, int Thread, object?[] Arguments)> Calls = new();
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
+            if (method!.Name == "get_IsCoverLightingAvailable") return true;
             Calls.Enqueue((method!.Name, Environment.CurrentManagedThreadId, args?.ToArray() ?? []));
             return method.ReturnType == typeof(void) ? null : method.ReturnType.IsValueType ? Activator.CreateInstance(method.ReturnType) : null;
         }

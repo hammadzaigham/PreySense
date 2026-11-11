@@ -59,6 +59,66 @@ public class SettingsWindowInitializationTests
                     Assert.AreEqual("20%", slider.ValueText);
                     slider.Value = 0;
                     Assert.AreEqual("Disabled", slider.ValueText);
+                    Assert.AreEqual(150d, ((SettingDropdownRow)window.FindName("LanguageSelector")).DropdownWidth);
+                    var themes = (SettingDropdownRow)window.FindName("ThemeSelector");
+                    Assert.AreEqual(110d, themes.DropdownWidth);
+                    CollectionAssert.AreEqual(new[] { "Dark", "Light", "Glass" }, themes.Items
+                        .Cast<System.Windows.Controls.ComboBoxItem>().Select(item => (string)item.Content).ToArray());
+                    var metrics = new MetricsWindow();
+                    try
+                    {
+                        var overlayThemes = (SettingDropdownRow)metrics.FindName("DropdownOverlayTheme");
+                        CollectionAssert.AreEqual(new[] { "Dark", "White" }, overlayThemes.Items
+                            .Cast<System.Windows.Controls.ComboBoxItem>().Select(item => (string)item.Content).ToArray());
+                    }
+                    finally { metrics.Close(); }
+                    var original = PreySense.Frontend.Services.ThemeManager.CurrentTheme;
+                    try
+                    {
+                        PreySense.Frontend.Services.ThemeManager.Apply(PreySense.Core.Configuration.ApplicationTheme.Glass, persist: false);
+                        var surface = (System.Windows.Media.SolidColorBrush)app.FindResource("WindowBgBrush");
+                        if (PreySense.Frontend.Services.ThemeManager.IsGlassSupported)
+                        {
+                            Assert.IsLessThan((byte)255, surface.Color.A);
+                            foreach (string key in new[] { "WindowShellBgBrush", "ButtonRaisedBgBrush", "SelectedTileGradientBrush", "ButtonHoverBrush", "CardBgBrush" })
+                                Assert.IsInstanceOfType<System.Windows.Media.SolidColorBrush>(app.FindResource(key));
+                            var separator = (System.Windows.Media.SolidColorBrush)app.FindResource("SeparatorBrush");
+                            Assert.AreEqual((byte)40, separator.Color.A);
+                            Assert.AreEqual((byte)0, ((System.Windows.Media.SolidColorBrush)app.FindResource("BorderMainBrush")).Color.A);
+                            Assert.IsLessThan((byte)255, ((System.Windows.Media.SolidColorBrush)app.FindResource("PopupBgBrush")).Color.A);
+                            Assert.AreEqual(((System.Windows.Media.SolidColorBrush)app.FindResource("ButtonRaisedBgBrush")).Color,
+                                ((System.Windows.Media.SolidColorBrush)app.FindResource("PerformanceModeActiveBrush")).Color);
+                        }
+                        var toast = new ModeToastWindow();
+                        try
+                        {
+                            var toastSurface = (System.Windows.Controls.Border)toast.Content;
+                            Assert.AreEqual(new Thickness(0), toastSurface.BorderThickness);
+                            Assert.IsNull(toastSurface.Effect, "A shadow applied to the translucent capsule produces a second silhouette.");
+                        }
+                        finally { toast.Close(); }
+                        var tuning = new ModeSettingsWindow();
+                        try
+                        {
+                            Assert.AreEqual(new CornerRadius(0), ((System.Windows.Controls.Border)tuning.Content).CornerRadius,
+                                "Only DWM should round the outer window; a second shell radius creates a visible rim.");
+                            var core = (SettingSliderRow)tuning.FindName("RowGpuCoreClock");
+                            var memory = (SettingSliderRow)tuning.FindName("RowGpuMemoryClock");
+                            Assert.AreEqual(5d, core.TickFrequency);
+                            Assert.AreEqual(5d, core.SmallChange);
+                            Assert.AreEqual(100d, memory.TickFrequency);
+                            Assert.AreEqual(100d, memory.SmallChange);
+                            Assert.IsTrue(core.IsSnapToTickEnabled && memory.IsSnapToTickEnabled);
+                            _ = new System.Windows.Interop.WindowInteropHelper(tuning).EnsureHandle();
+                            PreySense.Frontend.Services.ThemeManager.Apply(PreySense.Core.Configuration.ApplicationTheme.Dark, persist: false);
+                            Assert.AreEqual(new Thickness(0, 0, 0, 1), System.Windows.Shell.WindowChrome.GetWindowChrome(tuning).GlassFrameThickness);
+                            Assert.AreEqual((byte)255, ((System.Windows.Media.SolidColorBrush)app.FindResource("WindowBgBrush")).Color.A);
+                            Assert.AreEqual((byte)255, ((System.Windows.Media.SolidColorBrush)app.FindResource("WindowShellBgBrush")).Color.A);
+                            Assert.IsInstanceOfType<System.Windows.Media.SolidColorBrush>(app.FindResource("ButtonRaisedBgBrush"));
+                        }
+                        finally { tuning.Close(); }
+                    }
+                    finally { PreySense.Frontend.Services.ThemeManager.Apply(original, persist: false); }
                 }
                 finally { window.Close(); }
             }

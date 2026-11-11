@@ -8,12 +8,13 @@ namespace PreySense.Tests;
 [DoNotParallelize]
 public class AcerProfileApplyTransactionTests
 {
-    private sealed class Fake : IPhysicalMemoryByteAccess, IAcerPowerModeController
+    private class Fake : IPhysicalMemoryByteAccess, IAcerPowerModeController
     {
         public byte Mode = 5;
         public readonly Dictionary<ulong, byte> Bytes = new();
         public readonly List<string> Events = new();
         public bool FailNextWrite;
+        public bool ModeReadable = true;
         public bool ReadPhysicalByte(ulong address, out byte value) => Bytes.TryGetValue(address, out value);
         public bool WritePhysicalByte(ulong address, byte value)
         {
@@ -22,7 +23,11 @@ public class AcerProfileApplyTransactionTests
             Bytes[address] = value;
             return true;
         }
-        public bool TryGetAcerPowerMode(out byte mode) { mode = Mode; return true; }
+        public bool TryGetAcerPowerMode(out byte mode)
+        {
+            mode = ModeReadable ? Mode : (byte)0;
+            return ModeReadable;
+        }
         public bool SetAcerPowerMode(byte mode) { Mode = mode; Events.Add($"mode:{mode}"); return true; }
         public void Dispose() { }
     }
@@ -99,6 +104,41 @@ public class AcerProfileApplyTransactionTests
         var result = new AcerProfileApplyTransaction(fake, fake).Apply(5, 55, 5);
         Assert.IsFalse(result.Success);
         Assert.IsEmpty(fake.Events);
+    }
+
+    // Some firmwares accept SetGamingMiscSetting(0x0B) but never return a known mode from Get.
+    [TestMethod]
+    public void Apply_WhenModeGetFails_StillStagesAndApplies()
+    {
+        var fake = new Fake { Mode = 5, ModeReadable = false };
+        SeedSignature(fake);
+        ulong address = AcerProfileApplyTransaction.ProfileAddress(5);
+        fake.Bytes[address] = 15; fake.Bytes[address + 1] = 40; fake.Bytes[address + 2] = 35;
+        var result = new AcerProfileApplyTransaction(fake, fake).Apply(5, 30, 25, 20);
+        Assert.IsTrue(result.Success, result.Status);
+        byte staging = AcerProfileApplyTransaction.StagingMode(5);
+        CollectionAssert.AreEqual(
+            new[] { $"mode:{staging}", $"write:{staging}", $"write:{staging}", $"write:{staging}", "mode:5" },
+            fake.Events);
+        Assert.AreEqual((byte)25, fake.Bytes[address]);
+        Assert.AreEqual((byte)30, fake.Bytes[address + 1]);
+        Assert.AreEqual((byte)20, fake.Bytes[address + 2]);
+    }
+
+    [TestMethod]
+    [DataRow(5, false)]
+    [DataRow(0, true)]
+    public void TransitionWait_OnlyFollowsAnIntermediateModeSwitch(int currentMode, bool needsWait)
+    {
+        var fake = new Fake { Mode = (byte)currentMode };
+        SeedSignature(fake);
+        ulong address = AcerProfileApplyTransaction.ProfileAddress(0);
+        fake.Bytes[address] = 15; fake.Bytes[address + 1] = 40; fake.Bytes[address + 2] = 25;
+        var delays = new List<int>();
+        var result = new AcerProfileApplyTransaction(fake, fake, delays.Add).Apply(0, 0, 0, 35);
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.AreEqual(needsWait, delays.Contains(AcerOperatingModeTiming.TransitionMilliseconds));
+        Assert.Contains(500, delays, "Post-write verification remains in place.");
     }
 
     [TestMethod]

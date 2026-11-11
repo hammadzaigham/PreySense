@@ -318,21 +318,30 @@ public static class TelemetryCoordinator
     static TelemetryCoordinator()
     {
         // Timer ticks and explicit requests use the same rate and concurrency limits.
-        MasterTimer.Elapsed += (_, _) =>
+        MasterTimer.Elapsed += (_, _) => RunMasterCycle();
+    }
+
+    internal static void RunMasterCycle()
+    {
+        if (Interlocked.Exchange(ref _cycleInProgress, 1) != 0) return;
+        try
         {
-            if (Interlocked.Exchange(ref _cycleInProgress, 1) != 0) return;
-            try
-            {
-                Heartbeat?.Invoke();
-                Poll();
-            }
-            catch (Exception ex) { AppLogger.Log($"Telemetry cycle failed: {ex.Message}"); }
-            finally
-            {
-                Volatile.Write(ref _cycleInProgress, 0);
-                ScheduleNextMasterTick();
-            }
-        };
+            var heartbeat = Heartbeat;
+            if (heartbeat != null)
+                foreach (Action subscriber in heartbeat.GetInvocationList())
+                {
+                    try { subscriber(); }
+                    catch (Exception ex) { AppLogger.Log($"Telemetry heartbeat failed: {ex.Message}"); }
+                }
+            // An overlay refresh failure must not prevent temperature sampling for custom fans.
+            Poll();
+        }
+        catch (Exception ex) { AppLogger.Log($"Telemetry cycle failed: {ex.Message}"); }
+        finally
+        {
+            Volatile.Write(ref _cycleInProgress, 0);
+            ScheduleNextMasterTick();
+        }
     }
 
     private static void ScheduleNextMasterTick()

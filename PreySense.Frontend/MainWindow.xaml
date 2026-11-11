@@ -15,7 +15,7 @@
         </controls:WindowTitleBar.Actions>
       </controls:WindowTitleBar>
       <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
-        <Border Style="{StaticResource OriginalSectionPanelStyle}">
+        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{DynamicResource MainSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
               <Grid.ColumnDefinitions>
@@ -38,11 +38,12 @@
               <Button AutomationProperties.AutomationId="BtnModeEco" Command="{Binding SetModeCommand}" CommandParameter="6">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="2"/>
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsEcoActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModeEcoBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -55,11 +56,12 @@
               <Button AutomationProperties.AutomationId="BtnModeQuiet" Command="{Binding SetModeCommand}" CommandParameter="0">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="2"/>
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsQuietActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModeQuietBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -72,11 +74,12 @@
               <Button AutomationProperties.AutomationId="BtnModeBalanced" CommandParameter="1" Command="{Binding SetModeCommand}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="2"/>
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsBalancedActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource ModeBalancedBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -89,41 +92,43 @@
               <Button AutomationProperties.AutomationId="BtnModePerformance" CommandParameter="4" Command="{Binding SetModeCommand}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="2"/>
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsPerformActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModePerformanceBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
                 </FrameworkElement.Style>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <Path Data="{x:Static local:ModeIconData.PerformanceGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5" />
+                  <Path Data="{x:Static local:ModeIconData.PerformanceGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,0,5" />
                   <TextBlock Text="Performance" FontSize="{DynamicResource FontSizeTile}" TextTrimming="CharacterEllipsis" TextAlignment="Center" HorizontalAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button AutomationProperties.AutomationId="BtnModeTurbo" CommandParameter="5" Command="{Binding SetModeCommand}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonTileStyle}" TargetType="{x:Type Button}">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="2"/>
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsTurboActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModeTurboBrush}" />
                         <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
                 </FrameworkElement.Style>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <Path Data="{x:Static local:ModeIconData.TurboGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="17" Height="17" Stretch="Uniform" Margin="0,0,0,5" />
+                  <Path Data="{x:Static local:ModeIconData.TurboGeometry}" Fill="{DynamicResource IconForegroundBrush}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,0,5" />
                   <TextBlock Text="Turbo" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" />
                 </StackPanel>
               </Button>
             </UniformGrid>
           </StackPanel>
         </Border>
-        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{DynamicResource MainSectionMargin}">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
               <Grid.ColumnDefinitions>
@@ -149,8 +154,7 @@
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsGpuAutoActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                        <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -160,31 +164,13 @@
                   <TextBlock Text="Auto" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
                 </StackPanel>
               </Button>
-              <Button Height="62" Margin="3" CommandParameter="igpu" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowIgpuOnlyTile, Converter={StaticResource BoolToVis}}">
-                <FrameworkElement.Style>
-                  <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
-                    <Style.Triggers>
-                      <DataTrigger Value="True" Binding="{Binding IsGpuIgpuOnlyActive}">
-                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </FrameworkElement.Style>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-video-48.png" Width="20" Height="20" Margin="0,0,0,2" />
-                  <TextBlock Text="iGPU Only" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
-                </StackPanel>
-              </Button>
               <Button Height="62" Margin="3" CommandParameter="0" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowDdsGpuTiles, Converter={StaticResource BoolToVis}}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsGpuOptimusActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                        <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -204,14 +190,13 @@
                   <TextBlock Text="Hybrid" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
                 </StackPanel>
               </Button>
-              <Button Height="62" Margin="3" CommandParameter="2" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowAdvancedOptimusTile, Converter={StaticResource BoolToVis}}">
+              <Button Height="62" Margin="3" CommandParameter="2" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowDdsGpuTiles, Converter={StaticResource BoolToVis}}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsGpuAdvancedOptimusActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModePerformanceBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                        <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -221,14 +206,13 @@
                   <TextBlock Text="Advanced Optimus" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
-              <Button Height="62" Margin="3" Command="{Binding SetBiosDiscreteGpuCommand}" Visibility="{Binding ShowDgpuOnlyTile, Converter={StaticResource BoolToVis}}">
+              <Button Height="62" Margin="3" Command="{Binding SetBiosDiscreteGpuCommand}">
                 <Button.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsBiosDiscreteGpuActive}">
                         <Setter Property="BorderBrush" Value="{DynamicResource ModePerformanceBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                        <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -241,7 +225,7 @@
             </UniformGrid>
           </StackPanel>
         </Border>
-        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
           <StackPanel>
             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
               <Grid.ColumnDefinitions>
@@ -262,14 +246,13 @@
                 <ColumnDefinition Width="2*" />
               </Grid.ColumnDefinitions>
 
-              <Button Grid.Column="0" Height="38" HorizontalAlignment="Stretch" Margin="3,0,6,0" Command="{Binding ToggleAutoRefreshRateCommand}">
+              <Button Grid.Column="0" Height="38" Padding="12,4" HorizontalAlignment="Stretch" Margin="3,0,6,0" Command="{Binding ToggleAutoRefreshRateCommand}">
                 <FrameworkElement.Style>
                   <Style BasedOn="{StaticResource OriginalRButtonActionStyle}" TargetType="{x:Type Button}">
                     <Style.Triggers>
                       <DataTrigger Value="True" Binding="{Binding IsAutoRefreshRateEnabled}">
                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                        <Setter Property="BorderThickness" Value="2" />
-                        <Setter Property="Background" Value="{DynamicResource SelectedTileGradientBrush}" />
+                        <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -281,16 +264,17 @@
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Padding="24,4"
+                        Padding="12,4"
+                        BorderThickness="0"
                         FontSize="{DynamicResource FontSizeTile}"
                         ItemsSource="{Binding AvailableRefreshRates}"
                         SelectedItem="{Binding SelectedRefreshRateOption, Mode=TwoWay}"/>
             </Grid>
           </StackPanel>
         </Border>
-
+        <Separator HorizontalAlignment="Center" Width="100" Margin="0,13,0,5"/>
       </StackPanel>
-      <Grid Grid.Row="2" Margin="{StaticResource WindowFooterMargin}">
+      <Grid Grid.Row="2" Margin="14,2,14,16">
         <Grid.RowDefinitions>
           <RowDefinition Height="34"/>
           <RowDefinition Height="6"/>

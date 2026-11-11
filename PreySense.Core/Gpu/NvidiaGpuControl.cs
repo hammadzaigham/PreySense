@@ -12,7 +12,7 @@ using PreySense;
 
 namespace PreySense.Gpu
 {
-    public class NvidiaGpuControl : IGpuControl
+    public partial class NvidiaGpuControl : IGpuControl, IGpuClockTuning
     {
         private static readonly Lazy<NvidiaGpuControl> SharedLazy = new(() => new NvidiaGpuControl(), true);
         public static NvidiaGpuControl Shared => SharedLazy.Value;
@@ -213,12 +213,6 @@ namespace PreySense.Gpu
             RunPowershellCommand(@"Restart-Service -Name 'NvContainerLocalSystem' -Force", 30000);
         }
 
-        public static void StopNVService()
-        {
-            RunPowershellCommand(@"Stop-Service -Name 'NvContainerLocalSystem' -Force", 30000);
-            RunPowershellCommand(@"Stop-Service -Name 'NVDisplay.ContainerLocalSystem' -Force", 30000);
-        }
-
         private static PhysicalGPU? GetInternalDiscreteGpu()
         {
             try
@@ -406,63 +400,8 @@ namespace PreySense.Gpu
             return null;
         }
 
-        public System.Collections.Generic.List<GpuProcessInfo> GetGpuProcesses()
-        {
-            var list = new System.Collections.Generic.List<GpuProcessInfo>();
-            int currentPid = Process.GetCurrentProcess().Id;
 
-            // Prefer NvAPI — same source KillGPUApps / HasUserGpuClient use. NVML's
-            // unversioned process APIs often return empty on current drivers, which
-            // silently skipped the iGPU-only confirmation modal.
-            if (IsValid && _internalGpu is not null)
-            {
-                try
-                {
-                    Process[] processes = _internalGpu.GetActiveApplications();
-                    foreach (Process process in processes)
-                    {
-                        try
-                        {
-                            if (process.Id == currentPid) continue;
-                            if (process.SessionId == 0) continue;
-                            if (_systemProcessNames.Contains(process.ProcessName)) continue;
-                            list.Add(new GpuProcessInfo
-                            {
-                                ProcessId = (uint)process.Id,
-                                ProcessName = process.ProcessName
-                            });
-                        }
-                        catch { }
-                        finally { process.Dispose(); }
-                    }
-                    if (list.Count > 0)
-                        return list;
-                }
-                catch { }
-            }
-
-            foreach (uint pid in NvmlHelper.GetRunningProcessIds())
-            {
-                if (pid == 0 || pid == (uint)currentPid) continue;
-                try
-                {
-                    using var proc = Process.GetProcessById((int)pid);
-                    if (proc.SessionId == 0) continue;
-                    if (_systemProcessNames.Contains(proc.ProcessName)) continue;
-                    list.Add(new GpuProcessInfo { ProcessId = pid, ProcessName = proc.ProcessName });
-                }
-                catch
-                {
-                    list.Add(new GpuProcessInfo { ProcessId = pid, ProcessName = $"PID {pid}" });
-                }
-            }
-            return list;
-        }
     }
 
-    public class GpuProcessInfo
-    {
-        public uint ProcessId { get; set; }
-        public string ProcessName { get; set; } = "";
-    }
+
 }

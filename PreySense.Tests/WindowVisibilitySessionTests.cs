@@ -81,4 +81,33 @@ public class WindowVisibilitySessionTests
         Assert.IsFalse(session.ShouldAutoHide(first, true));
         Assert.IsFalse(session.ShouldAutoHide(second, false));
     }
+
+    [TestMethod]
+    public void ClosingChild_InvalidatesPendingHideAndWaitsForOwnerForeground()
+    {
+        var session = new WindowVisibilitySession<string>();
+        session.RecordForeground(true);
+        long pendingHide = session.Revision;
+        long closing = session.BeginRestore();
+        Assert.IsFalse(session.ShouldAutoHide(pendingHide, false));
+        Assert.IsFalse(session.ShouldAutoHide(closing, false));
+        session.CompleteRestore(closing);
+        Assert.IsFalse(session.ShouldAutoHide(closing, false), "A temporary foreground gap must not hide the owner.");
+        session.RecordForeground(true);
+        Assert.IsFalse(session.ShouldAutoHide(closing, true));
+        Assert.IsTrue(session.ShouldAutoHide(closing, false), "Click-away must still hide after the handoff.");
+    }
+
+    [TestMethod]
+    public void CancelledChildClose_ReleasesGuardAndKeepsClickAwayWorking()
+    {
+        var session = new WindowVisibilitySession<string>();
+        session.RecordForeground(true);
+        long closing = session.BeginRestore();
+        // Closing was cancelled and the child remains the foreground window.
+        session.CompleteRestore(closing);
+        session.RecordForeground(true);
+        Assert.IsTrue(session.CanAutoHide(closing));
+        Assert.IsTrue(session.ShouldAutoHide(closing, false));
+    }
 }

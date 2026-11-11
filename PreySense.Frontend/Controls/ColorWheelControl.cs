@@ -39,6 +39,7 @@ namespace PreySense.Frontend.Controls
         }
 
         public event EventHandler<Color>? ColorChanged;
+        public event EventHandler<Color>? ColorPicked;
 
         static ColorWheelControl()
         {
@@ -142,7 +143,6 @@ namespace PreySense.Frontend.Controls
             }
 
             // Draw outer border ring
-            dc.DrawEllipse(null, new Pen(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)), 1.5), _center, _radius, _radius);
 
             Color thumbColor = _isDragging ? _previewColor : SelectedColor;
             Point thumbPos = GetPositionFromColor(thumbColor);
@@ -220,7 +220,10 @@ namespace PreySense.Frontend.Controls
             InvalidateVisual();
 
             if (commit)
-                SelectedColor = color;
+            {
+                SetCurrentValue(SelectedColorProperty, color);
+                ColorPicked?.Invoke(this, color);
+            }
         }
 
         public static Color ColorFromHsv(double hue, double saturation, double value)

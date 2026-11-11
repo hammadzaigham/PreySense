@@ -6,11 +6,13 @@ namespace PreySense.Frontend.ViewModels;
 public partial class MainViewModel
 {
     [ObservableProperty]
-    private bool _isLightTheme;
+    private int _selectedThemeIndex;
 
-    partial void OnIsLightThemeChanged(bool value)
+    partial void OnSelectedThemeIndexChanged(int value)
     {
-        ThemeManager.Apply(value);
-        DiagnosticMessage = value ? "Theme: Light" : "Theme: Dark";
+        if (value is < 0 or > 2) return;
+        var theme = (PreySense.Core.Configuration.ApplicationTheme)value;
+        ThemeManager.Apply(theme);
+        DiagnosticMessage = "Theme: " + LocalizationService.Translate(theme.ToString());
     }
 }

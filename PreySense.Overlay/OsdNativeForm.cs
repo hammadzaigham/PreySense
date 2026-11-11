@@ -1,7 +1,6 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace PreySense.Overlay
@@ -9,7 +8,7 @@ namespace PreySense.Overlay
     public class OSDNativeForm : NativeWindow, IDisposable
     {
         private bool _disposed = false;
-        private byte _alpha = 250;
+        private byte _alpha = 255;
         protected Size _size = new Size(350, 50);
         protected Point _location = new Point(50, 50);
         private readonly object _paintLock = new();
@@ -29,7 +28,8 @@ namespace PreySense.Overlay
             lock (_paintLock)
             {
                 if (Handle == IntPtr.Zero || Size.Width <= 0 || Size.Height <= 0) return;
-                using Bitmap bitmap1 = new Bitmap(Size.Width, Size.Height, PixelFormat.Format32bppArgb);
+                // Layered windows require premultiplied alpha; background and glyph alpha remain independent.
+                using Bitmap bitmap1 = new Bitmap(Size.Width, Size.Height, PixelFormat.Format32bppPArgb);
                 using (Graphics graphics1 = Graphics.FromImage(bitmap1))
                 {
                     Rectangle rectangle1 = new Rectangle(0, 0, Size.Width, Size.Height);
@@ -112,7 +112,7 @@ namespace PreySense.Overlay
 
             params1.Style = unchecked((int)NativeMethods.WS_POPUP);
             params1.ExStyle = NativeMethods.WS_EX_TOPMOST | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TRANSPARENT;
-            
+
             CreateHandle(params1);
             UpdateLayeredWindow();
         }

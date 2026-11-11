@@ -8,6 +8,8 @@
   <Thickness x:Key="MarginSectionBottom">0,0,0,12</Thickness>
   <Thickness x:Key="MarginControlBottom">0,0,0,8</Thickness>
   <Thickness x:Key="MarginItemHorizontal">4,0,4,0</Thickness>
+  <Thickness x:Key="SelectedControlBorderThickness">2</Thickness>
+  <Thickness x:Key="MainSectionMargin">0,0,0,8</Thickness>
   <Thickness x:Key="WindowContentMargin">14,10,14,8</Thickness>
   <Thickness x:Key="WindowFooterMargin">14,10,14,16</Thickness>
   <CornerRadius x:Key="RadiusSmall">4</CornerRadius>

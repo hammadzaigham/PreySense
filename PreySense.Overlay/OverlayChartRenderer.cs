@@ -20,7 +20,6 @@ namespace PreySense.Overlay
             Pen graphGpuPen,
             SolidBrush graphCpuBrush,
             Pen graphCpuPen,
-            Pen axisPen,
             bool drawCpu = true,
             bool drawGpu = true)
         {
@@ -83,7 +82,6 @@ namespace PreySense.Overlay
             if (drawCpu) DrawSeries(cpuHistory, cpuPoints, graphCpuBrush, graphCpuPen);
 
             graphics.Restore(graphicsState);
-            graphics.DrawLine(axisPen, x, y + height, x + width, y + height);
         }
 
     }

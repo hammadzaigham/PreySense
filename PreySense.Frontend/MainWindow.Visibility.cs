@@ -54,6 +54,22 @@ public partial class MainWindow
         });
     }
 
+    private void GuardToolWindowClose()
+    {
+        if (_isExplicitExit || !IsVisible || _visibilitySession.IsHidden
+            || IsApplicationForeground(GetForegroundWindow()) != true) return;
+        // Closing an owned window briefly releases foreground before Windows activates
+        // its owner. Invalidate queued hide checks and wait for that activation handoff.
+        // Completion also runs when Closing is cancelled; no guard can remain stuck.
+        long revision = _visibilitySession.BeginRestore();
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
+        {
+            _visibilitySession.CompleteRestore(revision);
+            _visibilitySession.RecordForeground(IsApplicationForeground(GetForegroundWindow()));
+            QueueAutoHide();
+        });
+    }
+
     internal void QueueAutoHide()
     {
         if (_isExplicitExit || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
@@ -94,8 +110,6 @@ public partial class MainWindow
                 }
                 catch (InvalidOperationException) { /* Window closed during this hide cycle. */ }
             }
-            foreach (Window toast in Application.Current.Windows.OfType<Views.ModeToastWindow>().ToArray())
-                if (toast.IsVisible) toast.Hide();
             ShowInTaskbar = false;
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             Hide();

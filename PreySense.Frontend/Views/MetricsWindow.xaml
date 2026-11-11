@@ -43,6 +43,12 @@
 
                         <Separator Margin="0,4,0,8"/>
 
+                        <controls:SettingDropdownRow x:Name="DropdownOverlayTheme" Title="Theme" DropdownWidth="140"
+                                                     SelectionChanged="OverlayTheme_SelectionChanged">
+                            <ComboBoxItem Content="Dark"/>
+                            <ComboBoxItem Content="White"/>
+                        </controls:SettingDropdownRow>
+
                         <!-- HUD Scale -->
                         <Grid Margin="{StaticResource StandardRowMargin}">
                             <StackPanel>

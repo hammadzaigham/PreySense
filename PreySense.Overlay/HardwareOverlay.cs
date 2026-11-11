@@ -64,7 +64,6 @@ namespace PreySense.Overlay
         private Font? _rpmFont;
         private Font? _unitFont;
         private Font? _fpsBold;
-        private Pen? _axPen;
 
         private readonly PointF[] _basePts = new PointF[HistoryLength];
         private readonly PointF[] _cpuPts  = new PointF[HistoryLength];
@@ -211,9 +210,9 @@ namespace PreySense.Overlay
                 int newX = _dragWindowStart.X + cursor.X - _dragCursorStart.X;
                 int newY = _dragWindowStart.Y + cursor.Y - _dragCursorStart.Y;
                 Screen screen = Screen.FromPoint(cursor);
-                const int margin = 5;
-                newX = Math.Clamp(newX, screen.Bounds.Left + margin, screen.Bounds.Right  - Width  - margin);
-                newY = Math.Clamp(newY, screen.Bounds.Top  + margin, screen.Bounds.Bottom - Height - margin);
+
+                newX = ClampToDisplay(newX, screen.Bounds.Left, screen.Bounds.Right, Width);
+                newY = ClampToDisplay(newY, screen.Bounds.Top, screen.Bounds.Bottom, Height);
                 Location = new Point(newX, newY);
                 m.Result = IntPtr.Zero;
                 return;
@@ -447,7 +446,8 @@ namespace PreySense.Overlay
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.TextRenderingHint = _scalePercent <= 75 ? TextRenderingHint.ClearTypeGridFit : TextRenderingHint.AntiAliasGridFit;
+            // ClearType assumes an opaque backdrop and corrupts glyph alpha on a layered window.
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
             SolidBrush fillBrush = _dragModeActive && _bgAlpha < DragMinAlpha ? _dragBgBrush : _bgBrush;
 
@@ -485,7 +485,6 @@ namespace PreySense.Overlay
                 _rpmFont?.Dispose();  _rpmFont  = new Font("Bahnschrift", BaseRpmFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
                 _unitFont?.Dispose(); _unitFont = new Font("Bahnschrift SemiBold", (BaseFontSize - 1f) * sc, FontStyle.Regular, GraphicsUnit.Pixel);
                 _fpsBold?.Dispose();  _fpsBold  = new Font("Bahnschrift", innerH / 1.15f, FontStyle.Bold, GraphicsUnit.Pixel);
-                _axPen?.Dispose();    _axPen    = new Pen(Color.FromArgb(255, 60, 60, 60), sc * 0.5f);
             }
 
             var font    = _font!;
@@ -496,7 +495,7 @@ namespace PreySense.Overlay
 
             float charW = g.MeasureString("XX", font).Width - g.MeasureString("X", font).Width;
 
-            int topY = padY + innerPadY + 1;
+            int topY = padY + innerPadY + 2;
             int textY = topY + (int)Math.Round(sc);
             int graphH = Math.Max(1, textY + lineH + lineGap + (int)Math.Round(8f * sc) - topY);
 
@@ -530,7 +529,7 @@ namespace PreySense.Overlay
                 {
                     int graphGap = S(sc, 6);
                     int graphW = S(sc, 72);
-                    OverlayChartRenderer.DrawHistoryChart(g, colCursor + graphGap, topY, graphW, graphH, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, _axPen!, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
+                    OverlayChartRenderer.DrawHistoryChart(g, colCursor + graphGap, topY + 1, graphW, graphH, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
                     colCursor += graphGap + graphW + colGap;
                 }
             }
@@ -798,9 +797,8 @@ namespace PreySense.Overlay
                 _        => screen.Bounds.Top + edgeMargin
             };
 
-            const int margin = 5;
-            x = Math.Clamp(x, screen.Bounds.Left + margin, screen.Bounds.Right - Width - margin);
-            y = Math.Clamp(y, screen.Bounds.Top + margin, screen.Bounds.Bottom - Height - margin);
+            x = ClampToDisplay(x, screen.Bounds.Left, screen.Bounds.Right, Width);
+            y = ClampToDisplay(y, screen.Bounds.Top, screen.Bounds.Bottom, Height);
 
             Location = new Point(x, y);
         }
@@ -838,9 +836,8 @@ namespace PreySense.Overlay
             int newX = isRight  ? rightEdge  - newSize.Width  : Location.X;
             int newY = isBottom ? bottomEdge - newSize.Height : Location.Y;
 
-            const int margin = 5;
-            newX = Math.Clamp(newX, screen.Bounds.Left + margin, screen.Bounds.Right  - newSize.Width  - margin);
-            newY = Math.Clamp(newY, screen.Bounds.Top  + margin, screen.Bounds.Bottom - newSize.Height - margin);
+            newX = ClampToDisplay(newX, screen.Bounds.Left, screen.Bounds.Right, newSize.Width);
+            newY = ClampToDisplay(newY, screen.Bounds.Top, screen.Bounds.Bottom, newSize.Height);
 
             SetBounds(newX, newY, newSize.Width, newSize.Height);
             SavePosition(scalePercent: _scalePercent);
@@ -880,11 +877,11 @@ namespace PreySense.Overlay
             _gpuBrush.Color = Color.FromArgb(textAlpha, ColorTranslator.FromHtml(config.GpuTextColorHex));
             _bgBrush.Color = Color.FromArgb(_bgAlpha, background);
             _dragBgBrush.Color = Color.FromArgb(DragMinAlpha, background);
-            _graphCpuPen.Color = cpuGraph;
-            _graphGpuPen.Color = gpuGraph;
+            _graphCpuPen.Color = Color.FromArgb(textAlpha, cpuGraph);
+            _graphGpuPen.Color = Color.FromArgb(textAlpha, gpuGraph);
             _graphCpuPen.Width = _graphGpuPen.Width = config.GraphLineWidthPixels;
-            _graphCpuBrush.Color = Color.FromArgb(24, cpuGraph);
-            _graphGpuBrush.Color = Color.FromArgb(34, gpuGraph);
+            _graphCpuBrush.Color = Color.FromArgb((int)Math.Round(24 * textAlpha / 255.0), cpuGraph);
+            _graphGpuBrush.Color = Color.FromArgb((int)Math.Round(34 * textAlpha / 255.0), gpuGraph);
         }
 
         /// <summary>Called by MetricsWindow when the user changes settings while the overlay is running.</summary>
@@ -911,9 +908,8 @@ namespace PreySense.Overlay
                     int newX = isRight  ? rightEdge  - newSize.Width  : Location.X;
                     int newY = isBottom ? bottomEdge - newSize.Height : Location.Y;
 
-                    const int margin = 5;
-                    newX = Math.Clamp(newX, screen.Bounds.Left + margin, screen.Bounds.Right  - newSize.Width  - margin);
-                    newY = Math.Clamp(newY, screen.Bounds.Top  + margin, screen.Bounds.Bottom - newSize.Height - margin);
+                    newX = ClampToDisplay(newX, screen.Bounds.Left, screen.Bounds.Right, newSize.Width);
+                    newY = ClampToDisplay(newY, screen.Bounds.Top, screen.Bounds.Bottom, newSize.Height);
 
                     SetBounds(newX, newY, newSize.Width, newSize.Height);
                     SavePosition();

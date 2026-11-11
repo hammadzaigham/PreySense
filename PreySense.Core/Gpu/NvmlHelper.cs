@@ -42,29 +42,9 @@ namespace PreySense.Gpu
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct nvmlProcessInfo_t { public uint pid; public ulong usedGpuMemory; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct nvmlProcessInfo_v2_t
-        {
-            public uint pid;
-            public ulong usedGpuMemory;
-            public uint gpuInstanceId;
-            public uint computeInstanceId;
-        }
-
-        [DllImport(NvmlDll)] static extern int nvmlDeviceGetGraphicsRunningProcesses(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_t[]? infos);
-        [DllImport(NvmlDll)] static extern int nvmlDeviceGetComputeRunningProcesses(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_t[]? infos);
-        [DllImport(NvmlDll, EntryPoint = "nvmlDeviceGetGraphicsRunningProcesses_v2")]
-        static extern int nvmlDeviceGetGraphicsRunningProcesses_v2(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_v2_t[]? infos);
-        [DllImport(NvmlDll, EntryPoint = "nvmlDeviceGetComputeRunningProcesses_v2")]
-        static extern int nvmlDeviceGetComputeRunningProcesses_v2(IntPtr device, ref uint infoCount, [In, Out] nvmlProcessInfo_v2_t[]? infos);
-
-        [StructLayout(LayoutKind.Sequential)]
         struct nvmlMemory_t { public ulong total; public ulong free; public ulong used; }
 
         const int NVML_SUCCESS = 0;
-        const int NVML_ERROR_INSUFFICIENT_SIZE = 7;
 
         private static readonly object _lock = new();
         private static bool _init = false;
@@ -204,75 +184,7 @@ namespace PreySense.Gpu
             }
         }
 
-        public static System.Collections.Generic.List<uint> GetRunningProcessIds(uint gpuIndex = 0)
-        {
-            var pids = new System.Collections.Generic.List<uint>();
-            lock (_lock)
-            {
-                Init();
-                if (!_init) return pids;
-                try
-                {
-                    if (nvmlDeviceGetHandleByIndex_v2(gpuIndex, out IntPtr device) != NVML_SUCCESS) return pids;
 
-                    void CollectV2(bool graphics)
-                    {
-                        uint count = 0;
-                        int rc = graphics
-                            ? nvmlDeviceGetGraphicsRunningProcesses_v2(device, ref count, null)
-                            : nvmlDeviceGetComputeRunningProcesses_v2(device, ref count, null);
-                        if (rc != NVML_SUCCESS && rc != NVML_ERROR_INSUFFICIENT_SIZE) return;
-                        if (count == 0) count = 64;
-                        var infos = new nvmlProcessInfo_v2_t[count];
-                        rc = graphics
-                            ? nvmlDeviceGetGraphicsRunningProcesses_v2(device, ref count, infos)
-                            : nvmlDeviceGetComputeRunningProcesses_v2(device, ref count, infos);
-                        if (rc != NVML_SUCCESS) return;
-                        for (int i = 0; i < count; i++)
-                        {
-                            if (infos[i].pid > 0 && !pids.Contains(infos[i].pid))
-                                pids.Add(infos[i].pid);
-                        }
-                    }
-
-                    try
-                    {
-                        CollectV2(graphics: true);
-                        CollectV2(graphics: false);
-                    }
-                    catch (EntryPointNotFoundException)
-                    {
-                        // Older nvml.dll without the v2 exports.
-                    }
-
-                    if (pids.Count > 0) return pids;
-
-                    uint count = 64;
-                    var procInfos = new nvmlProcessInfo_t[count];
-                    if (nvmlDeviceGetGraphicsRunningProcesses(device, ref count, procInfos) == NVML_SUCCESS)
-                    {
-                        for (int i = 0; i < count; i++)
-                        {
-                            if (procInfos[i].pid > 0 && !pids.Contains(procInfos[i].pid))
-                                pids.Add(procInfos[i].pid);
-                        }
-                    }
-
-                    uint compCount = 64;
-                    var compInfos = new nvmlProcessInfo_t[compCount];
-                    if (nvmlDeviceGetComputeRunningProcesses(device, ref compCount, compInfos) == NVML_SUCCESS)
-                    {
-                        for (int i = 0; i < compCount; i++)
-                        {
-                            if (compInfos[i].pid > 0 && !pids.Contains(compInfos[i].pid))
-                                pids.Add(compInfos[i].pid);
-                        }
-                    }
-                }
-                catch { }
-            }
-            return pids;
-        }
 
         public static void Shutdown()
         {

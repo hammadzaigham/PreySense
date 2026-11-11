@@ -12,52 +12,17 @@ namespace PreySense.Tests;
 public class GpuDisplayStateTests
 {
     [TestMethod]
-    public void ReturningToAutoNotifiesIgpuTileVisibility()
+    public void GpuTilesUseFourColumnsInHybridAndTwoInBiosDiscreteMode()
     {
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
-        vm.ActiveGpuMuxMode = 2;
-        Assert.IsFalse(vm.ShowIgpuOnlyTile);
-        var changes = new List<string?>();
-        vm.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
         vm.ActiveGpuMuxMode = 1;
-        Assert.IsTrue(vm.ShowIgpuOnlyTile);
-        Assert.AreEqual(5, vm.GpuModeTileColumns);
-        CollectionAssert.Contains(changes, nameof(MainViewModel.ShowIgpuOnlyTile));
-        CollectionAssert.Contains(changes, nameof(MainViewModel.GpuModeTileColumns));
-
-        vm.ActiveGpuMuxMode = 2; // Advanced Optimus / NVIDIA Only
-        Assert.IsFalse(vm.ShowIgpuOnlyTile, "iGPU tile must hide in Advanced Optimus mode.");
-        Assert.AreEqual(4, vm.GpuModeTileColumns, "Buttons must expand to 4 columns to fit entire space in Advanced Optimus mode.");
-    }
-
-    [TestMethod]
-    public void IgpuOnlyActiveHidesAdvancedOptimusAndDgpuOnly()
-    {
-        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
-        vm.ActiveGpuMuxMode = 1; // Auto
-        Assert.IsTrue(vm.ShowIgpuOnlyTile);
-        Assert.IsTrue(vm.ShowAdvancedOptimusTile);
-        Assert.IsTrue(vm.ShowDgpuOnlyTile);
         Assert.IsTrue(vm.ShowDdsGpuTiles);
-        Assert.AreEqual(5, vm.GpuModeTileColumns);
-
-        var changes = new List<string?>();
-        vm.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
-
-        vm.IsGpuIgpuOnlyActive = true;
-        Assert.IsTrue(vm.ShowIgpuOnlyTile);
-        Assert.IsTrue(vm.ShowDdsGpuTiles);
-        Assert.IsFalse(vm.ShowAdvancedOptimusTile);
-        Assert.IsFalse(vm.ShowDgpuOnlyTile);
-        Assert.AreEqual(3, vm.GpuModeTileColumns); // Auto, iGPU Only, Hybrid
-        CollectionAssert.Contains(changes, nameof(MainViewModel.ShowAdvancedOptimusTile));
-        CollectionAssert.Contains(changes, nameof(MainViewModel.ShowDgpuOnlyTile));
-        CollectionAssert.Contains(changes, nameof(MainViewModel.GpuModeTileColumns));
-
-        vm.IsGpuIgpuOnlyActive = false;
-        Assert.IsTrue(vm.ShowAdvancedOptimusTile);
-        Assert.IsTrue(vm.ShowDgpuOnlyTile);
-        Assert.AreEqual(5, vm.GpuModeTileColumns);
+        Assert.AreEqual(4, vm.GpuModeTileColumns);
+        vm.ActiveGpuMuxMode = 2;
+        Assert.AreEqual(4, vm.GpuModeTileColumns);
+        vm.IsBiosDiscreteGpuActive = true;
+        Assert.IsFalse(vm.ShowDdsGpuTiles);
+        Assert.AreEqual(2, vm.GpuModeTileColumns);
     }
 
     [TestMethod]
@@ -193,45 +158,4 @@ public class GpuDisplayStateTests
         }
     }
 
-    [TestMethod]
-    [DataRow(false, false, false, 1)]
-    [DataRow(true, true, true, 1)]
-    [DataRow(true, false, true, 2)]
-    [DataRow(false, true, false, 2)]
-    [DataRow(true, false, false, 3)]
-    public async Task DeviceChecksStopWhenWindowsConfirmsTheExpectedState(bool expected, bool first, bool next, int expectedReads)
-    {
-        var hardware = new DeviceStateSequence(first, next);
-        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            var dispatcher = Dispatcher.CurrentDispatcher;
-            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
-            dispatcher.BeginInvoke(async () =>
-            {
-                try
-                {
-                    var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
-                    typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, hardware);
-                    typeof(MainViewModel).GetField("_dispatcher", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, dispatcher);
-                    await (Task)typeof(MainViewModel).GetMethod("RefreshGpuDeviceModeStateAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
-                        .Invoke(vm, new object?[] { 3, false, expected })!;
-                    completed.SetResult();
-                }
-                catch (Exception ex) { completed.SetException(ex); }
-                finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal); }
-            });
-            Dispatcher.Run();
-        }) { IsBackground = true };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.AreEqual(expectedReads, hardware.Reads);
-    }
-
-    private sealed class DeviceStateSequence(bool first, bool next) : MockHardwareService, IHardwareService
-    {
-        public int Reads;
-        public new bool? IsDiscreteGpuDisabled => Interlocked.Increment(ref Reads) == 1 ? first : next;
-    }
 }

@@ -72,6 +72,11 @@ namespace PreySense.Rgb
 
         public CustomEffectMode CurrentMode => _currentMode;
         public bool IsRunning => _currentMode != CustomEffectMode.None && _cts != null && !_cts.IsCancellationRequested;
+        /// <summary>True while the software idle timeout has forced the keyboard backlight off.</summary>
+        public bool IsIdleDimmed
+        {
+            get { lock (_lock) return _idleDimmed; }
+        }
 
         public Color ActiveBrushColor
         {
@@ -114,7 +119,8 @@ namespace PreySense.Rgb
         /// </summary>
         public void StartEffect(CustomEffectMode mode, byte brightness, int speed)
         {
-            Stop();
+            // Join the previous loop so two writers cannot overlap on the HID gate.
+            StopAndWait();
 
             if (mode is CustomEffectMode.None or CustomEffectMode.CpuHeatmap or CustomEffectMode.BatteryFuelGauge
                 or CustomEffectMode.OceanTide or CustomEffectMode.IceCrystal)
@@ -201,6 +207,7 @@ namespace PreySense.Rgb
             lock (_lock)
             {
                 _currentMode = CustomEffectMode.None;
+                _idleDimmed = false;
                 if (_cts != null)
                 {
                     try
@@ -366,6 +373,8 @@ namespace PreySense.Rgb
                             lock (_lock)
                             {
                                 _idleDimmed = true;
+                                Array.Copy(IdleOffFrame, _lastFrame, 4);
+                                _hasLastFrame = true;
                             }
 
                             _wmi.SetZoneColors(IdleOffFrame, 0);

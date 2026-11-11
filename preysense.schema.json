@@ -29,6 +29,12 @@
           "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR).",
           "title": "Language"
         },
+        "Theme": {
+          "type": ["string", "null"],
+          "enum": ["Dark", "Light", "Glass", null],
+          "title": "Theme",
+          "description": "Glass uses Windows 11 Desktop Acrylic with translucent controls. Null retains a legacy light preference; otherwise Dark is the default."
+        },
         "LightTheme": {
           "type": "boolean",
           "description": "True for light UI theme, false for dark UI theme.",
@@ -337,6 +343,12 @@
     "Overlay": {
       "type": "object",
       "properties": {
+        "Theme": {
+          "type": "string",
+          "enum": ["Dark", "White"],
+          "title": "Overlay Theme",
+          "description": "Appearance preset selected in the overlay UI. Colors and opacity remain editable independently afterward."
+        },
         "Enabled": {
           "type": "boolean",
           "title": "Enabled"
@@ -563,6 +575,25 @@
         "ApplyGpuLimits": {
           "type": "boolean",
           "title": "Apply GPU Limits"
+        },
+        "ApplyGpuClockOffsets": {
+          "type": "boolean",
+          "title": "Apply GPU overclocking",
+          "description": "When false, skip all GPU clock-offset writes, including resets."
+        },
+        "GpuCoreClockOffsetMhz": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 500,
+          "title": "GPU core clock offset (MHz)",
+          "description": "Also constrained by the current NVIDIA driver/firmware range."
+        },
+        "GpuMemoryClockOffsetMhz": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 2147483,
+          "title": "GPU memory clock offset (MHz)",
+          "description": "Actual limits come from NVAPI P0 memory frequency-delta readback; this schema bound only prevents kHz integer overflow."
         },
         "PlatformPowerOffsetWatts": {
           "title": "Platform power offset (W)",

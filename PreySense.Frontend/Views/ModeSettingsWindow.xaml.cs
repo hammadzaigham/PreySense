@@ -63,7 +63,7 @@ namespace PreySense.Frontend.Views
             {
                 vm.PropertyChanged -= OnTuningVmPropertyChanged;
                 vm.PropertyChanged += OnTuningVmPropertyChanged;
-                await vm.RefreshProchotLockStateAsync();
+                await System.Threading.Tasks.Task.WhenAll(vm.RefreshProchotLockStateAsync(), vm.RefreshGpuClockTuningAsync());
             }
             SyncFromViewModel();
         }
@@ -173,6 +173,7 @@ namespace PreySense.Frontend.Views
                 Draft.ApplyGpuLimits = false;
             if (SwitchApplyGpuLimits != null)
                 SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits && vm.IsGpuProfileTuningAvailable;
+            LoadGpuClockRows(vm);
             UpdateGpuDraftLabels();
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
@@ -187,6 +188,59 @@ namespace PreySense.Frontend.Views
             Draft.ApplyGpuLimits = gpuOk && SwitchApplyGpuLimits?.IsChecked == true;
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
+        }
+
+        private void LoadGpuClockRows(MainViewModel vm)
+        {
+            var state = vm.GpuClockTuningState;
+            SwitchGpuOverclocking.IsChecked = Draft.ApplyGpuClockOffsets;
+            bool available = HasSteppedClockRanges(state);
+            SwitchGpuOverclocking.IsEnabled = available || Draft.ApplyGpuClockOffsets;
+            if (available)
+            {
+                var core = state!.Core.ForStep(PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+                var memory = state.Memory.ForStep(PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+                RowGpuCoreClock.Minimum = Math.Max(0, core.MinimumMhz);
+                RowGpuCoreClock.Maximum = Math.Min(PreySense.Gpu.GpuClockTuningState.MaximumCoreOffsetMhz, core.MaximumMhz);
+                RowGpuMemoryClock.Minimum = memory.MinimumMhz;
+                RowGpuMemoryClock.Maximum = memory.MaximumMhz;
+                RowGpuCoreClock.Value = state.Core.Snap(Draft.GpuCoreClockOffsetMhz ?? state.Current.CoreMhz, PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+                RowGpuMemoryClock.Value = state.Memory.Snap(Draft.GpuMemoryClockOffsetMhz ?? state.Current.MemoryMhz, PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+            }
+            RowGpuCoreClock.ValueText = available ? $"{RowGpuCoreClock.Value:+0;-0;0} MHz" : "N/A";
+            RowGpuMemoryClock.ValueText = available ? $"{RowGpuMemoryClock.Value:+0;-0;0} MHz" : "N/A";
+            GpuOverclockingPanel.IsEnabled = available && Draft.ApplyGpuClockOffsets;
+        }
+
+        private void GpuOverclockingToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
+            Draft.ApplyGpuClockOffsets = SwitchGpuOverclocking.IsChecked == true;
+            GpuOverclockingPanel.IsEnabled = Draft.ApplyGpuClockOffsets &&
+                DataContext is MainViewModel vm && HasSteppedClockRanges(vm.GpuClockTuningState);
+            if (DataContext is MainViewModel clockVm)
+                SwitchGpuOverclocking.IsEnabled = HasSteppedClockRanges(clockVm.GpuClockTuningState) || Draft.ApplyGpuClockOffsets;
+            UpdateActionButtonsEnabled();
+        }
+
+        private static bool HasSteppedClockRanges(PreySense.Gpu.GpuClockTuningState? state) => state is not null
+            && state.Core.ForStep(PreySense.Gpu.GpuClockTuningState.CoreStepMhz) is var core && core.MinimumMhz <= core.MaximumMhz
+            && state.Memory.ForStep(PreySense.Gpu.GpuClockTuningState.MemoryStepMhz) is var memory && memory.MinimumMhz <= memory.MaximumMhz;
+
+        private void GpuClockOffset_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
+            StoreGpuClockSliders();
+        }
+
+        private void StoreGpuClockSliders()
+        {
+            if (DataContext is not MainViewModel vm || !HasSteppedClockRanges(vm.GpuClockTuningState)) return;
+            var state = vm.GpuClockTuningState!;
+            Draft.GpuCoreClockOffsetMhz = state.Core.Snap((int)Math.Round(RowGpuCoreClock.Value), PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+            Draft.GpuMemoryClockOffsetMhz = state.Memory.Snap((int)Math.Round(RowGpuMemoryClock.Value), PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+            RowGpuCoreClock.ValueText = $"{Draft.GpuCoreClockOffsetMhz:+0;-0;0} MHz";
+            RowGpuMemoryClock.ValueText = $"{Draft.GpuMemoryClockOffsetMhz:+0;-0;0} MHz";
         }
 
         private void ProchotOffsetToggle_Changed(object sender, RoutedEventArgs e)
@@ -212,9 +266,9 @@ namespace PreySense.Frontend.Views
         {
             bool anyLimits = SwitchApplyCpuLimits?.IsChecked == true || SwitchApplyGpuLimits?.IsChecked == true;
             bool prochotOnly = SwitchProchotOffset?.IsChecked == true;
-            bool canAct = anyLimits || prochotOnly;
+            bool canAct = anyLimits || prochotOnly || SwitchGpuOverclocking?.IsChecked == true;
             if (BtnApply != null) BtnApply.IsEnabled = canAct;
-            if (BtnSave != null) BtnSave.IsEnabled = canAct;
+            if (BtnSave != null) BtnSave.IsEnabled = true;
             if (BtnReset != null) BtnReset.IsEnabled = canAct;
         }
 
@@ -404,6 +458,7 @@ namespace PreySense.Frontend.Views
             if (confirmation.ShowDialog() != true)
                 return;
 
+            bool resetGpuClocks = SwitchGpuOverclocking.IsChecked == true;
             _isUpdatingUi = true;
             vm.ResetModeToCapturedFactoryDefaults(_selectedModeIndex);
             _drafts[_selectedModeIndex] = vm.FactoryTuningMode(_selectedModeIndex) ?? new();
@@ -425,7 +480,9 @@ namespace PreySense.Frontend.Views
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
                     ReadGpuOffsets(), persist: true, vm.ProchotOffsetCelsius, applyProchot,
                     applyCpuLimits: true, applyGpuLimits: vm.IsGpuProfileTuningAvailable,
-                    persistApplySwitches: false, restoreMsrToStaticFloor: true);
+                    persistApplySwitches: false, restoreMsrToStaticFloor: true,
+                    clockOffsets: resetGpuClocks ? new PreySense.Gpu.GpuClockOffsets(0, 0) : null,
+                    applyGpuClockOffsets: resetGpuClocks);
                 Draft.ApplyCpuLimits = false;
                 Draft.ApplyGpuLimits = false;
                 vm.IsProchotOffsetEnabled = false;
@@ -468,6 +525,8 @@ namespace PreySense.Frontend.Views
             SetVerificationText(string.Empty);
             RowPl1.CommitText(notify: false); RowPl2.CommitText(notify: false);
             RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
+            StoreGpuClockSliders();
+            Draft.ApplyGpuClockOffsets = SwitchGpuOverclocking.IsChecked == true;
             bool applyProchot = SwitchProchotOffset?.IsChecked == true;
             vm.IsProchotOffsetEnabled = applyProchot;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
@@ -484,9 +543,9 @@ namespace PreySense.Frontend.Views
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
-            if (!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot)
+            if (!persist && !Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot && !Draft.ApplyGpuClockOffsets)
             {
-                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, or PROCHOT first."),
+                SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, GPU overclocking, or PROCHOT first."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -510,9 +569,13 @@ namespace PreySense.Frontend.Views
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
                     ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, applyProchot,
-                    Draft.ApplyCpuLimits, Draft.ApplyGpuLimits);
+                    Draft.ApplyCpuLimits, Draft.ApplyGpuLimits,
+                    clockOffsets: Draft.HasGpuClockValues ? new PreySense.Gpu.GpuClockOffsets(
+                        Draft.GpuCoreClockOffsetMhz!.Value, Draft.GpuMemoryClockOffsetMhz!.Value) : null,
+                    applyGpuClockOffsets: Draft.ApplyGpuClockOffsets);
                 string message = verified
-                    ? Services.LocalizationService.Translate("Applied and read back successfully.")
+                    ? Services.LocalizationService.Translate(!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot && !Draft.ApplyGpuClockOffsets
+                        ? "Saved. Disabled tuning sections were skipped." : "Applied and read back successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
                         ? Services.LocalizationService.Translate("Could not apply.")
                         : vm.DiagnosticMessage);

@@ -56,9 +56,7 @@ namespace PreySense.Core.Services
 
         // NVIDIA Advanced Optimus (Dynamic Display Switch / DDS - Reboot-Free)
         bool IsDdsAvailable { get; }
-        bool EnableDiscreteGpu() => false;
         void RefreshGpuAdapter() { }
-        bool? IsDiscreteGpuDisabled => null;
         bool IsDdsSupported();
         Gpu.DdsStatus? GetDdsStatus();
         bool HasDdsBlockers();
@@ -77,6 +75,7 @@ namespace PreySense.Core.Services
         int? GetKeyboardBrightness();
 
         // Cover / Top Logo Backlight
+        bool IsCoverLightingAvailable => false;
         void SetCoverLogoLighting(int mode, Color color, byte brightness, byte speed, bool enabled = true);
 
         // Native WMI / platform system controls
@@ -99,8 +98,5 @@ namespace PreySense.Core.Services
         bool SetDisplayRefreshRate(int hz);
         System.Collections.Generic.List<int> GetSupportedRefreshRates();
 
-        // dGPU Battery Sentinel
-        System.Collections.Generic.List<Gpu.GpuProcessInfo> GetActiveGpuProcesses();
-        bool KillProcess(uint pid);
     }
 }

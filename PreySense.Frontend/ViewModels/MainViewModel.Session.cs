@@ -141,9 +141,8 @@ namespace PreySense.Frontend.ViewModels
             bool gateHeld = false;
             try
             {
-                await _modeSwitchGate.WaitAsync();
+                if (!await TryEnterModeSwitchGateAsync()) return;
                 gateHeld = true;
-                if (_disposed) return;
                 _isRestoringSession = true;
                 AppLogger.Log($"Restoring PreySense session settings ({reason}).");
                 byte mode = ActivePowerMode;
@@ -213,8 +212,7 @@ namespace PreySense.Frontend.ViewModels
                 if (gateHeld)
                 {
                     _isRestoringSession = false;
-                    try { _modeSwitchGate.Release(); }
-                    catch (ObjectDisposedException) { }
+                    ExitModeSwitchGate();
                 }
             }
         }
