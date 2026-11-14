@@ -11,7 +11,7 @@ public class TuningCalibrationTests
     internal static Dictionary<string, ModeTuningConfig> Defaults() =>
         new[] { "Eco", "Quiet", "Balanced", "Performance", "Turbo" }.ToDictionary(name => name, _ =>
             new ModeTuningConfig { CpuPl1Watts = 45, CpuPl2Watts = 80, TauSeconds = 56,
-                GpuDeltaWatts = 20, GpuDynamicBoostWatts = 15, PlatformPowerOffsetWatts = 10, GpuWatts = 120, CpuBoost = true });
+                GpuRuntimeLimitWatts = 140, GpuWatts = 120, CpuBoost = true });
 
     private static MainViewModel.FactoryDefaultsCapture Capture() => new(Defaults(), 55, 80);
 
@@ -110,12 +110,12 @@ public class TuningCalibrationTests
     }
 
     [TestMethod]
-    public async Task StartupCapture_SavesDefaultsWithoutEnablingTuning()
+    public async Task StartupCapture_SavesDefaultsAndMakesTuningAvailable()
     {
         _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
         Assert.IsTrue(_store.Reload().Tuning.HasFactoryDefaults);
-        Assert.IsFalse(_vm.IsHardwareTuningEnabled);
+        Assert.IsTrue(_vm.IsHardwareTuningEnabled);
         Assert.IsFalse(_store.GetCurrent().General.HardwareTuningEnabled);
         _vm.CaptureTuningDefaults = () => throw new AssertFailedException("Existing defaults must be preserved.");
         await _vm.CaptureMissingFactoryDefaultsAsync();
@@ -174,8 +174,7 @@ public class TuningCalibrationTests
             cfg.Tuning.Turbo.CpuPl1Watts = 99;
             cfg.Tuning.Turbo.CpuPl2Watts = 140;
             cfg.Tuning.Turbo.TauSeconds = 32;
-            cfg.Tuning.Turbo.GpuDeltaWatts = 10;
-            cfg.Tuning.Turbo.GpuDynamicBoostWatts = 15;
+            cfg.Tuning.Turbo.GpuRuntimeLimitWatts = 150;
             cfg.Tuning.Turbo.CpuBoostMode = 1;
             cfg.Tuning.ProchotOffsetCelsius = 7;
             cfg.Tuning.ApplyProchotOffset = true;
@@ -191,7 +190,7 @@ public class TuningCalibrationTests
         Assert.IsNull(saved.Tuning.Turbo.CpuPl1Watts);
         Assert.IsNull(saved.Tuning.Turbo.CpuPl2Watts);
         Assert.IsNull(saved.Tuning.Turbo.TauSeconds);
-        Assert.IsNull(saved.Tuning.Turbo.GpuDeltaWatts);
+        Assert.IsNull(saved.Tuning.Turbo.GpuRuntimeLimitWatts);
         Assert.IsNull(saved.Tuning.ProchotOffsetCelsius);
         Assert.IsFalse(saved.Tuning.ApplyProchotOffset);
         await Task.CompletedTask;
@@ -209,7 +208,7 @@ public class TuningCalibrationTests
         var draft = _vm.TuningEditorMode(4);
         Assert.AreEqual(60, draft.CpuPl1Watts);
         Assert.AreEqual(80, draft.CpuPl2Watts);
-        Assert.AreEqual(20, draft.GpuDeltaWatts);
+        Assert.IsNull(draft.GpuRuntimeLimitWatts, "Factory defaults must not become a saved custom GPU target.");
         Assert.AreEqual(5, _vm.TuningEditorProchotOffset);
         draft.CpuPl2Watts = 100;
         Assert.IsNull(_store.GetCurrent().Tuning.Turbo.CpuPl2Watts);
@@ -227,8 +226,7 @@ public class TuningCalibrationTests
             Assert.IsFalse(profile.HasValues);
             Assert.IsNull(profile.CpuPl1Watts); Assert.IsNull(profile.CpuPl2Watts);
             Assert.IsNull(profile.TauSeconds); Assert.IsNull(profile.GpuWatts);
-            Assert.IsNull(profile.GpuDeltaWatts); Assert.IsNull(profile.GpuDynamicBoostWatts);
-            Assert.IsNull(profile.PlatformPowerOffsetWatts);
+            Assert.IsNull(profile.GpuRuntimeLimitWatts);
             Assert.IsNull(profile.CpuBoost);
         }
     }
@@ -254,16 +252,16 @@ public class TuningCalibrationTests
     }
 
     [TestMethod]
-    public async Task StartupCapture_RestoresEnabledTuningAfterDefaultsAreFilled()
+    public async Task StartupCapture_AutomaticallyEnablesTuningEvenWhenLegacySwitchWasOff()
     {
-        _store.Update(cfg => cfg.General.HardwareTuningEnabled = true);
+        _store.Update(cfg => cfg.General.HardwareTuningEnabled = false);
         Assert.IsFalse(_store.GetCurrent().Tuning.HasFactoryDefaults);
         Assert.IsFalse(_vm.IsHardwareTuningEnabled);
         _vm.CaptureTuningDefaults = Capture;
         await _vm.CaptureMissingFactoryDefaultsAsync();
         Assert.IsTrue(_store.Reload().Tuning.HasFactoryDefaults);
         Assert.IsTrue(_vm.IsHardwareTuningEnabled);
-        Assert.IsTrue(_store.GetCurrent().General.HardwareTuningEnabled);
+        Assert.IsFalse(_store.GetCurrent().General.HardwareTuningEnabled, "The obsolete preference is not rewritten.");
     }
 
     [TestMethod]

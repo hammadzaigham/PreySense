@@ -26,6 +26,7 @@ debug.log
 *.cache
 
 scratch/
+tmp/
 
 # Local reports, settings, firmware research, and development tools
 outputs/

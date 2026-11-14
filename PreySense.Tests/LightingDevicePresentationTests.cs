@@ -13,7 +13,8 @@ public class LightingDevicePresentationTests
             [new(-1, "Custom colors"), new(0, "Static"), new(3, "Wave", true)], "Sample");
         Assert.AreEqual("Per-Key Keyboard", device.DisplayName);
         var modes = device.GetEditorModes();
-        Assert.HasCount(2, modes);
+        Assert.HasCount(3, modes);
+        Assert.IsTrue(ModeKeyLighting.IsFollowMode(modes[2].Value));
         Assert.AreEqual("Static", modes[0].Name);
         Assert.AreEqual(-1, modes[0].Value, "The existing individual-color transport ID must be retained.");
         Assert.AreEqual(3, modes[1].Value);
@@ -29,9 +30,10 @@ public class LightingDevicePresentationTests
         Assert.AreEqual("Dynamic Bar", bar.DisplayName);
         Assert.AreEqual("Dynamic Bar (Front)", (bar with { Name = "Front lightbar" }).DisplayName);
         Assert.AreEqual("Static", bar.GetEditorModes()[0].Name);
-        Assert.HasCount(2, bar.GetEditorModes());
+        Assert.HasCount(3, bar.GetEditorModes());
+        Assert.IsTrue(ModeKeyLighting.IsFollowMode(bar.GetEditorModes()[2].Value));
         var zones = bar with { Kind = "Keyboard", Name = "Acer keyboard" };
         Assert.AreEqual("Zone Keyboard", zones.DisplayName);
-        Assert.AreSame(zones.Modes, zones.GetEditorModes());
+        CollectionAssert.AreEqual(zones.Modes.ToArray(), zones.GetEditorModes().Where(m => !ModeKeyLighting.IsFollowMode(m.Value)).ToArray());
     }
 }

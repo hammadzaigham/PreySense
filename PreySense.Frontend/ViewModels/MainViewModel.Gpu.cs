@@ -17,9 +17,53 @@ namespace PreySense.Frontend.ViewModels
 
         // GPU Power Target & Driver Hardware Controls
         [ObservableProperty] private int _gpuPowerTargetWatts = 130;
-        [ObservableProperty] private int _gpuPowerTargetMin = GpuPowerLimitConfiguration.MinimumPowerLimitWatts;
-        [ObservableProperty] private int _gpuPowerTargetMax = GpuPowerLimitConfiguration.MaximumPowerLimitWatts;
+        [ObservableProperty] private int _gpuPowerTargetMin = GpuPowerBaseline.ReadWatts() ?? 70;
+        [ObservableProperty] private int _gpuPowerTargetMax = (GpuPowerBaseline.ReadWatts() ?? 85)
+            + PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
+            + PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDynamicBoostWatts;
         [ObservableProperty] private int? _gpuBasePowerWatts = GpuPowerBaseline.ReadWatts();
+
+        [ObservableProperty] private int? _customEcoGpuRuntimeWatts;
+        [ObservableProperty] private int? _customQuietGpuRuntimeWatts;
+        [ObservableProperty] private int? _customBalancedGpuRuntimeWatts;
+        [ObservableProperty] private int? _customPerfGpuRuntimeWatts;
+        [ObservableProperty] private int? _customTurboGpuRuntimeWatts;
+
+        public void SetGpuRuntimeLimitForModeIndex(int modeIndex, int? watts)
+        {
+            switch (modeIndex)
+            {
+                case 0: CustomEcoGpuRuntimeWatts = watts; break;
+                case 1: CustomQuietGpuRuntimeWatts = watts; break;
+                case 2: CustomBalancedGpuRuntimeWatts = watts; break;
+                case 3: CustomPerfGpuRuntimeWatts = watts; break;
+                case 4: CustomTurboGpuRuntimeWatts = watts; break;
+            }
+        }
+
+        public int GetFactoryDefaultGpuWatts(int modeIndex)
+        {
+            byte mode = ModeIndexToByte(modeIndex);
+            var factory = FactoryTuningMode(modeIndex);
+            return factory?.GpuWatts ?? (GpuBasePowerWatts.HasValue && factory?.HasGpuLimitValues == true
+                ? GpuBasePowerWatts.Value + factory.GpuDeltaWatts!.Value + factory.GpuDynamicBoostWatts!.Value
+                : GpuPowerTargetMin);
+        }
+
+        public async Task<bool> ResetGpuRuntimeLimitForModeAsync(int modeIndex)
+        {
+            byte mode = ModeIndexToByte(modeIndex);
+            SetGpuRuntimeLimitForModeIndex(modeIndex, null);
+            if (!IsGpuProfileTuningAvailable)
+            {
+                DiagnosticMessage = "GPU profile table was not found on this laptop.";
+                return false;
+            }
+            bool applied = await ApplyTuningProfileAsync(mode, 0, 0, 0, GetFactoryDefaultGpuWatts(modeIndex),
+                persist: false, applyCpuLimits: false);
+            if (applied) TuningStore.Update(cfg => ProfileForMode(cfg.Tuning, mode).GpuRuntimeLimitWatts = null);
+            return applied;
+        }
 
         [ObservableProperty] private int _customQuietGpuWatts = 85;
         [ObservableProperty] private int _customEcoGpuWatts = 85;
@@ -54,6 +98,8 @@ namespace PreySense.Frontend.ViewModels
                         return;
 
                     GpuBasePowerWatts = baseline;
+                    if (baseline.HasValue)
+                        GpuPowerTargetMin = baseline.Value;
                     ActiveGpuPowerCeiling = "N/A";
                 });
             }
@@ -173,10 +219,10 @@ namespace PreySense.Frontend.ViewModels
         [RelayCommand]
         public async Task ApplyGpuClocksAsync()
         {
-            var offsets = GpuOffsetsForMode(GpuModeIndex(ActivePowerMode));
-            if (offsets is null) { DiagnosticMessage = "Set GPU offsets before applying."; return; }
+            int modeIndex = GpuModeIndex(ActivePowerMode);
+            int? limit = GpuRuntimeLimitForModeIndex(modeIndex);
             await ApplyTuningProfileAsync(ActivePowerMode, Pl1Watts, Pl2Watts,
-                TauForMode(ActivePowerMode), offsets, persist: false);
+                TauForMode(ActivePowerMode), limit, persist: false);
         }
 
         [RelayCommand]

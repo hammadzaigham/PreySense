@@ -14,11 +14,9 @@ public class AutomaticDriverTuningTests
         foreach (var profile in new[] { config.Tuning.Quiet, config.Tuning.Eco, config.Tuning.Balanced, config.Tuning.Performance, config.Tuning.Turbo })
         {
             profile.CpuPl1Watts ??= 45; profile.CpuPl2Watts ??= 80; profile.TauSeconds ??= 56;
-            profile.GpuDeltaWatts ??= 20; profile.GpuDynamicBoostWatts ??= 15;
-            profile.PlatformPowerOffsetWatts ??= 10;
+            profile.GpuRuntimeLimitWatts ??= 140;
             profile.CpuBoost ??= true; profile.CpuBoostMode ??= profile.CpuBoost == true ? 1 : 0;
             profile.ApplyCpuLimits = true;
-            profile.ApplyGpuLimits = true;
         }
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
         void Set(string name, object value) => typeof(MainViewModel)
@@ -28,7 +26,19 @@ public class AutomaticDriverTuningTests
         Set("_modeSwitchLock", new object());
         Set("_isHardwareTuningEnabled", true);
         vm.TuningConfigurationReader = () => config;
+        vm.CpuBoostWriter = _ => true; // Keep Windows power-policy writes inside the fake.
         return vm;
+    }
+
+    [TestMethod]
+    public void GlobalCpuControlOffSkipsSavedModeCpuLimitsDuringModeSelection()
+    {
+        var cfg = new PreySenseConfig();
+        cfg.Tuning.EnableCpuPowerLimitControl = false;
+        cfg.Tuning.EnableGpuPowerLimitControl = false;
+        var vm = Create(cfg);
+        vm.DriverTuningExecutor = _ => throw new AssertFailedException("Disabled mode CPU limits must not write during a game mode switch either.");
+        Assert.IsTrue(vm.ApplySavedDriverTuning(1).Success);
     }
 
     [TestMethod]
@@ -42,7 +52,7 @@ public class AutomaticDriverTuningTests
             5 => config.Tuning.Turbo, _ => config.Tuning.Eco
         };
         profile.CpuPl1Watts = 61; profile.CpuPl2Watts = 103; profile.TauSeconds = 32;
-        profile.GpuDeltaWatts = 35; profile.GpuDynamicBoostWatts = 20; profile.PlatformPowerOffsetWatts = 15;
+        profile.GpuRuntimeLimitWatts = 145;
         var vm = Create(config);
         MainViewModel.DriverTuningRequest? captured = null;
         vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };
@@ -53,9 +63,7 @@ public class AutomaticDriverTuningTests
         Assert.AreEqual(61, captured.Value.Pl1);
         Assert.AreEqual(103, captured.Value.Pl2);
         Assert.AreEqual(32, captured.Value.Tau);
-        Assert.AreEqual(35, captured.Value.Offsets.DeltaWatts);
-        Assert.AreEqual(20, captured.Value.Offsets.DynamicBoostWatts);
-        Assert.AreEqual(15, captured.Value.Offsets.PlatformOffsetWatts);
+        Assert.AreEqual(145, captured.Value.GpuRuntimeLimitWatts);
         // Re-reading must see newly saved values rather than an old editor draft.
         profile.CpuPl1Watts = 72;
         vm.ApplySavedDriverTuning((byte)mode);
@@ -233,7 +241,7 @@ public class AutomaticDriverTuningTests
             captured = request;
             return new(false, "GPU profile applied; CPU limits failed: locked");
         };
-        bool success = await vm.ApplyTuningProfileAsync(5, 70, 110, 56, new(30, 15), persist: false);
+        bool success = await vm.ApplyTuningProfileAsync(5, 70, 110, 56, 145, persist: false);
         Assert.IsFalse(success);
         Assert.IsNotNull(captured);
         Assert.AreEqual(70, captured.Value.Pl1);
@@ -254,7 +262,7 @@ public class AutomaticDriverTuningTests
         Assert.AreNotEqual((byte)5, hw.CurrentPowerMode);
         var vm = Create(config);
         config.Tuning.Turbo.ApplyCpuLimits = true;
-        config.Tuning.Turbo.ApplyGpuLimits = false;
+        config.Tuning.Turbo.GpuRuntimeLimitWatts = null;
         typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(vm, hw);
         MainViewModel.DriverTuningRequest? captured = null;
@@ -281,8 +289,8 @@ public class AutomaticDriverTuningTests
         typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(vm, hw);
         vm.DriverTuningExecutor = _ => new(true, "verified");
-        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
-            applyCpuLimits: true, applyGpuLimits: false));
+        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, null, false, 10, true,
+            applyCpuLimits: true));
         Assert.AreEqual(before, hw.CurrentPowerMode);
     }
 }

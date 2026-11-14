@@ -21,12 +21,42 @@
       "title": "Settings Format Version",
       "description": "Must be 2. Version 1, future versions, and files without an explicit version are not supported or automatically converted."
     },
+    "Games": {
+      "type": "object",
+      "title": "Games",
+      "properties": {
+        "Enabled": { "type": "boolean", "default": false },
+        "Profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ExecutablePath": { "type": "string" },
+              "DisplayName": { "type": "string" },
+              "PowerMode": { "type": "integer", "enum": [0, 1, 4, 5, 6], "default": 5 },
+              "Enabled": { "type": "boolean", "default": true },
+              "ApplyCpuLimits": { "type": "boolean", "default": false },
+              "CpuPl1Watts": { "type": ["integer", "null"], "minimum": 5, "maximum": 300 },
+              "CpuPl2Watts": { "type": ["integer", "null"], "minimum": 5, "maximum": 300 },
+              "TauSeconds": { "type": ["integer", "null"], "minimum": 0, "maximum": 449 },
+              "ApplyGpuLimits": { "type": "boolean", "default": false },
+              "GpuDeltaWatts": { "type": ["integer", "null"], "minimum": 0, "maximum": 255, "multipleOf": 5 },
+              "GpuDynamicBoostWatts": { "type": ["integer", "null"], "minimum": 0, "maximum": 25, "multipleOf": 5 },
+              "PlatformPowerOffsetWatts": { "type": ["integer", "null"], "minimum": 0, "maximum": 255, "multipleOf": 5 },
+              "GpuPowerWatts": { "type": ["integer", "null"], "minimum": 5, "maximum": 999 },
+              "ApplyCpuBoost": { "type": "boolean", "default": false },
+              "CpuBoostMode": { "type": ["integer", "null"], "minimum": 0, "maximum": 6 }
+            }
+          }
+        }
+      }
+    },
     "General": {
       "type": "object",
       "properties": {
         "Language": {
           "type": "string",
-          "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR).",
+          "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR, tr-TR).",
           "title": "Language"
         },
         "Theme": {
@@ -141,6 +171,11 @@
     "Tuning": {
       "type": "object",
       "properties": {
+        "EnableCpuBoostTuningControl": {
+          "type": "boolean", "default": true,
+          "title": "Enable CPU Boost Tuning",
+          "description": "Apply the selected mode CPU boost policy on every mode change, regardless of legacy per-mode apply flags."
+        },
         "Quiet": {
           "$ref": "#/definitions/ModeTuning",
           "title": "Quiet"
@@ -215,6 +250,11 @@
     "Fans": {
       "type": "object",
       "properties": {
+        "SynchronizeFanSpeeds": {
+          "type": "boolean",
+          "default": true,
+          "description": "Synchronize CPU and GPU fan speeds."
+        },
         "Quiet": {
           "$ref": "#/definitions/ModeFanCurve",
           "title": "Quiet"
@@ -241,9 +281,21 @@
     "Lighting": {
       "type": "object",
       "properties": {
+        "ModeBrightness": { "type": "integer", "minimum": 0, "maximum": 100, "default": 100, "description": "Shared brightness for every device using Mode lighting." },
+        "PowerModeColors": {
+          "type": "object",
+          "description": "Shared Mode lighting overrides for all devices, keyed by hex performance mode (00, 01, 04, 05, 06). Missing colors use the firmware palette.",
+          "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        },
         "Keyboard": {
           "type": "object",
           "properties": {
+            "Direction": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "maximum": 5,
+              "description": "Effect direction from the controller's supported choices; null preserves the native default."
+            },
             "Brightness": {
               "type": "integer",
               "minimum": 0,
@@ -261,6 +313,11 @@
               "minimum": 0,
               "maximum": 120,
               "title": "Backlight Timeout Seconds"
+            },
+            "PowerModeColors": {
+              "type": "object",
+              "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "title": "Power Mode Colors"
             },
             "SelectedColorHex": {
               "type": "string",
@@ -547,34 +604,21 @@
           "title": "GPU Nominal Power Watts",
           "description": "Nominal power reference from the captured baseline plus GPU offsets; not an enforced power-limit reading. Null if the verified baseline is unavailable."
         },
-        "GpuPowerOffsetWatts": {
+        "ApplyGpuLimits": { "type": "boolean", "default": false },
+        "GpuRuntimeLimitWatts": {
           "type": [
             "integer",
             "null"
           ],
-          "minimum": 0,
-          "maximum": 100,
-          "title": "GPU Power Offset Watts",
-          "multipleOf": 5,
-          "description": "GPU base-power offset in watts (CT). Kept separate from Dynamic Boost and the platform power offset."
+          "minimum": 5,
+          "maximum": 999,
+          "title": "GPU Runtime Target Watts",
+          "description": "GPU target in Watts: null uses the factory profile; custom targets are staged through verified Acer ERM4 profiles."
         },
-        "GpuDynamicBoostWatts": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 0,
-          "maximum": 25,
-          "title": "GPU Dynamic Boost Watts",
-          "multipleOf": 5
-        },
-        "ApplyCpuLimits": {
+        "ApplyCpuBoost": {
           "type": "boolean",
-          "title": "Apply CPU Limits"
-        },
-        "ApplyGpuLimits": {
-          "type": "boolean",
-          "title": "Apply GPU Limits"
+          "default": false,
+          "description": "Apply the Windows CPU boost policy independently of CPU/GPU power limits."
         },
         "ApplyGpuClockOffsets": {
           "type": "boolean",
@@ -595,6 +639,14 @@
           "title": "GPU memory clock offset (MHz)",
           "description": "Actual limits come from NVAPI P0 memory frequency-delta readback; this schema bound only prevents kHz integer overflow."
         },
+        "GpuPowerOffsetWatts": {
+          "type": ["integer", "null"], "minimum": 0, "maximum": 255, "multipleOf": 5,
+          "title": "GPU Delta (W)"
+        },
+        "GpuDynamicBoostWatts": {
+          "type": ["integer", "null"], "minimum": 0, "maximum": 25, "multipleOf": 5,
+          "title": "GPU Dynamic Boost (W)"
+        },
         "PlatformPowerOffsetWatts": {
           "title": "Platform power offset (W)",
           "type": [
@@ -602,7 +654,7 @@
             "null"
           ],
           "minimum": 0,
-          "maximum": 100,
+          "maximum": 255,
           "multipleOf": 5,
           "description": "Acer ERM4 CP offset. This does not add to the nominal GPU wattage reference."
         }

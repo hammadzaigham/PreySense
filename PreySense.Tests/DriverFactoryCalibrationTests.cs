@@ -199,7 +199,6 @@ public class DriverFactoryCalibrationTests
         var calibration = new DriverFactoryCalibration(hw, hw);
         var profiles = calibration.Capture(null);
         Assert.IsNull(profiles["Turbo"].GpuWatts);
-        Assert.AreEqual(20, profiles["Turbo"].GpuDeltaWatts);
         Assert.AreEqual(55, calibration.StaticCpuPl1Watts);
         Assert.AreEqual(140, calibration.StaticCpuPl2Watts);
     }
@@ -214,8 +213,6 @@ public class DriverFactoryCalibrationTests
         Assert.AreEqual(45, result["Quiet"].CpuPl1Watts);
         Assert.AreEqual(51, result["Eco"].CpuPl1Watts);
         Assert.AreEqual(56, result["Turbo"].TauSeconds);
-        Assert.AreEqual(20, result["Turbo"].GpuDeltaWatts);
-        Assert.AreEqual(10, result["Turbo"].PlatformPowerOffsetWatts);
     }
 
     [TestMethod]
@@ -255,11 +252,9 @@ public class DriverFactoryCalibrationTests
             var profiles = calibration.Capture(85, hw);
             Assert.IsFalse(calibration.CapturedGpuProfiles);
             Assert.IsTrue(new PreySense.Core.Configuration.TuningConfig { FactoryDefaults = profiles }.HasFactoryDefaults);
-            Assert.IsFalse(new PreySense.Core.Configuration.TuningConfig { FactoryDefaults = profiles }.HasFactoryGpuProfiles);
             Assert.AreEqual(115, profiles["Turbo"].CpuPl1Watts);
             Assert.AreEqual(157, profiles["Turbo"].CpuPl2Watts);
             Assert.AreEqual(85, profiles["Balanced"].CpuPl1Watts);
-            Assert.IsNull(profiles["Turbo"].GpuDeltaWatts);
             Assert.IsNull(profiles["Turbo"].GpuWatts);
             Assert.AreEqual(0x01, hw.CurrentMode, "Capture must restore the original Acer mode.");
         }
@@ -289,29 +284,24 @@ public class DriverFactoryCalibrationTests
     }
 
     [TestMethod]
-    public void Capture_SnapsGpuValuesToApplyLegalSteps()
+    public void Capture_PreservesCpuLimitsFromErm4()
     {
         var hw = new Hardware();
         foreach (byte mode in new byte[] { 6, 0, 1, 4, 5 })
         {
             ulong start = AcerProfileApplyTransaction.ProfileAddress(mode) - 4;
-            hw.Memory[start + 4] = 7;  // dynamic boost → 5
-            hw.Memory[start + 5] = 22; // delta → 20
-            hw.Memory[start + 6] = 13; // platform offset → 15
+            hw.Memory[start + 0] = 0;   // PM
+            hw.Memory[start + 1] = 45;  // P1 -> 45W
+            hw.Memory[start + 2] = 56;  // PT -> 56s
+            hw.Memory[start + 3] = 75;  // P2 -> 75W
         }
         var profiles = new DriverFactoryCalibration(hw, hw).Capture(85);
+        Assert.AreEqual(45, profiles["Turbo"].CpuPl1Watts);
+        Assert.AreEqual(75, profiles["Turbo"].CpuPl2Watts);
+        Assert.AreEqual(56, profiles["Turbo"].TauSeconds);
+        Assert.AreEqual(120, profiles["Turbo"].GpuWatts);
         Assert.AreEqual(20, profiles["Turbo"].GpuDeltaWatts);
-        Assert.AreEqual(5, profiles["Turbo"].GpuDynamicBoostWatts);
-        Assert.AreEqual(15, profiles["Turbo"].PlatformPowerOffsetWatts);
-        Assert.AreEqual(110, profiles["Turbo"].GpuWatts);
-        Assert.AreEqual(20, DriverFactoryCalibration.SnapGpuDelta(22));
-        Assert.AreEqual(55, DriverFactoryCalibration.SnapGpuDelta(53));
-        Assert.AreEqual(100, DriverFactoryCalibration.SnapGpuDelta(255));
-        Assert.AreEqual(0, DriverFactoryCalibration.SnapGpuDynamicBoost(2));
-        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(3));
-        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(5));
-        Assert.AreEqual(5, DriverFactoryCalibration.SnapGpuDynamicBoost(7));
-        Assert.AreEqual(25, DriverFactoryCalibration.SnapGpuDynamicBoost(255));
-        Assert.IsTrue(DriverFactoryCalibration.IsLegalGpuDynamicBoost(5));
+        Assert.AreEqual(15, profiles["Turbo"].GpuDynamicBoostWatts);
+        Assert.AreEqual(10, profiles["Turbo"].PlatformPowerOffsetWatts);
     }
 }

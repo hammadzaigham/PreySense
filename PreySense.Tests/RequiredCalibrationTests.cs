@@ -5,6 +5,7 @@ using PreySense.Frontend.Views;
 namespace PreySense.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class RequiredCalibrationTests
 {
 

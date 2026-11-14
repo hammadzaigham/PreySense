@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
+using PreySense.Core.Configuration;
 using PreySense.Core.Driver;
 using PreySense.Frontend.Controls;
 using PreySense.Frontend.ViewModels;
@@ -13,8 +15,8 @@ namespace PreySense.Frontend.Views
     {
         private int _selectedModeIndex = 2; // 0=Eco, 1=Quiet, 2=Balanced, 3=Perf, 4=Turbo
         private bool _isUpdatingUi;
-        private readonly Dictionary<int, PreySense.Core.Configuration.ModeTuningConfig> _drafts = new();
-        private PreySense.Core.Configuration.ModeTuningConfig Draft => _drafts[_selectedModeIndex];
+        private readonly Dictionary<int, ModeTuningConfig> _drafts = new();
+        private ModeTuningConfig Draft => _drafts[_selectedModeIndex];
         private readonly System.Windows.Threading.DispatcherTimer _verificationTimer = new()
         {
             Interval = TimeSpan.FromSeconds(3)
@@ -23,9 +25,7 @@ namespace PreySense.Frontend.Views
         public ModeSettingsWindow()
         {
             InitializeComponent();
-            SliderGpuDelta.PreviewMouseLeftButtonUp += (_, _) => CommitSlider(SliderGpuDelta);
-            SliderGpuDynamicBoost.PreviewMouseLeftButtonUp += (_, _) => CommitSlider(SliderGpuDynamicBoost);
-            SliderPlatformPowerOffset.PreviewMouseLeftButtonUp += (_, _) => CommitSlider(SliderPlatformPowerOffset);
+
             SliderTau.PreviewMouseLeftButtonUp += (_, _) => CommitSlider(SliderTau);
             _verificationTimer.Tick += (_, _) =>
             {
@@ -33,7 +33,6 @@ namespace PreySense.Frontend.Views
                 SetVerificationText(string.Empty);
             };
             MaxHeight = SystemParameters.WorkArea.Height - 40;
-            TuningScroll.MaxHeight = Math.Max(1, MaxHeight - 292);
             Loaded += ModeSettingsWindow_Loaded;
             foreach (string name in MainViewModel.CpuBoostModeNames)
                 DropdownCpuBoost.Items.Add(name);
@@ -72,15 +71,16 @@ namespace PreySense.Frontend.Views
         {
             if (e.PropertyName == nameof(MainViewModel.IsHardwareTuningEnabled) && IsLoaded)
                 LoadModeData();
+            else if (e.PropertyName is nameof(MainViewModel.EnableCpuPowerLimitControl)
+                or nameof(MainViewModel.EnableGpuPowerLimitControl)
+                or nameof(MainViewModel.EnableGpuOverclockingControl)
+                or nameof(MainViewModel.EnableCpuBoostTuningControl))
+            {
+                UpdateTuningSectionsVisibility();
+                UpdateActionButtonsEnabled();
+            }
             else if (e.PropertyName == nameof(MainViewModel.IsProchotOffsetEnabled) && !_isUpdatingUi)
             {
-                if (SwitchProchotOffset != null &&
-                    SwitchProchotOffset.IsChecked != (DataContext as MainViewModel)?.IsProchotOffsetEnabled)
-                {
-                    _isUpdatingUi = true;
-                    SwitchProchotOffset.IsChecked = (DataContext as MainViewModel)?.IsProchotOffsetEnabled == true;
-                    _isUpdatingUi = false;
-                }
                 UpdateActionButtonsEnabled();
             }
         }
@@ -99,7 +99,6 @@ namespace PreySense.Frontend.Views
                 };
             }
 
-            RowProchotOffset.Value = (DataContext as MainViewModel)?.TuningEditorProchotOffset is int offset ? offset : double.NaN;
             LoadModeData();
         }
 
@@ -157,24 +156,21 @@ namespace PreySense.Frontend.Views
             if (DropdownCpuBoost != null)
                 DropdownCpuBoost.SelectedIndex = Math.Clamp(Draft.EffectiveCpuBoostMode ?? vm.CpuBoostForModeIndex(_selectedModeIndex), 0, 6);
 
+            UpdateTuningSectionsVisibility();
+
+            SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits;
             SliderGpuDelta.Value = Draft.GpuDeltaWatts ?? 0;
             SliderGpuDynamicBoost.Value = Draft.GpuDynamicBoostWatts ?? 0;
             SliderPlatformPowerOffset.Value = Draft.PlatformPowerOffsetWatts ?? 0;
+            UpdateGpuOffsetLabels(vm);
+
             if (!Draft.CpuPl1Watts.HasValue) RowPl1.Value = double.NaN;
             if (!Draft.CpuPl2Watts.HasValue) RowPl2.Value = double.NaN;
             if (!Draft.TauSeconds.HasValue && LabelTau is not null) LabelTau.Text = string.Empty;
-            if (RowProchotOffset != null)
-                RowProchotOffset.Value = vm.TuningEditorProchotOffset is int offset ? offset : double.NaN;
-            if (SwitchProchotOffset != null)
-                SwitchProchotOffset.IsChecked = vm.IsProchotOffsetEnabled;
             if (SwitchApplyCpuLimits != null)
                 SwitchApplyCpuLimits.IsChecked = Draft.ApplyCpuLimits;
-            if (!vm.IsGpuProfileTuningAvailable)
-                Draft.ApplyGpuLimits = false;
-            if (SwitchApplyGpuLimits != null)
-                SwitchApplyGpuLimits.IsChecked = Draft.ApplyGpuLimits && vm.IsGpuProfileTuningAvailable;
+
             LoadGpuClockRows(vm);
-            UpdateGpuDraftLabels();
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
             _isUpdatingUi = false;
@@ -184,8 +180,7 @@ namespace PreySense.Frontend.Views
         {
             if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
-            bool gpuOk = DataContext is MainViewModel { IsGpuProfileTuningAvailable: true };
-            Draft.ApplyGpuLimits = gpuOk && SwitchApplyGpuLimits?.IsChecked == true;
+            Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
             UpdateApplyLimitPanels();
             UpdateActionButtonsEnabled();
         }
@@ -243,30 +238,44 @@ namespace PreySense.Frontend.Views
             RowGpuMemoryClock.ValueText = $"{Draft.GpuMemoryClockOffsetMhz:+0;-0;0} MHz";
         }
 
-        private void ProchotOffsetToggle_Changed(object sender, RoutedEventArgs e)
+        private void UpdateTuningSectionsVisibility()
         {
-            if (_isUpdatingUi || DataContext is not MainViewModel vm) return;
-            bool enabled = SwitchProchotOffset?.IsChecked == true;
-            vm.IsProchotOffsetEnabled = enabled;
-            if (enabled && vm.ProchotOffsetCelsius is null)
-                RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
-            UpdateActionButtonsEnabled();
+            if (DataContext is not MainViewModel vm) return;
+
+            if (BorderCpuLimits != null)
+                BorderCpuLimits.Visibility = vm.EnableCpuPowerLimitControl ? Visibility.Visible : Visibility.Collapsed;
+
+            if (BorderGpuOverclocking != null)
+                BorderGpuOverclocking.Visibility = vm.EnableGpuOverclockingControl ? Visibility.Visible : Visibility.Collapsed;
+
+            if (BorderGpuPowerLimit != null)
+            {
+                // GPU limits are available for every operating mode with verified ERM4 support.
+                bool showGpuLimit = vm.EnableGpuPowerLimitControl;
+                BorderGpuPowerLimit.Visibility = showGpuLimit ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            UpdateApplyLimitPanels();
         }
 
         private void UpdateApplyLimitPanels()
         {
             if (CpuLimitsPanel != null)
                 CpuLimitsPanel.IsEnabled = SwitchApplyCpuLimits?.IsChecked == true;
-            bool gpuAvailable = DataContext is MainViewModel { IsGpuProfileTuningAvailable: true };
             if (GpuLimitsPanel != null)
-                GpuLimitsPanel.IsEnabled = gpuAvailable && SwitchApplyGpuLimits?.IsChecked == true;
+                GpuLimitsPanel.IsEnabled = BorderGpuPowerLimit?.Visibility == Visibility.Visible
+                    && SwitchApplyGpuLimits?.IsChecked == true
+                    && DataContext is MainViewModel vm && vm.IsGpuProfileTuningAvailable;
         }
 
         private void UpdateActionButtonsEnabled()
         {
-            bool anyLimits = SwitchApplyCpuLimits?.IsChecked == true || SwitchApplyGpuLimits?.IsChecked == true;
-            bool prochotOnly = SwitchProchotOffset?.IsChecked == true;
-            bool canAct = anyLimits || prochotOnly || SwitchGpuOverclocking?.IsChecked == true;
+            if (DataContext is not MainViewModel vm) return;
+            bool cpuActive = vm.EnableCpuPowerLimitControl && SwitchApplyCpuLimits?.IsChecked == true;
+            bool gpuPowerActive = vm.EnableGpuPowerLimitControl && vm.IsGpuProfileTuningAvailable && Draft.ApplyGpuLimits;
+            bool gpuOcActive = vm.EnableGpuOverclockingControl && SwitchGpuOverclocking?.IsChecked == true;
+            bool prochotOnly = vm.IsProchotOffsetEnabled;
+            bool canAct = cpuActive || gpuPowerActive || gpuOcActive || prochotOnly || vm.EnableCpuBoostTuningControl;
             if (BtnApply != null) BtnApply.IsEnabled = canAct;
             if (BtnSave != null) BtnSave.IsEnabled = true;
             if (BtnReset != null) BtnReset.IsEnabled = canAct;
@@ -279,23 +288,36 @@ namespace PreySense.Frontend.Views
             {
                 Draft.TauSeconds = ReadTauSeconds(); LabelTau.Text = FormatTau(Draft.TauSeconds.Value);
             }
-            else
-            {
-                if (ReferenceEquals(slider, SliderGpuDelta)) Draft.GpuDeltaWatts = SnapGpuDelta(slider.Value);
-                else if (ReferenceEquals(slider, SliderGpuDynamicBoost)) Draft.GpuDynamicBoostWatts = SnapGpuDynamicBoost(slider.Value);
-                else Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(slider.Value);
-                UpdateGpuDraftLabels();
-            }
         }
 
-        private void UpdateGpuDraftLabels()
+        private GpuPowerOffsets ReadGpuOffsets() => new(
+            (int)Math.Round(SliderGpuDelta.Value),
+            (int)Math.Round(SliderGpuDynamicBoost.Value),
+            (int)Math.Round(SliderPlatformPowerOffset.Value));
+
+        private void UpdateGpuOffsetLabels(MainViewModel vm)
         {
-            LabelGpuDelta.Text = Draft.GpuDeltaWatts.HasValue ? $"{Draft.GpuDeltaWatts} W" : string.Empty;
-            LabelGpuDynamicBoost.Text = Draft.GpuDynamicBoostWatts.HasValue ? $"{Draft.GpuDynamicBoostWatts} W" : string.Empty;
-            LabelPlatformPowerOffset.Text = Draft.PlatformPowerOffsetWatts.HasValue ? $"{Draft.PlatformPowerOffsetWatts} W" : string.Empty;
-            RowGpuPower.Value = Draft.GpuDeltaWatts.HasValue && Draft.GpuDynamicBoostWatts.HasValue
-                ? ReadGpuWatts() ?? double.NaN : double.NaN;
+            var offsets = ReadGpuOffsets();
+            LabelGpuDelta.Text = $"{offsets.DeltaWatts} W";
+            LabelGpuDynamicBoost.Text = $"{offsets.DynamicBoostWatts} W";
+            LabelPlatformPowerOffset.Text = $"{offsets.PlatformOffsetWatts} W";
+            RowGpuPower.Value = offsets.NominalReferenceWatts(vm.GpuBasePowerWatts) ?? double.NaN;
         }
+
+        private void GpuOffsets_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex) || DataContext is not MainViewModel vm) return;
+            var offsets = ReadGpuOffsets();
+            Draft.GpuDeltaWatts = offsets.DeltaWatts;
+            Draft.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
+            Draft.PlatformPowerOffsetWatts = offsets.PlatformOffsetWatts;
+            Draft.GpuRuntimeLimitWatts = null;
+            vm.StoreGpuOffsets(_selectedModeIndex, offsets);
+            UpdateGpuOffsetLabels(vm);
+            UpdateActionButtonsEnabled();
+        }
+
+        private void RowGpuPower_LostFocus(object sender, RoutedEventArgs e) { }
 
         private (int pl1, int pl2) ReadClampedLimits(bool preferPl2)
         {
@@ -344,14 +366,6 @@ namespace PreySense.Frontend.Views
             Draft.CpuPl1Watts = pl1; Draft.CpuPl2Watts = pl2;
         }
 
-        private void RowProchotOffset_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (_isUpdatingUi || DataContext is not MainViewModel vm) return;
-            RowProchotOffset.CommitText(notify: false);
-            vm.ProchotOffsetCelsius = double.IsFinite(RowProchotOffset.Value)
-                ? (int)Math.Round(RowProchotOffset.Value) : null;
-        }
-
         private void RowPl2_LostFocus(object sender, RoutedEventArgs e)
         {
             if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsHardwareTuningEnabled) return;
@@ -362,60 +376,6 @@ namespace PreySense.Frontend.Views
             WriteClampedLimitsToEditor(pl1, pl2);
             StoreModeLimits(pl1, pl2);
             Draft.CpuPl1Watts = pl1; Draft.CpuPl2Watts = pl2;
-        }
-
-        private int? ReadGpuWatts()
-        {
-            int? baseWatts = (DataContext as MainViewModel)?.GpuBasePowerWatts;
-            return ReadGpuOffsets().NominalReferenceWatts(baseWatts);
-        }
-
-        private GpuPowerOffsets ReadGpuOffsets() => new(
-            SnapGpuDelta(SliderGpuDelta.Value),
-            SnapGpuDynamicBoost(SliderGpuDynamicBoost.Value),
-            SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value));
-
-        private static int SnapGpuDelta(double watts) =>
-            (int)Math.Round(Math.Clamp(watts, 0, PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts) / 5, MidpointRounding.AwayFromZero) * 5;
-
-        private static int SnapGpuDynamicBoost(double watts) =>
-            (int)Math.Round(Math.Clamp(watts, 0, PreySense.Core.Hardware.DriverFactoryCalibration.MaxGpuDynamicBoostWatts) / 5, MidpointRounding.AwayFromZero) * 5;
-
-        private static int SnapPlatformPowerOffset(double watts) =>
-            (int)Math.Round(Math.Clamp(watts, 0, 100) / 5, MidpointRounding.AwayFromZero) * 5;
-
-        private void GpuOffsets_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsHardwareTuningEnabled) return;
-            if (ReferenceEquals(sender, SliderGpuDelta)) Draft.GpuDeltaWatts = SnapGpuDelta(SliderGpuDelta.Value);
-            if (ReferenceEquals(sender, SliderGpuDynamicBoost)) Draft.GpuDynamicBoostWatts = SnapGpuDynamicBoost(SliderGpuDynamicBoost.Value);
-            if (ReferenceEquals(sender, SliderPlatformPowerOffset)) Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value);
-            UpdateGpuDraftLabels();
-            if (Draft.GpuDeltaWatts.HasValue && Draft.GpuDynamicBoostWatts.HasValue && Draft.PlatformPowerOffsetWatts.HasValue)
-                StoreGpuWatts(ReadGpuWatts());
-        }
-
-        private void StoreGpuWatts(int? watts)
-        {
-            if (DataContext is not MainViewModel vm) return;
-            vm.StoreGpuOffsets(_selectedModeIndex, ReadGpuOffsets());
-            switch (_selectedModeIndex)
-            {
-                case 0: vm.CustomEcoGpuWatts = watts ?? 0; break;
-                case 1: vm.CustomQuietGpuWatts = watts ?? 0; break;
-                case 2: vm.CustomBalancedGpuWatts = watts ?? 0; break;
-                case 3: vm.CustomPerfGpuWatts = watts ?? 0; break;
-                case 4: vm.CustomTurboGpuWatts = watts ?? 0; break;
-            }
-            vm.GpuPowerTargetWatts = watts ?? 0;
-        }
-
-        private void RowGpuPower_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (_isUpdatingUi || DataContext is not MainViewModel vm || !vm.IsHardwareTuningEnabled) return;
-            int? gpuW = ReadGpuWatts();
-            if (RowGpuPower != null) RowGpuPower.Value = gpuW ?? double.NaN;
-            StoreGpuWatts(gpuW);
         }
 
         private void SliderTau_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -439,7 +399,7 @@ namespace PreySense.Frontend.Views
                 SetVerificationText(
                     vm.IsBusy
                         ? Services.LocalizationService.Translate("Tuning is busy. Try again in a moment.")
-                        : Services.LocalizationService.Translate("Turn on Hardware Tuning first."),
+                        : Services.LocalizationService.Translate("Tuning is unavailable until factory defaults are ready."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -458,12 +418,14 @@ namespace PreySense.Frontend.Views
             if (confirmation.ShowDialog() != true)
                 return;
 
-            bool resetGpuClocks = SwitchGpuOverclocking.IsChecked == true;
+            bool resetGpuClocks = vm.EnableGpuOverclockingControl && SwitchGpuOverclocking.IsChecked == true;
             _isUpdatingUi = true;
             vm.ResetModeToCapturedFactoryDefaults(_selectedModeIndex);
             _drafts[_selectedModeIndex] = vm.FactoryTuningMode(_selectedModeIndex) ?? new();
             Draft.ApplyCpuLimits = false;
+            Draft.ApplyCpuBoost = false;
             Draft.ApplyGpuLimits = false;
+            Draft.GpuRuntimeLimitWatts = null;
             vm.IsProchotOffsetEnabled = false;
             _isUpdatingUi = false;
             LoadModeData();
@@ -478,13 +440,14 @@ namespace PreySense.Frontend.Views
             try
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
-                    ReadGpuOffsets(), persist: true, vm.ProchotOffsetCelsius, applyProchot,
-                    applyCpuLimits: true, applyGpuLimits: vm.IsGpuProfileTuningAvailable,
-                    persistApplySwitches: false, restoreMsrToStaticFloor: true,
+                    null,
+                    persist: true, vm.ProchotOffsetCelsius, applyProchot,
+                    applyCpuLimits: true, persistApplySwitches: false, restoreMsrToStaticFloor: true,
                     clockOffsets: resetGpuClocks ? new PreySense.Gpu.GpuClockOffsets(0, 0) : null,
-                    applyGpuClockOffsets: resetGpuClocks);
+                    applyGpuClockOffsets: resetGpuClocks,
+                    gpuOffsets: vm.IsGpuProfileTuningAvailable && Draft.HasGpuLimitValues ? ReadGpuOffsets() : null);
                 Draft.ApplyCpuLimits = false;
-                Draft.ApplyGpuLimits = false;
+                Draft.GpuRuntimeLimitWatts = null;
                 vm.IsProchotOffsetEnabled = false;
                 LoadModeData();
                 string message = verified
@@ -518,46 +481,43 @@ namespace PreySense.Frontend.Views
                 SetVerificationText(
                     vm.IsBusy
                         ? Services.LocalizationService.Translate("Tuning is busy. Try again in a moment.")
-                        : Services.LocalizationService.Translate("Turn on Hardware Tuning first."),
+                        : Services.LocalizationService.Translate("Tuning is unavailable until factory defaults are ready."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
             SetVerificationText(string.Empty);
             RowPl1.CommitText(notify: false); RowPl2.CommitText(notify: false);
-            RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
             StoreGpuClockSliders();
-            Draft.ApplyGpuClockOffsets = SwitchGpuOverclocking.IsChecked == true;
-            bool applyProchot = SwitchProchotOffset?.IsChecked == true;
-            vm.IsProchotOffsetEnabled = applyProchot;
-            Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
-            Draft.ApplyGpuLimits = vm.IsGpuProfileTuningAvailable && SwitchApplyGpuLimits?.IsChecked == true;
+            bool applyGpuOc = vm.EnableGpuOverclockingControl && SwitchGpuOverclocking?.IsChecked == true;
+            Draft.ApplyGpuClockOffsets = applyGpuOc;
+            bool applyProchot = vm.IsProchotOffsetEnabled && !vm.IsProchotOffsetLocked;
+            bool applyCpuLimits = vm.EnableCpuPowerLimitControl && SwitchApplyCpuLimits?.IsChecked == true;
+            bool applyCpuBoost = vm.EnableCpuBoostTuningControl;
+            Draft.ApplyCpuBoost = applyCpuBoost;
+            Draft.ApplyCpuLimits = applyCpuLimits;
             Draft.CpuPl1Watts = double.IsFinite(RowPl1.Value) ? (int)RowPl1.Value : null;
             Draft.CpuPl2Watts = double.IsFinite(RowPl2.Value) ? (int)RowPl2.Value : null;
             Draft.TauSeconds = ReadTauSeconds();
-            Draft.GpuDeltaWatts = SnapGpuDelta(SliderGpuDelta.Value);
-            Draft.GpuDynamicBoostWatts = SnapGpuDynamicBoost(SliderGpuDynamicBoost.Value);
-            Draft.PlatformPowerOffsetWatts = SnapPlatformPowerOffset(SliderPlatformPowerOffset.Value);
+
+            var gpuOffsets = vm.EnableGpuPowerLimitControl && SwitchApplyGpuLimits.IsChecked == true
+                ? ReadGpuOffsets() : null;
+            Draft.ApplyGpuLimits = gpuOffsets is not null;
+            int? gpuRuntime = null;
             if (applyProchot && vm.ProchotOffsetCelsius is null)
             {
                 SetVerificationText(Services.LocalizationService.Translate("Enter a PROCHOT offset, or turn its switch off."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
-            if (!persist && !Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot && !Draft.ApplyGpuClockOffsets)
+            if (!persist && !applyCpuLimits && gpuOffsets is null && !applyProchot && !applyGpuOc && !applyCpuBoost)
             {
                 SetVerificationText(Services.LocalizationService.Translate("Turn on CPU limits, GPU limits, GPU overclocking, or PROCHOT first."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
-            if (Draft.ApplyCpuLimits && !Draft.HasCpuLimitValues)
+            if (applyCpuLimits && !Draft.HasCpuLimitValues)
             {
                 SetVerificationText(Services.LocalizationService.Translate("Set CPU limits and time limit before applying."),
-                    TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
-                return;
-            }
-            if (Draft.ApplyGpuLimits && !Draft.HasGpuLimitValues)
-            {
-                SetVerificationText(Services.LocalizationService.Translate("Set GPU offsets before applying."),
                     TryFindResource("WarningTextBrush") as Brush ?? Brushes.OrangeRed);
                 return;
             }
@@ -568,13 +528,13 @@ namespace PreySense.Frontend.Views
             try
             {
                 bool verified = await vm.ApplyTuningProfileAsync(mode, pl1, pl2, tau,
-                    ReadGpuOffsets(), persist, vm.ProchotOffsetCelsius, applyProchot,
-                    Draft.ApplyCpuLimits, Draft.ApplyGpuLimits,
-                    clockOffsets: Draft.HasGpuClockValues ? new PreySense.Gpu.GpuClockOffsets(
+                    gpuRuntime, persist, vm.ProchotOffsetCelsius, applyProchot,
+                    applyCpuLimits,
+                    clockOffsets: (applyGpuOc && Draft.HasGpuClockValues) ? new PreySense.Gpu.GpuClockOffsets(
                         Draft.GpuCoreClockOffsetMhz!.Value, Draft.GpuMemoryClockOffsetMhz!.Value) : null,
-                    applyGpuClockOffsets: Draft.ApplyGpuClockOffsets);
+                    applyGpuClockOffsets: applyGpuOc, applyCpuBoost: applyCpuBoost, gpuOffsets: gpuOffsets);
                 string message = verified
-                    ? Services.LocalizationService.Translate(!Draft.ApplyCpuLimits && !Draft.ApplyGpuLimits && !applyProchot && !Draft.ApplyGpuClockOffsets
+                    ? Services.LocalizationService.Translate(!applyCpuLimits && gpuOffsets is null && !applyProchot && !applyGpuOc && !applyCpuBoost
                         ? "Saved. Disabled tuning sections were skipped." : "Applied and read back successfully.")
                     : (string.IsNullOrWhiteSpace(vm.DiagnosticMessage)
                         ? Services.LocalizationService.Translate("Could not apply.")
@@ -597,6 +557,7 @@ namespace PreySense.Frontend.Views
         {
             await ApplySelectedModeAsync(persist: true);
         }
+
         private (int Pl1, int Pl2, int Tau) StoreEditorSettings(MainViewModel vm, bool updateActiveValues)
         {
             var (pl1, pl2) = ReadClampedLimits(preferPl2: false);
@@ -607,9 +568,7 @@ namespace PreySense.Frontend.Views
             StoreCpuBoost(vm);
             Draft.CpuBoostMode = vm.CpuBoostForModeIndex(_selectedModeIndex);
             Draft.CpuBoost = Draft.CpuBoostMode > 0;
-            int? gpuWatts = ReadGpuWatts();
-            RowGpuPower.Value = gpuWatts ?? double.NaN;
-            StoreGpuWatts(gpuWatts);
+            vm.StoreGpuOffsets(_selectedModeIndex, ReadGpuOffsets());
             if (updateActiveValues)
             {
                 vm.Pl1Watts = pl1;
@@ -636,13 +595,6 @@ namespace PreySense.Frontend.Views
             Draft.CpuBoost = boost > 0;
         }
 
-        private static byte ModeIndexToByte(int modeIndex) => modeIndex switch
-        {
-            0 => 0x06,
-            1 => 0x00,
-            3 => 0x04,
-            4 => 0x05,
-            _ => 0x01
-        };
+        private static byte ModeIndexToByte(int modeIndex) => MainViewModel.ModeIndexToByte(modeIndex);
     }
 }

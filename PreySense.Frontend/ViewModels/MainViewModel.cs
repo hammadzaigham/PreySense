@@ -23,7 +23,6 @@ namespace PreySense.Frontend.ViewModels
         private readonly TurboKeyWatcher _turboKeyWatcher;
         private readonly HidModeKeyWatcher _hidModeKeyWatcher;
         private DateTime _lastPhysicalModeKeyUtc;
-        private int _pendingBrightnessDelta;
         private int _powerSourceUpdateQueued;
         private bool _disposed;
 
@@ -142,8 +141,9 @@ namespace PreySense.Frontend.ViewModels
             {
                 _turboKeyWatcher.Start();
             }
-            // Mode key only — do not monitor Fn RGB brightness keys; firmware owns those.
-            _hidModeKeyWatcher = new HidModeKeyWatcher(HandleModeKeyPressed);
+            // Firmware changes illumination; mirror Fn steps into the editor and saved profile.
+            _hidModeKeyWatcher = new HidModeKeyWatcher(HandleModeKeyPressed,
+                delta => HandleFnBrightness(delta, "HID"));
 
             UpdateFanDemand();
 
@@ -152,19 +152,7 @@ namespace PreySense.Frontend.ViewModels
             try
             {
                 var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
-                _isHardwareTuningEnabled = cfg.General.HardwareTuningEnabled && cfg.Tuning.HasFactoryDefaults;
-
-                var boostProfile = cfg.Session.ActivePowerMode switch
-                {
-                    0 => cfg.Tuning.Quiet,
-                    1 => cfg.Tuning.Balanced,
-                    4 => cfg.Tuning.Performance,
-                    5 => cfg.Tuning.Turbo,
-                    6 => cfg.Tuning.Eco,
-                    _ => cfg.Tuning.Balanced
-                };
-                CpuBoostMode = boostProfile.EffectiveCpuBoostMode ?? 1;
-                CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
+                _isHardwareTuningEnabled = HasCompleteFactoryDefaults(cfg.Tuning);
 
                 // JSON preference paints the UI immediately; reconcile against live
                 // SCM state so a default `false` does not hide an already-debloated machine.
@@ -202,6 +190,8 @@ namespace PreySense.Frontend.ViewModels
             LoadRgbSettings();
             LoadTuningProfilesFromJson();
             LoadSessionPreferences();
+            CpuBoostMode = CpuBoostModeForMode(ActivePowerMode);
+            CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
             UpdateModeName(ActivePowerMode);
 
             NotifyModeSelectionsChanged();
@@ -241,7 +231,7 @@ namespace PreySense.Frontend.ViewModels
         {
             try
             {
-                if (_hw.IsDdsAvailable && _hw.IsDdsSupported() && _hw.GetDdsStatus() is { IsSupported: true } status)
+                if (_hw.IsDdsAvailable && _hw.GetDdsStatus() is { IsSupported: true } status)
                 {
                     ApplyDdsStatus(status);
                     GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
@@ -265,7 +255,7 @@ namespace PreySense.Frontend.ViewModels
                 try
                 {
                     using var gpuLease = HardwareOperationGate.TryEnterTelemetry();
-                    if (gpuLease != null && _hw.IsDdsAvailable && _hw.IsDdsSupported())
+                    if (gpuLease != null && _hw.IsDdsAvailable)
                     {
                         liveDdsStatus = _hw.GetDdsStatus();
                     }
@@ -342,6 +332,7 @@ namespace PreySense.Frontend.ViewModels
         {
             if (_disposed) return;
             // Save before the disposed guard suppresses persistence; lighting is drained below.
+            StopGameMode();
             PersistSessionSettings(includeLighting: false);
             SetMainWindowTelemetryVisible(false);
             // Capture the last edit, including a mode still waiting on the trailing apply.

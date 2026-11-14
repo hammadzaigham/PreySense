@@ -26,6 +26,27 @@ public class FanCurveFollowerTests
     }
 
     [TestMethod]
+    public void SynchronizeFanSpeeds_ControlsIndependentOrCoupledDuties()
+    {
+        var follower = new FanCurveFollower();
+        var stages = Balanced();
+        // Advance to stage 1 (CPU 1800 RPM -> 28%, GPU 1850 RPM -> 29%)
+        int cpuDuty = FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm);
+        int gpuDuty = FanStage.RpmToDuty(1850, FanStage.GpuMaxRpm);
+        Assert.AreNotEqual(cpuDuty, gpuDuty);
+
+        // When synchronized is true: both fans run at the higher duty
+        var (syncCpu, syncGpu, _) = follower.Evaluate(56, 40, stages, 0, 1000, synchronizeFanSpeeds: true);
+        Assert.AreEqual(Math.Max(cpuDuty, gpuDuty), syncCpu);
+        Assert.AreEqual(Math.Max(cpuDuty, gpuDuty), syncGpu);
+
+        // When synchronized is false: fans run at their respective independent duties
+        var (indCpu, indGpu, _) = follower.Evaluate(56, 40, stages, 0, 2000, synchronizeFanSpeeds: false);
+        Assert.AreEqual(cpuDuty, indCpu);
+        Assert.AreEqual(gpuDuty, indGpu);
+    }
+
+    [TestMethod]
     public void GpuRiseAloneAdvancesStage()
     {
         var follower = new FanCurveFollower();

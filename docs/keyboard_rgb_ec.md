@@ -58,12 +58,20 @@ Run on the controller. PreySense sends one report and stops.
 | 1 | Breathing | `0x04` |
 | 2 | Neon | `0x05` |
 | 3 | Wave | `0x07` |
-| 4 | Ripple | `0x07` + direction |
+| 4 | Shifting | `0x08` |
 | 5 | Zoom | `0x09` |
 | 6 | Snake / Meteor | `0x0A` |
 | 7 | Disco / Twinkling | `0x0B` |
 
 The EC does not expose live per-zone color while Wave, Ripple, Zoom, Snake, or Disco are running.
+
+Direction is shown only for recovered directional effects. The OEM HID keyboard metadata advertises Left/Right for Wave and Shifting; the EC keyboard metadata advertises Left/Right/Up/Down/Horizontal/Vertical for Wave and Left/Right for Shifting. USB and service devices use their own per-effect direction capability flags. These are the recovered controller labels; clockwise/counterclockwise meanings have not been established for these controllers. Direction values are saved per device (and under `Lighting.Keyboard.Direction` for the built-in editor).
+
+Duplicate HID endpoints, EC fallbacks and service aliases no longer create duplicate target tabs. One preferred transport is shown for the physical keyboard, the Turbo Key (including Mode Key aliases), cover/base logo, and each separately identified bar. Transports remain available internally for existing fallback writes. Device tabs share the available width; long labels wrap rather than being truncated. The rear bar is labelled Dynamic Bar.
+
+Dynamic Bar Static provides Sync All LEDs. Enabling it copies the selected LED color across the bar; subsequent color edits affect all LEDs. Turning it off restores independent LED editing. The switch is saved per device.
+
+Mode lighting uses explicit RGB writes with the palette recovered from the PHN16S-71 BIOS V1.26 EC image: Eco `#10FF10`, Quiet `#A0FF90`, Balanced `#00AEC7`, Performance `#2E09D0`, Turbo `#C700FF`. Custom per-mode color overrides remain supported. This path does not request firmware OPMODE.
 
 ---
 

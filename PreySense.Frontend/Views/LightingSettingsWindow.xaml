@@ -1,0 +1,164 @@
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.Views.LightingSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        Title="PreySense • Lighting Mode Settings" Width="500" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize"
+        Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}">
+    <Window.Resources>
+        <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter"/>
+<Style x:Key="ZoneColorButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="4,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <Grid>
+                                <Border Name="hover" Background="Transparent" CornerRadius="4"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="hover" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="hover" Property="Background" Value="#44000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Compact Hex TextBox Style -->
+        <Style x:Key="HexTextBoxStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="{DynamicResource ButtonMainBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSecondBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TextBox}">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BorderMainBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Border Style="{DynamicResource AppWindowShellStyle}">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <controls:WindowTitleBar Title="Lighting Mode Settings"/>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="500">
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="14,8,14,8">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,2">
+                            <TextBlock Text="Brightness" Style="{DynamicResource SettingLabelStyle}"/>
+                            <TextBlock Text="{Binding ModeLightingBrightness, StringFormat='{}{0}%'}" Style="{DynamicResource SettingValueStyle}"/>
+                        </Grid>
+                        <Slider Minimum="0" Maximum="100" SmallChange="1" LargeChange="5" TickFrequency="1"
+                                IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" Margin="0,0,0,8"
+                                Value="{Binding ModeLightingBrightness, Mode=TwoWay, Delay=150}"/>
+<StackPanel Margin="0,2,0,6">
+                                <ListBox ItemsSource="{Binding KeyboardModeColorEditors}"
+                                         SelectedItem="{Binding SelectedKeyboardModeColor, Mode=TwoWay}"
+                                         Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,8"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border x:Name="SelectionBorder" BorderBrush="Transparent" BorderThickness="2"
+                                                                Padding="2" CornerRadius="9" Background="{DynamicResource WindowBgBrush}">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Rows="1" Columns="5"/>
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Name}" Height="32" Margin="0"
+                                                    Background="{Binding ColorHex}"
+                                                    Click="KeyboardModeColor_Click" Tag="{Binding}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ZoneColorButtonStyle}">
+                                                        <Setter Property="Foreground" Value="{Binding ForegroundHex}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PowerMode}" Value="6">
+                                                                <Setter Property="Foreground" Value="#111111"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
+                                        IsEnabled="{Binding HasSelectedKeyboardModeColor}"
+                                        SelectedColor="{Binding SelectedKeyboardModeColor.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
+                                                Background="{Binding SelectedKeyboardModeColor.ColorHex, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding SelectedKeyboardModeColor.ColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
+                                                 Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
+                                                 FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
+                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                 IsEnabled="{Binding HasSelectedKeyboardModeColor}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Window>

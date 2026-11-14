@@ -20,6 +20,26 @@ public class GlobalProchotTuningTests
     }
 
     [TestMethod]
+    public void SaveProchotPersistsOnlyOffsetAndSwitchWithoutHardwareWrites()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "PreySenseProchotSave-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var store = new ConfigurationService(Path.Combine(directory, "preysense.json"));
+            store.Update(cfg => { cfg.Tuning.Balanced.CpuPl1Watts = 65; cfg.Tuning.Balanced.GpuDeltaWatts = 255; });
+            var vm = Create(store.GetCurrent()); vm.TuningConfigurationStore = store;
+            vm.DriverTuningExecutor = _ => throw new AssertFailedException("Save must not write hardware.");
+            vm.ProchotOffsetCelsius = 10; vm.IsProchotOffsetEnabled = true;
+            Assert.IsTrue(vm.SaveProchotSettings());
+            var saved = store.GetCurrent().Tuning;
+            Assert.AreEqual(10, saved.ProchotOffsetCelsius); Assert.IsTrue(saved.ApplyProchotOffset);
+            Assert.AreEqual(65, saved.Balanced.CpuPl1Watts); Assert.AreEqual(255, saved.Balanced.GpuDeltaWatts);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [TestMethod]
     public void ActivationLabel_RequiresAnOffsetAndPreservesExplicitZero()
     {
         string directory = Path.Combine(Path.GetTempPath(), "PreySenseProchotLabel-" + Guid.NewGuid().ToString("N"));
@@ -66,7 +86,7 @@ public class GlobalProchotTuningTests
         Assert.IsFalse(vm.CanEditProchotOffset);
         MainViewModel.DriverTuningRequest? captured = null;
         vm.DriverTuningExecutor = request => { captured = request; return new(false, "test interception"); };
-        await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true);
+        await vm.ApplyTuningProfileAsync(5, 60, 100, 56, 140, false, 10, true);
         Assert.IsNotNull(captured);
         Assert.IsNull(captured.Value.ProchotOffsetCelsius);
         Assert.AreEqual(60, captured.Value.Pl1);
@@ -84,9 +104,8 @@ public class GlobalProchotTuningTests
         foreach (var profile in new[] { config.Tuning.Quiet, config.Tuning.Turbo })
         {
             profile.CpuPl1Watts = 55; profile.CpuPl2Watts = 90; profile.TauSeconds = 56;
-            profile.GpuDeltaWatts = 20; profile.GpuDynamicBoostWatts = 15; profile.PlatformPowerOffsetWatts = 10; profile.CpuBoost = true;
+            profile.GpuRuntimeLimitWatts = 140; profile.CpuBoost = true;
             profile.ApplyCpuLimits = true;
-            profile.ApplyGpuLimits = true;
         }
         var vm = Create(config);
         var requests = new List<MainViewModel.DriverTuningRequest>();
@@ -97,7 +116,6 @@ public class GlobalProchotTuningTests
         {
             Assert.AreEqual(enabled ? 12 : (int?)null, request.ProchotOffsetCelsius);
             Assert.AreEqual(55, request.Pl1);
-            Assert.AreEqual(20, request.Offsets.DeltaWatts);
         }
     }
 
@@ -108,12 +126,12 @@ public class GlobalProchotTuningTests
         var vm = Create(new());
         MainViewModel.DriverTuningRequest? captured = null;
         vm.DriverTuningExecutor = request => { captured = request; return new(false, "test interception"); };
-        await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, enabled);
+        await vm.ApplyTuningProfileAsync(5, 60, 100, 56, 140, false, 10, enabled);
         Assert.IsNotNull(captured);
         Assert.AreEqual(enabled ? 10 : (int?)null, captured.Value.ProchotOffsetCelsius);
         Assert.AreEqual(60, captured.Value.Pl1);
         Assert.AreEqual(100, captured.Value.Pl2);
-        Assert.AreEqual(25, captured.Value.Offsets.DeltaWatts);
+        Assert.AreEqual(140, captured.Value.GpuRuntimeLimitWatts);
     }
 
     [TestMethod]
@@ -122,15 +140,15 @@ public class GlobalProchotTuningTests
         var vm = Create(new());
         MainViewModel.DriverTuningRequest? captured = null;
         vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };
-        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, true,
-            applyCpuLimits: false, applyGpuLimits: false));
+        Assert.IsTrue(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, null, false, 10, true,
+            applyCpuLimits: false));
         Assert.IsNotNull(captured);
         Assert.AreEqual(10, captured.Value.ProchotOffsetCelsius);
         Assert.IsFalse(captured.Value.ApplyCpuLimits);
         Assert.IsFalse(captured.Value.ApplyGpuLimits);
 
-        Assert.IsFalse(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, new(25, 15), false, 10, false,
-            applyCpuLimits: false, applyGpuLimits: false));
+        Assert.IsFalse(await vm.ApplyTuningProfileAsync(5, 60, 100, 56, null, false, 10, false,
+            applyCpuLimits: false));
         Assert.Contains("PROCHOT", vm.DiagnosticMessage);
     }
 
@@ -141,7 +159,7 @@ public class GlobalProchotTuningTests
         config.Tuning.ApplyProchotOffset = true;
         config.Tuning.ProchotOffsetCelsius = 9;
         config.Tuning.Turbo.ApplyCpuLimits = false;
-        config.Tuning.Turbo.ApplyGpuLimits = false;
+        config.Tuning.Turbo.GpuRuntimeLimitWatts = null;
         var vm = Create(config);
         MainViewModel.DriverTuningRequest? captured = null;
         vm.DriverTuningExecutor = request => { captured = request; return new(true, "verified"); };

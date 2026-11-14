@@ -19,6 +19,14 @@ namespace PreySense.Frontend.Views
                 SettingsScroll.MaxHeight = Math.Max(240, MaxHeight - 56);
         }
 
+        private async void BtnOpenTuningSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not ViewModels.MainViewModel vm || !vm.IsHardwareTuningEnabled) return;
+            await vm.RefreshProchotLockStateAsync();
+            if (!vm.IsHardwareTuningEnabled) return;
+            new TuningSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
+        }
+
         private void UsbCharging_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             UpdateUsbChargingLabel();

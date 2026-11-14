@@ -7,7 +7,7 @@ public sealed record GpuPowerOffsets(int DeltaWatts, int DynamicBoostWatts, int 
 {
     public const int MaximumOffsetWatts = 255;
     public bool IsValid => DeltaWatts is >= 0 and <= MaximumOffsetWatts
-        && DynamicBoostWatts is >= 0 and <= MaximumOffsetWatts
+        && DynamicBoostWatts is >= 0 and <= 25
         && PlatformOffsetWatts is >= 0 and <= MaximumOffsetWatts;
 
     // Arithmetic reference using the calibrated baseline, not an enforced GPU limit.

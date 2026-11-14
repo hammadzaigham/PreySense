@@ -88,7 +88,7 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(ProchotActivationLabel));
             OnPropertyChanged(nameof(TjMaxLabel));
             var saved = TuningStore.GetCurrent();
-            if (saved.General.HardwareTuningEnabled && HasCompleteFactoryDefaults(saved.Tuning))
+            if (HasCompleteFactoryDefaults(saved.Tuning))
                 SetTuningEnabledState(true);
         }
         catch (Exception ex)
@@ -117,6 +117,7 @@ public partial class MainViewModel
                 captureFailure = DiagnosticMessage;
         }
         if (_disposed) return;
+        SetTuningEnabledState(HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning));
         await InitializeSessionAsync();
         if (!_disposed && !string.IsNullOrEmpty(captureFailure))
             DiagnosticMessage = $"{DiagnosticMessage} {captureFailure}".Trim();
@@ -202,11 +203,13 @@ public partial class MainViewModel
             CpuBoost = saved.CpuBoost ?? factory?.CpuBoost,
             CpuBoostMode = saved.EffectiveCpuBoostMode ?? factory?.EffectiveCpuBoostMode,
             GpuWatts = saved.GpuWatts ?? factory?.GpuWatts,
+            GpuRuntimeLimitWatts = saved.GpuRuntimeLimitWatts,
             GpuDeltaWatts = saved.GpuDeltaWatts ?? factory?.GpuDeltaWatts,
             GpuDynamicBoostWatts = saved.GpuDynamicBoostWatts ?? factory?.GpuDynamicBoostWatts,
             PlatformPowerOffsetWatts = saved.PlatformPowerOffsetWatts ?? factory?.PlatformPowerOffsetWatts,
             ApplyCpuLimits = saved.ApplyCpuLimits,
             ApplyGpuLimits = saved.ApplyGpuLimits,
+            ApplyCpuBoost = saved.ApplyCpuBoost,
             ApplyGpuClockOffsets = saved.ApplyGpuClockOffsets,
             GpuCoreClockOffsetMhz = saved.GpuCoreClockOffsetMhz,
             GpuMemoryClockOffsetMhz = saved.GpuMemoryClockOffsetMhz
@@ -219,7 +222,7 @@ public partial class MainViewModel
     internal ModeTuningConfig? FactoryTuningMode(int index) =>
         TuningStore.GetCurrent().Tuning.FactoryDefaults.GetValueOrDefault(TuningModeName(index));
 
-    /// <summary>ERM4 GPU offsets were captured; otherwise GPU apply stays unavailable (CPU/PROCHOT only).</summary>
+    /// <summary>GPU offset tuning requires verified ERM4 profiles.</summary>
     public bool IsGpuProfileTuningAvailable =>
         TuningStore.GetCurrent().Tuning.HasFactoryGpuProfiles;
 }

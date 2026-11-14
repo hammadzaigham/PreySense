@@ -134,6 +134,35 @@ public class GpuDisplayStateTests
         finally { store.Save(original); }
     }
 
+    [TestMethod]
+    public void StatusReadFailuresHaveApiSpecificDescriptions()
+    {
+        Assert.AreEqual("general NVIDIA API failure", NvidiaDdsService.DescribeStatusReadFailure(1));
+        Assert.AreEqual("access denied in NVIDIA API", NvidiaDdsService.DescribeStatusReadFailure(9));
+        Assert.AreEqual("unclassified NVIDIA API failure", NvidiaDdsService.DescribeStatusReadFailure(123));
+    }
+
+    [TestMethod]
+    public async Task FailedBackgroundStatusReadPreservesSelectionWithoutWriting()
+    {
+        var hardware = new UnavailableDds();
+        var vm = CreateDdsViewModel(hardware);
+        await vm.RefreshDisplayAndDdsStateAsync();
+        Assert.AreEqual(1, hardware.Reads);
+        Assert.AreEqual(0, hardware.SupportReads);
+        Assert.AreEqual(0, hardware.Writes);
+        Assert.IsTrue(vm.IsGpuAutoActive);
+    }
+
+    private sealed class UnavailableDds : MockHardwareService, IHardwareService
+    {
+        public int Reads, SupportReads, Writes;
+        public new DdsStatus? GetDdsStatus() { Reads++; return null; }
+        public new bool IsDdsSupported() { SupportReads++; return false; }
+        public new (bool Success, string Message) SetDdsMode(DdsDisplayMode mode)
+        { Writes++; return (false, "unexpected write"); }
+    }
+
     private static MainViewModel CreateDdsViewModel(IHardwareService hardware)
     {
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));

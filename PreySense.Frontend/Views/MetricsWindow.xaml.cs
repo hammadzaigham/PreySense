@@ -176,7 +176,7 @@ namespace PreySense.Frontend.Views
 		if (slots.Count == 0)
 		{
 			TextBlock textBlock = new TextBlock();
-			textBlock.Text = LocalizationService.Translate("No overlay slots configured. Click '+ Add Slot' to add metrics.");
+			textBlock.Text = LocalizationService.Translate("No overlay slots configured. Click 'Add Slot' to add metrics.");
 			textBlock.FontStyle = FontStyles.Italic;
 			textBlock.Foreground = (TryFindResource("TextMutedBrush") as Brush) ?? Brushes.Gray;
 			textBlock.Margin = new Thickness(0.0, 8.0, 0.0, 8.0);

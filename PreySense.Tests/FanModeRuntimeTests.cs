@@ -86,6 +86,18 @@ public class FanModeRuntimeTests
         Assert.IsNull(vm.AppliedGpuFanPercent);
     }
     [TestMethod]
+    public void CustomTargetsSupportIndependentCpuAndGpuFanSpeeds()
+    {
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        vm.SynchronizeFanSpeeds = false;
+        Select(vm, FanControlMode.Custom);
+        Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
+        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(50, vm.AppliedGpuFanPercent);
+        CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
+    }
+    [TestMethod]
     public void HotSamplesUseSavedCurveAndMissingSamplesDoNotSwitchToAuto()
     {
         var hardware = new RecordingFans();

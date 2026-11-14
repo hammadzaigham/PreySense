@@ -45,6 +45,7 @@
                                 <ComboBoxItem Content="Hindi" Tag="hi-IN"/>
                                 <ComboBoxItem Content="Spanish" Tag="es-ES"/>
                                 <ComboBoxItem Content="French" Tag="fr-FR"/>
+                                <ComboBoxItem Content="Turkish" Tag="tr-TR"/>
                             </controls:SettingDropdownRow>
 
                             <controls:SettingDropdownRow x:Name="ThemeSelector" Title="Theme" DropdownWidth="110"
@@ -92,7 +93,14 @@
                         </StackPanel>
                     </Border>
 
-                    <Separator Margin="0,4,0,12"/>
+                    <Border x:Name="TuningSection" Style="{StaticResource OriginalSectionPanelStyle}" CornerRadius="4" Margin="{StaticResource StandardSectionMargin}">
+                        <StackPanel>
+                            <controls:SettingActionRow x:Name="RowTuningSettings" Title="Tuning Settings" ActionText="Open"
+                                Click="BtnOpenTuningSettings_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Separator HorizontalAlignment="Stretch" Margin="0,4,0,12"/>
 
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" CornerRadius="4" Margin="{StaticResource StandardSectionMargin}">
                         <StackPanel>

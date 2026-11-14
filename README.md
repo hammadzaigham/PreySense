@@ -19,7 +19,7 @@ Per-mode CPU and GPU power through the bundled **PreySenseDriver**:
 - GPU Delta, Dynamic Boost, and platform power offset
 - Optional global PROCHOT offset
 - Factory calibration stored in `preysense.json`, with Reset to captured defaults
-- Apply for a live test, Save to persist; saved profiles follow mode changes, startup, and resume when Enable Tuning is on
+- Apply for a live test, Save to persist; saved profiles follow mode changes, startup, and resume once factory defaults are ready
 
 ### GPU and display
 - GPU modes: Auto, Hybrid, Advanced Optimus, and dGPU Only
@@ -37,7 +37,7 @@ Always-on-top telemetry with selectable CPU/GPU metrics, optional graphs, FPS, G
 ### Battery and system
 - Charge limit (80% or 100%).
 - Run on Windows startup, light/dark theme
-- Languages: English, Simplified Chinese, Hindi, Spanish, French
+- Languages: English, Simplified Chinese, Hindi, Spanish, French, Turkish
 
 ## Screenshots
 
@@ -71,7 +71,7 @@ Run on Startup is off when no scheduled task exists. It reflects this install’
 
 ## Quick start for tuning
 
-1. Open **Tuning** and turn on **Enable Tuning**.
+1. Open **Tuning**. Controls become available once factory defaults are ready; section options are in **Settings → Tuning Settings**.
 2. Choose a mode, set CPU/GPU values, then **Apply** or **Save**.
 3. Switch modes as usual; saved profiles follow automatically.
 

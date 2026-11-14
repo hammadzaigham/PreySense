@@ -58,6 +58,26 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(TjMaxLabel));
     }
 
+    internal bool SaveProchotSettings()
+    {
+        if (ProchotOffsetCelsius is < 0 or > 63 || (IsProchotOffsetEnabled && ProchotOffsetCelsius is null))
+        {
+            DiagnosticMessage = "Enter a PROCHOT offset between 0 and 63°C, or turn its switch off.";
+            return false;
+        }
+        try
+        {
+            TuningStore.Update(cfg =>
+            {
+                cfg.Tuning.ProchotOffsetCelsius = ProchotOffsetCelsius;
+                cfg.Tuning.ApplyProchotOffset = IsProchotOffsetEnabled && !IsProchotOffsetLocked;
+            });
+            DiagnosticMessage = "PROCHOT settings saved.";
+            return true;
+        }
+        catch (System.Exception ex) { DiagnosticMessage = $"Could not save PROCHOT: {ex.Message}"; return false; }
+    }
+
     internal async Task RefreshProchotLockStateAsync()
     {
         var snapshot = await Task.Run(() =>

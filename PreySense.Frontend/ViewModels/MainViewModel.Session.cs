@@ -45,15 +45,9 @@ namespace PreySense.Frontend.ViewModels
             {
                 var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
 
-                byte mode = (byte)Math.Clamp((int)cfg.Session.ActivePowerMode, 0, 6);
-                if (mode is 0 or 1 or 4 or 5 or 6)
-                {
-                    ActivePowerMode = mode;
-                    UpdateModeName(mode);
-                }
-
                 IsAutoRefreshRateEnabled = cfg.Display.AutoRefreshRate;
                 IsBatteryLimitEnabled = cfg.Battery.ChargeLimitEnabled;
+                SynchronizeFanSpeeds = cfg.Fans.SynchronizeFanSpeeds;
                 _usbChargingCutoffPercent = cfg.Battery.UsbPowerOffChargingCutoffPercent;
                 IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
 
@@ -63,6 +57,20 @@ namespace PreySense.Frontend.ViewModels
                 BatteryPowerModeIndex = cfg.Session.BatteryPowerMode is 0 or 1 or 4 or 5 or 6
                     ? ProfileManager.SourceProfileIndex(cfg.Session.BatteryPowerMode)
                     : ProfileManager.SourceProfileIndex(ProfileManager.DefaultBatterySourceMode);
+
+                // Start from the current source preference, never the previous session's mode.
+                try
+                {
+                    var source = _hw.GetPowerSource();
+                    if (source != PowerSourceKind.Unknown)
+                    {
+                        ActivePowerMode = source == PowerSourceKind.Battery
+                            ? ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex)
+                            : ProfileManager.SourceProfileMode(AcPowerModeIndex);
+                        UpdateModeName(ActivePowerMode);
+                    }
+                }
+                catch (Exception ex) { AppLogger.Log($"Startup power source unavailable: {ex.Message}"); }
 
                 IsBatteryEnergySaverEnabled = cfg.Battery.BatteryEnergySaver;
 
@@ -110,6 +118,7 @@ namespace PreySense.Frontend.ViewModels
             _ = ApplyStartupLightingAsync();
             if (_disposed) return;
             await RestoreSessionSettingsAsync("startup");
+            await _dispatcher.InvokeAsync(InitializeGameMode);
             if (_disposed)
                 return;
             int batteryLimit = IsBatteryLimitEnabled ? 1 : 0;
@@ -189,6 +198,7 @@ namespace PreySense.Frontend.ViewModels
                     UpdateModeName(mode);
                     NotifyModeSelectionsChanged();
                     if (source == PowerSourceKind.Unknown) { DiagnosticMessage = restoreWarning; return; }
+                    ScheduleHotkeyLightingRestoreAfterModeSwitch();
                     bool onAc = source == PowerSourceKind.Ac;
                     _lastAcState = onAc;
                     ApplyAutoRefreshForPower(onAc);

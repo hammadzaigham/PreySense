@@ -21,7 +21,9 @@ namespace PreySense.Mode
 
         // Apply flags — CPU/GPU independently enabled/disabled per mode (fans use Fans.*)
         public bool ApplyCpuLimits { get; set; } = false;
-        public bool ApplyGpuLimits { get; set; } = false;
+
+        /// <summary>Runtime GPU target in Watts: null = OEM/Native dynamic policy, integer = custom PCF Bank 5 override.</summary>
+        public int? GpuRuntimeLimitWatts { get; set; }
 
         /// <summary>
         /// Creates the default profile for a given power mode code.
@@ -38,7 +40,7 @@ namespace PreySense.Mode
                     CpuPl2 = CpuPowerLimitConfiguration.FactoryQuietPl2,
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
-                    ApplyCpuLimits = false, ApplyGpuLimits = false
+                    ApplyCpuLimits = false, GpuRuntimeLimitWatts = null
                 },
                 0x06 => new PerformanceProfile
                 {
@@ -48,7 +50,7 @@ namespace PreySense.Mode
                     CpuPl2 = CpuPowerLimitConfiguration.FactoryEcoPl2,
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
-                    ApplyCpuLimits = false, ApplyGpuLimits = false
+                    ApplyCpuLimits = false, GpuRuntimeLimitWatts = null
                 },
                 0x04 => new PerformanceProfile
                 {
@@ -58,7 +60,7 @@ namespace PreySense.Mode
                     CpuPl2 = CpuPowerLimitConfiguration.FactoryPerformancePl2,
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
-                    ApplyCpuLimits = false, ApplyGpuLimits = false
+                    ApplyCpuLimits = false, GpuRuntimeLimitWatts = null
                 },
                 0x05 => new PerformanceProfile
                 {
@@ -68,7 +70,7 @@ namespace PreySense.Mode
                     CpuPl2 = CpuPowerLimitConfiguration.FactoryTurboPl2,
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
-                    ApplyCpuLimits = false, ApplyGpuLimits = false
+                    ApplyCpuLimits = false, GpuRuntimeLimitWatts = null
                 },
                 0x01 => new PerformanceProfile
                 {
@@ -78,7 +80,7 @@ namespace PreySense.Mode
                     CpuPl2 = CpuPowerLimitConfiguration.FactoryBalancedPl2,
                     TauSeconds = CpuPowerLimitConfiguration.FactoryTauSeconds,
                     CpuBoost = 1,
-                    ApplyCpuLimits = false, ApplyGpuLimits = false
+                    ApplyCpuLimits = false, GpuRuntimeLimitWatts = null
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };

@@ -14,6 +14,24 @@ namespace PreySense.Tests;
 public class ExtendedLightingEditorTests
 {
     [TestMethod]
+    [DataRow("Keyboard")]
+    [DataRow("Hotkey")]
+    [DataRow("Logo")]
+    [DataRow("Light bar")]
+    public void NewDeviceEditorDefaultsToModeWithoutCreatingSavedProfile(string kind)
+    {
+        var hardware = new FakeLightingHardware();
+        var vm = Create(hardware);
+        string id = "default-mode-" + Guid.NewGuid().ToString("N");
+        vm.SelectedLightingDevice = new(id, "Test", kind, [new(0, "LED")], [new(-1, "Static")], "");
+        Assert.AreEqual(ModeKeyLighting.FollowOperatingMode, vm.SelectedLightingDeviceMode!.Value);
+        Assert.HasCount(5, vm.ModePowerModeColorEditors);
+        Assert.IsFalse(hardware.Entered.IsSet);
+        Assert.IsFalse(ConfigurationService.Instance.GetCurrent().Lighting.Devices.ContainsKey(id));
+        vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+    }
+
+    [TestMethod]
     public void GroupColorEditsApplyAutomaticallyAndKeepUnselectedKeysUnchanged()
     {
         string id = "fake-group-" + Guid.NewGuid().ToString("N");
@@ -24,6 +42,7 @@ public class ExtendedLightingEditorTests
             typeof(MainViewModel).GetField("_autoDeviceLightingEnabled", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(vm, true);
             vm.SelectedLightingDevice = new(id, "Test keyboard", "Keyboard", [new(20, "A"), new(43, "B"), new(31, "C")], [new(-1, "Direct")], "Test only");
             Assert.IsFalse(hardware.Entered.IsSet, "Loading defaults must never write lighting.");
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(m => m.Value == -1);
             vm.DeviceLightingIndividualColors = true;
             vm.SelectedLightingKeys.Add(vm.LightingLedEditors[0]);
             vm.SelectedLightingKeys.Add(vm.LightingLedEditors[2]);
@@ -59,6 +78,7 @@ public class ExtendedLightingEditorTests
         try
         {
             vm.SelectedLightingDevice = new(id, "Fake keyboard", "Keyboard", [new(4, "Key 4")], [new(-1, "Direct"), new(7, "Wave")], "Test only");
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(m => m.Value == -1);
             vm.DeviceLightingColorHex = "#123456";
             vm.DeviceLightingIndividualColors = true;
             vm.LightingLedEditors[0].ColorHex = "#654321";
@@ -110,9 +130,12 @@ public class ExtendedLightingEditorTests
             vm.SelectedLightingDevice = new("sample-bar-" + Guid.NewGuid().ToString("N"), "Dynamic bar", "Light bar",
                 Enumerable.Range(0, 13).Select(i => new LightingLedInfo(i, $"LED {i + 1}")).ToArray(),
                 [new(-1, "Custom colors"), new(0, "Static")], "Sample");
+            Assert.AreEqual("Mode", vm.SelectedLightingDeviceMode!.Name);
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(m => m.Value == -1);
             Assert.AreEqual("Static", vm.SelectedLightingDeviceMode!.Name);
             Assert.AreEqual(-1, vm.SelectedLightingDeviceMode.Value);
-            Assert.HasCount(1, vm.LightingDeviceModes);
+            Assert.HasCount(2, vm.LightingDeviceModes);
+            Assert.IsTrue(vm.LightingDeviceModes.Any(m => ModeKeyLighting.IsFollowMode(m.Value)));
             Assert.AreSame(vm.LightingLedEditors[0], vm.SelectedLightingKey);
             Assert.IsFalse(hardware.Entered.IsSet);
             string original = vm.LightingLedEditors[0].ColorHex;
@@ -176,7 +199,7 @@ public class ExtendedLightingEditorTests
         var store = ConfigurationService.Instance;
         try
         {
-            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#123456" });
+            store.Update(config => config.Lighting.Devices[id] = new() { Mode = -1, ColorHex = "#123456" });
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .Invoke(vm, [ready.Task])!;
@@ -186,6 +209,10 @@ public class ExtendedLightingEditorTests
             Assert.AreEqual(expectedWrite, hardware.Entered.IsSet);
             if (expectedWrite) Assert.AreEqual("#123456", hardware.Applied!.ColorHex);
             Assert.AreEqual("#123456", store.GetCurrent().Lighting.Devices[id].ColorHex, "Loading must not replace a stored profile.");
+            hardware.Entered.Reset();
+            store.Update(config => config.Lighting.Devices[id].Mode = ModeKeyLighting.FollowOperatingMode);
+            vm.ReapplyExtendedModeLighting();
+            Assert.AreEqual(expectedWrite, hardware.Entered.IsSet, "Mode-change restoration must use the same authoritative profile as startup.");
         }
         finally { store.Update(config => config.Lighting.Devices.Remove(id)); }
     }
@@ -212,7 +239,7 @@ public class ExtendedLightingEditorTests
         Task restore = Task.CompletedTask;
         try
         {
-            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#112233" });
+            store.Update(config => config.Lighting.Devices[id] = new() { Mode = 0, ColorHex = "#112233" });
             vm.SelectedLightingDevice = device;
             restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .Invoke(vm, [Task.CompletedTask])!;
@@ -234,6 +261,31 @@ public class ExtendedLightingEditorTests
     }
 
     [TestMethod]
+    public void KeyboardWithModeFeature_DefaultsToModeLighting()
+    {
+        string id = "mode-keyboard-" + Guid.NewGuid().ToString("N");
+        var hardware = new FakeLightingHardware();
+        var vm = Create(hardware);
+        try
+        {
+            var device = new LightingDeviceInfo(id, "Per-Key RGB", "Keyboard",
+                [new(0, "A"), new(1, "B")],
+                [new(ModeKeyLighting.FollowOperatingMode, "Mode"), new(-1, "Static"), new(1, "Breathing")], "Sample");
+            vm.SelectedLightingDevice = device;
+            Assert.IsNotNull(vm.SelectedLightingDeviceMode);
+            Assert.AreEqual("Mode", vm.SelectedLightingDeviceMode.Name);
+            Assert.AreEqual(ModeKeyLighting.FollowOperatingMode, vm.SelectedLightingDeviceMode.Value);
+            Assert.IsTrue(vm.IsModeKeyFollowMode);
+            Assert.IsTrue(vm.ShowModePowerModeColors);
+        }
+        finally
+        {
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            ConfigurationService.Instance.Update(config => config.Lighting.Devices.Remove(id));
+        }
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task RestoreFailure_DoesNotEscapeTheBackgroundTaskOrChangeSavedSettings(bool keyboardStartupFails)
@@ -244,7 +296,7 @@ public class ExtendedLightingEditorTests
         var store = ConfigurationService.Instance;
         try
         {
-            store.Update(config => config.Lighting.Devices[id] = new() { ColorHex = "#123456" });
+            store.Update(config => config.Lighting.Devices[id] = new() { Mode = -1, ColorHex = "#123456" });
             Task keyboard = keyboardStartupFails ? Task.FromException(new IOException("Simulated keyboard startup failure")) : Task.CompletedTask;
             var restore = (Task)typeof(MainViewModel).GetMethod("RestoreExtendedLightingAfterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .Invoke(vm, [keyboard])!;
@@ -279,6 +331,75 @@ public class ExtendedLightingEditorTests
         finally
         {
             hardware.Release.Set();
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            ConfigurationService.Instance.Update(config => config.Lighting.Devices.Remove(id));
+        }
+    }
+
+    [TestMethod]
+    public void EffectDirectionLoadsAppliesAndIsOmittedForUnsupportedEffects()
+    {
+        string id = "direction-keyboard-" + Guid.NewGuid().ToString("N");
+        var hardware = new FakeLightingHardware();
+        hardware.Release.Set();
+        var vm = Create(hardware);
+        try
+        {
+            vm.SelectedLightingDevice = new(id, "Keyboard", "Keyboard", [new(0, "Zone 1")],
+                [new(7, "Wave", DirectionFlags: 6), new(4, "Breathing")], "Sample");
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(m => m.Value == 7);
+            Assert.IsTrue(vm.HasDeviceLightingDirection);
+            Assert.HasCount(4, vm.DeviceLightingDirections);
+            vm.DeviceLightingDirection = 3;
+            vm.ApplySelectedLightingDeviceAsync().GetAwaiter().GetResult();
+            Assert.AreEqual(3, hardware.Applied!.Direction);
+            Assert.AreEqual(3, ConfigurationService.Instance.GetCurrent().Lighting.Devices[id].Direction);
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes[1];
+            Assert.IsFalse(vm.HasDeviceLightingDirection);
+            Assert.IsEmpty(vm.DeviceLightingDirections);
+            vm.ApplySelectedLightingDeviceAsync().GetAwaiter().GetResult();
+            Assert.IsNull(hardware.Applied.Direction);
+        }
+        finally
+        {
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            ConfigurationService.Instance.Update(config => config.Lighting.Devices.Remove(id));
+        }
+    }
+
+    [TestMethod]
+    public void DynamicBarSyncColorsAllLedsPersistsAndCanReturnToIndependentEditing()
+    {
+        string id = "sync-bar-" + Guid.NewGuid().ToString("N");
+        var hardware = new FakeLightingHardware();
+        hardware.Release.Set();
+        var vm = Create(hardware);
+        var device = new LightingDeviceInfo(id, "Rear lightbar", "Light bar",
+            [new(0, "LED 1"), new(1, "LED 2"), new(2, "LED 3")], [new(-1, "Static")], "Test");
+        try
+        {
+            vm.SelectedLightingDevice = device;
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(m => m.Value == -1);
+            Assert.IsTrue(vm.ShowSyncAllBarLeds);
+            Assert.IsFalse(vm.SyncAllBarLeds);
+            vm.SelectedLightingKey = vm.LightingLedEditors[1];
+            vm.SelectedLightingKey.ColorHex = "#112233";
+            vm.SyncAllBarLeds = true;
+            Assert.IsTrue(vm.LightingLedEditors.All(led => led.ColorHex == "#112233"));
+            vm.SelectedLightingKey.ColorHex = "#445566";
+            Assert.IsTrue(vm.LightingLedEditors.All(led => led.ColorHex == "#445566"));
+            vm.ApplySelectedLightingDeviceAsync().GetAwaiter().GetResult();
+            Assert.IsTrue(hardware.Applied!.SyncLeds);
+            Assert.IsTrue(hardware.Applied.LedColors.Values.All(color => color == "#445566"));
+            vm.SelectedLightingDevice = device with { Details = "Reload" };
+            Assert.IsTrue(vm.SyncAllBarLeds);
+            vm.SyncAllBarLeds = false;
+            vm.SelectedLightingKey!.ColorHex = "#778899";
+            Assert.AreEqual("#445566", vm.LightingLedEditors[2].ColorHex);
+            Assert.AreEqual("#778899", vm.SelectedLightingKey.ColorHex);
+        }
+        finally
+        {
             vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
             ConfigurationService.Instance.Update(config => config.Lighting.Devices.Remove(id));
         }

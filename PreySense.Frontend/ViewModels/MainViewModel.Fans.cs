@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using PreySense.Core.Services;
 using PreySense.Mode;
 
@@ -7,6 +8,24 @@ namespace PreySense.Frontend.ViewModels;
 
 public partial class MainViewModel
 {
+    private bool? _synchronizeFanSpeeds;
+
+    public bool SynchronizeFanSpeeds
+    {
+        get => _synchronizeFanSpeeds ?? true;
+        set
+        {
+            if (_synchronizeFanSpeeds == value) return;
+            _synchronizeFanSpeeds = value;
+            PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg => cfg.Fans.SynchronizeFanSpeeds = value);
+            lock (_fanControlGate)
+            {
+                _sentCpuFan = _sentGpuFan = null;
+            }
+            OnPropertyChanged(nameof(SynchronizeFanSpeeds));
+        }
+    }
+
     public string[] FanCurveModeNames { get; } = { "Eco", "Quiet", "Balanced", "Performance", "Turbo" };
 
     private readonly object _fanControlGate = new();
@@ -137,7 +156,8 @@ public partial class MainViewModel
             int gpuTemp = telemetry.GpuTemp is > 0 and <= 125 ? telemetry.GpuTemp : 0;
             var (cpu, gpu, _) = _fanFollower.Evaluate(
                 telemetry.CpuTemp, gpuTemp, _runningFanProfile.Stages,
-                _runningFanProfile.RampUpSeconds, Environment.TickCount64);
+                _runningFanProfile.RampUpSeconds, Environment.TickCount64,
+                SynchronizeFanSpeeds);
             if (_sentCpuFan == cpu && _sentGpuFan == gpu) return;
             _fanOverrideActive = true;
             if (_hw.SetFanSpeeds((byte)cpu, (byte)gpu))

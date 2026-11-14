@@ -23,6 +23,8 @@
                     RightIcon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
                     SelectionChanged="FanTab_Changed"/>
                 <StackPanel x:Name="CurveEditor">
+                    <controls:SettingSwitchRow x:Name="SyncFansRow" Title="Synchronize Fan Speed"
+                        IsChecked="{Binding SynchronizeFanSpeeds, Mode=TwoWay}" Margin="0,0,0,8"/>
                     <controls:SettingSliderRow x:Name="DelayRow" Title="Fan Control Delay"
                         Minimum="0" Maximum="5" SmallChange="1" LargeChange="1" TickFrequency="1"
                         IsSnapToTickEnabled="True" Value="0" ValueText="0 s"

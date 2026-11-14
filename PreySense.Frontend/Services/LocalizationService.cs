@@ -27,6 +27,7 @@ public static class LocalizationService
         if (language.StartsWith("hi", StringComparison.OrdinalIgnoreCase)) return "hi-IN";
         if (language.StartsWith("es", StringComparison.OrdinalIgnoreCase)) return "es-ES";
         if (language.StartsWith("fr", StringComparison.OrdinalIgnoreCase)) return "fr-FR";
+        if (language.StartsWith("tr", StringComparison.OrdinalIgnoreCase)) return "tr-TR";
         return "en-US";
     }
 

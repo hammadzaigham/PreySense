@@ -28,6 +28,7 @@ namespace PreySense.Frontend.ViewModels
             ActivePowerMode = mode;
             UpdateModeName(mode);
             NotifyModeSelectionsChanged();
+            ScheduleHotkeyLightingRestoreAfterModeSwitch();
             if (ModeToastPresenter is { } presenter) presenter(mode, GetModeTitle(mode));
             else ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
         }
@@ -353,8 +354,6 @@ namespace PreySense.Frontend.ViewModels
             // OnPowerModeChanged skips RestoreFanMode while the mode-switch gate is held — load here.
             await Task.Run(RestoreFanMode).ConfigureAwait(true);
             PersistSessionSettings();
-            // Firmware paints Mode Key with the operating-mode color; put the user's lighting back.
-            ScheduleHotkeyLightingRestoreAfterModeSwitch();
             return true;
         }
 
@@ -489,6 +488,7 @@ namespace PreySense.Frontend.ViewModels
                         6 => cfg.Tuning.Eco,
                         _ => cfg.Tuning.Balanced
                     };
+                    profile.ApplyCpuBoost = true;
                     profile.CpuBoostMode = boost;
                     profile.CpuBoost = boost > 0;
                 });

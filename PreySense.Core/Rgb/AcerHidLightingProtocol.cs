@@ -9,6 +9,19 @@ public sealed record AcerHidLightingMode(byte Value, string Name);
 /// <summary>KYD100 serialization follows the OEM field order, with descriptor-derived widths.</summary>
 public static class AcerHidLightingProtocol
 {
+    /// <summary>AcerECKeyboardController FUN_180008250 maps service direction values to KYD/EC values.</summary>
+    public static uint DirectionFlags(byte mode, bool hasDirectionField) => !hasDirectionField ? 0u : mode switch
+    {
+        7 => 0x06u, // Color Wave: left/right and up/down.
+        8 => 0x02u, // Shifting: left/right.
+        _ => 0u
+    };
+
+    public static byte NativeDirection(int value) => value switch
+    {
+        0 => 2, 1 => 1, 2 => 3, 3 => 4, 4 => 5, 5 => 6,
+        _ => throw new ArgumentOutOfRangeException(nameof(value))
+    };
     public static byte[] CreateUpdateReport(int reportLength, byte target, byte mode, byte speed, byte direction,
         byte brightness, byte red, byte green, byte blue, ushort zone, IReadOnlyDictionary<ushort, int> fieldWidths)
     {

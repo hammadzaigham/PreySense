@@ -42,6 +42,21 @@ public class GpuClockTuningTests
     }
 
     [TestMethod]
+    public void GlobalOverclockingControlOffSkipsSavedModeOffsetsAndValidation()
+    {
+        var clocks = new Clocks();
+        var vm = Create(new() { ApplyGpuClockOffsets = true, GpuCoreClockOffsetMhz = 9999 }, clocks);
+        vm.TuningConfigurationReader = () => new PreySenseConfig
+        {
+            Tuning = new() { EnableGpuOverclockingControl = false, Balanced = new()
+                { ApplyGpuClockOffsets = true, GpuCoreClockOffsetMhz = 9999 } }
+        };
+        Assert.IsTrue(vm.ApplySavedDriverTuning(1).Success);
+        Assert.AreEqual(0, clocks.Reads);
+        Assert.AreEqual(0, clocks.Writes);
+    }
+
+    [TestMethod]
     public void SwitchOff_SkipsCapabilityQueriesAndWritesEvenWithSavedOffsets()
     {
         var clocks = new Clocks();
@@ -122,8 +137,8 @@ public class GpuClockTuningTests
                 cfg.Tuning.Balanced.GpuCoreClockOffsetMhz = 100;
                 cfg.Tuning.Balanced.GpuMemoryClockOffsetMhz = 3000;
             });
-            Assert.IsTrue(await vm.ApplyTuningProfileAsync(1, 0, 0, 0, new(0, 0, 0), persist: true,
-                applyCpuLimits: false, applyGpuLimits: false));
+            Assert.IsTrue(await vm.ApplyTuningProfileAsync(1, 0, 0, 0, null, persist: true,
+                applyCpuLimits: false));
             var saved = vm.TuningConfigurationStore.GetCurrent().Tuning.Balanced;
             Assert.IsFalse(saved.ApplyGpuClockOffsets);
             Assert.AreEqual(3000, saved.GpuMemoryClockOffsetMhz);

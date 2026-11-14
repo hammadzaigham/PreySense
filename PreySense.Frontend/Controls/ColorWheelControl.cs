@@ -12,6 +12,9 @@ namespace PreySense.Frontend.Controls
     /// </summary>
     public class ColorWheelControl : FrameworkElement
     {
+        private const double ThumbRadius = 7;
+        private const double ThumbOuterStroke = 2.5;
+        private const double WheelInset = ThumbRadius + ThumbOuterStroke / 2 + 1;
         private WriteableBitmap? _bitmap;
         private Point _center;
         private double _radius;
@@ -68,7 +71,7 @@ namespace PreySense.Frontend.Controls
             if (size <= 10) return;
 
             _center = new Point(ActualWidth / 2.0, ActualHeight / 2.0);
-            _radius = Math.Min(ActualWidth, ActualHeight) / 2.0 - 6.0;
+            _radius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2.0 - WheelInset);
 
             RenderWheelBitmap((int)ActualWidth, (int)ActualHeight);
             InvalidateVisual();
@@ -147,8 +150,8 @@ namespace PreySense.Frontend.Controls
             Color thumbColor = _isDragging ? _previewColor : SelectedColor;
             Point thumbPos = GetPositionFromColor(thumbColor);
 
-            dc.DrawEllipse(new SolidColorBrush(thumbColor), new Pen(Brushes.Black, 2.5), thumbPos, 7, 7);
-            dc.DrawEllipse(null, new Pen(Brushes.White, 1.5), thumbPos, 7, 7);
+            dc.DrawEllipse(new SolidColorBrush(thumbColor), new Pen(Brushes.Black, ThumbOuterStroke), thumbPos, ThumbRadius, ThumbRadius);
+            dc.DrawEllipse(null, new Pen(Brushes.White, 1.5), thumbPos, ThumbRadius, ThumbRadius);
         }
 
         private Point GetPositionFromColor(Color c)

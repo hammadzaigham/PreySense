@@ -11,7 +11,7 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
     /// UI/apply Delta ceiling. Hardware stores CT as a byte (0–255); Acer factory Turbo on PH16-73
     /// uses 55 W. Values above a SKU's VBIOS/TGP ceiling do not raise sustained draw on that machine.
     /// </summary>
-    public const int MaxGpuDeltaWatts = 100;
+    public const int MaxGpuDeltaWatts = 255;
     public const int MaxGpuDynamicBoostWatts = 25;
 
     /// <summary>Wait after Acer mode switch before reading live MMIO (EC reloads package limits).</summary>
@@ -173,7 +173,7 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
         ("Eco", 6), ("Quiet", 0), ("Balanced", 1), ("Performance", 4), ("Turbo", 5)
     ];
 
-    /// <summary>Clamp to 0–100 W in steps of 5 (same as ModeSettingsWindow apply constraints).</summary>
+    /// <summary>Clamp to 0–255 W in steps of 5 (same as ModeSettingsWindow apply constraints).</summary>
     public static int SnapGpuDelta(int watts) =>
         (int)Math.Round(Math.Clamp(watts, 0, MaxGpuDeltaWatts) / 5.0, MidpointRounding.AwayFromZero) * 5;
     /// <summary>Clamp to 0–25 W in steps of 5 (includes 5 W; same as ModeSettingsWindow).</summary>
@@ -183,7 +183,7 @@ public sealed class DriverFactoryCalibration(ICpuDriverBackend backend, IPhysica
     public static bool IsLegalGpuDynamicBoost(int watts) =>
         watts is >= 0 and <= MaxGpuDynamicBoostWatts && watts % 5 == 0;
 
-    /// <summary>Platform power offset (CP): 0–100 W in steps of 5 (hardware byte allows up to 255).</summary>
+    /// <summary>Platform power offset (CP): 0–255 W in steps of 5 (hardware byte allows up to 255).</summary>
     public static int SnapPlatformPowerOffset(int watts) =>
-        (int)Math.Round(Math.Clamp(watts, 0, 100) / 5.0, MidpointRounding.AwayFromZero) * 5;
+        (int)Math.Round(Math.Clamp(watts, 0, 255) / 5.0, MidpointRounding.AwayFromZero) * 5;
 }

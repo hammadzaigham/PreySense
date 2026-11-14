@@ -9,8 +9,7 @@ namespace PreySense.Frontend.ViewModels
         {
             var tuning = TuningStore.GetCurrent().Tuning;
             if (!tuning.HasFactoryDefaults || !tuning.FactoryDefaults.TryGetValue(TuningModeName(modeIndex), out var profile)
-                || profile.CpuPl1Watts is null || profile.CpuPl2Watts is null || profile.TauSeconds is null
-                || profile.GpuDeltaWatts is null || profile.GpuDynamicBoostWatts is null || profile.PlatformPowerOffsetWatts is null)
+                || profile.CpuPl1Watts is null || profile.CpuPl2Watts is null || profile.TauSeconds is null)
             {
                 DiagnosticMessage = "Capture factory defaults before resetting.";
                 return;
@@ -27,8 +26,9 @@ namespace PreySense.Frontend.ViewModels
             SetTauForModeIndex(modeIndex, profile.TauSeconds.Value);
             if (profile.EffectiveCpuBoostMode is int boost)
                 SetCpuBoostForModeIndex(modeIndex, boost);
-            if (GpuBasePowerWatts.HasValue)
-                StoreGpuOffsets(modeIndex, new(profile.GpuDeltaWatts.Value, profile.GpuDynamicBoostWatts.Value, profile.PlatformPowerOffsetWatts.Value));
+            StoreGpuRuntimeLimit(modeIndex, null);
+            if (profile.HasGpuLimitValues)
+                StoreGpuOffsets(modeIndex, new(profile.GpuDeltaWatts!.Value, profile.GpuDynamicBoostWatts!.Value, profile.PlatformPowerOffsetWatts!.Value));
 
             // Restore factory PROCHOT value and clear the apply switch.
             ProchotOffsetCelsius = tuning.FactoryProchotOffsetCelsius;
@@ -54,6 +54,32 @@ namespace PreySense.Frontend.ViewModels
 
         // Driver tuning enable policy
         [ObservableProperty] private bool _isHardwareTuningEnabled = false;
+
+        // Master tuning control toggles persisted in PreySenseConfig
+        [ObservableProperty] private bool _enableCpuPowerLimitControl = true;
+        [ObservableProperty] private bool _enableGpuPowerLimitControl = true;
+        [ObservableProperty] private bool _enableGpuOverclockingControl = true;
+        [ObservableProperty] private bool _enableCpuBoostTuningControl = true;
+
+        partial void OnEnableCpuBoostTuningControlChanged(bool value)
+        {
+            try { TuningStore.Update(cfg => cfg.Tuning.EnableCpuBoostTuningControl = value); } catch { }
+        }
+
+        partial void OnEnableCpuPowerLimitControlChanged(bool value)
+        {
+            try { TuningStore.Update(cfg => cfg.Tuning.EnableCpuPowerLimitControl = value); } catch { }
+        }
+
+        partial void OnEnableGpuPowerLimitControlChanged(bool value)
+        {
+            try { TuningStore.Update(cfg => cfg.Tuning.EnableGpuPowerLimitControl = value); } catch { }
+        }
+
+        partial void OnEnableGpuOverclockingControlChanged(bool value)
+        {
+            try { TuningStore.Update(cfg => cfg.Tuning.EnableGpuOverclockingControl = value); } catch { }
+        }
         // Per-mode power limits
         [ObservableProperty] private int _customQuietPl1 = CpuPowerLimitConfiguration.FactoryQuietPl1;
         [ObservableProperty] private int _customQuietPl2 = CpuPowerLimitConfiguration.FactoryQuietPl2;

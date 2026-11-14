@@ -97,41 +97,40 @@ namespace PreySense
             byte id = buffer[0];
             byte payload = buffer[1];
 
-            // PHN16-73 / PHN16S: report ID 0x04, payload 0x85 0xFF
-            if (id == 0x04 && payload == 0x85)
-                return HotkeyKind.Mode;
-            if (length >= 3 && id == 0x04 && payload == 0x05 && buffer[2] <= 1)
-                return HotkeyKind.Mode;
-            for (int i = 0; i < length - 1; i++)
-            {
-                if (buffer[i] == 0x85 && buffer[i + 1] == 0xFF)
-                    return HotkeyKind.Mode;
-            }
-
-            // Fn+F11 / Fn+F12 share the Mode key's vendor format: 04 <code> FF.
-            // PHN16S COL06: 04 7D FF is down, 04 7C FF is up.
-            // Do not treat boot-protocol F11/F12 (usage 0x44/0x45) as brightness.
+            // Fn+F11 / Fn+F12 and keyboard brightness events:
+            // Check brightness FIRST so brightness reports are never misinterpreted as Mode.
             bool vendorKey = id == 0x04 && length >= 3 && buffer[2] == 0xFF;
-            if (vendorKey && payload is 0x57 or 0x7A or 0x7D or 0x8B)
+            if (vendorKey && payload is 0x11 or 0x1A or 0x44 or 0x57 or 0x78 or 0x7A or 0x7D or 0x8B or 0xC5)
                 return HotkeyKind.BrightnessDown;
-            if (vendorKey && payload is 0x58 or 0x79 or 0x7C or 0x8C)
+            if (vendorKey && payload is 0x12 or 0x1B or 0x45 or 0x58 or 0x07 or 0x79 or 0x7C or 0x8C or 0xC4)
                 return HotkeyKind.BrightnessUp;
 
             // Consumer-control collection: Keyboard Brightness Decrement/Increment.
             if (id is 0x01 or 0x03 && length <= 8)
             {
-                if (payload is 0x7A or 0x8B)
+                if (payload is 0x11 or 0x1A or 0x7A or 0x8B or 0xC5)
                     return HotkeyKind.BrightnessDown;
-                if (payload is 0x79 or 0x8C)
+                if (payload is 0x12 or 0x1B or 0x79 or 0x8C or 0xC4)
                     return HotkeyKind.BrightnessUp;
             }
 
             if (length <= 8)
             {
-                if (ContainsByte(buffer, length, 0x7A))
+                if (ContainsByte(buffer, length, 0x7A) || ContainsByte(buffer, length, 0x11) || ContainsByte(buffer, length, 0x7D))
                     return HotkeyKind.BrightnessDown;
-                if (ContainsByte(buffer, length, 0x79))
+                if (ContainsByte(buffer, length, 0x79) || ContainsByte(buffer, length, 0x12) || ContainsByte(buffer, length, 0x7C))
                     return HotkeyKind.BrightnessUp;
+            }
+
+            // PHN16-73 / PHN16S: report ID 0x04, payload 0x85 0xFF
+            if (id == 0x04 && payload == 0x85)
+                return HotkeyKind.Mode;
+            if (length >= 3 && id == 0x04 && payload == 0x05 && buffer[2] == 1)
+                return HotkeyKind.Mode;
+            for (int i = 0; i < length - 1; i++)
+            {
+                if (buffer[i] == 0x85 && buffer[i + 1] == 0xFF)
+                    return HotkeyKind.Mode;
             }
 
             return HotkeyKind.None;

@@ -1,0 +1,130 @@
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.Views.GamesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        Title="PreySense • Games" Width="500" SizeToContent="Height" MaxHeight="850"
+        WindowStartupLocation="CenterOwner" Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}" ResizeMode="NoResize">
+    <Border Style="{DynamicResource AppWindowShellStyle}">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <controls:WindowTitleBar x:Name="GamesTitleBar" Grid.Row="0" Title="Games"/>
+            <ScrollViewer x:Name="GamesScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="{StaticResource WindowContentMargin}">
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Game Mode" Style="{DynamicResource SettingLabelStyle}"/>
+                            <Button Grid.Column="1" Height="28" VerticalAlignment="Center" Content="Add" Command="{Binding AddGameProfileCommand}"
+                                    Style="{StaticResource WindowFooterButtonStyle}"/>
+                            <Button Grid.Column="2" Height="28" VerticalAlignment="Center" Content="Remove" Command="{Binding RemoveSelectedGameProfileCommand}"
+                                    IsEnabled="{Binding HasSelectedGameProfile}" Style="{StaticResource WindowFooterButtonStyle}"/>
+                            <controls:RectangularSwitch Grid.Column="3" VerticalAlignment="Center"
+                                IsChecked="{Binding IsGameModeEnabled, Mode=TwoWay}"/>
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                        <StackPanel>
+                            <ListBox Background="{DynamicResource ControlTrackBrush}" ItemsSource="{Binding GameProfiles}" SelectedItem="{Binding SelectedGameProfile, Mode=TwoWay}"
+                                     Height="{Binding GameListHeight}" MaxHeight="162" Padding="0" BorderThickness="1" DisplayMemberPath="DisplayName"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="False">
+                                <ListBox.Template>
+                                    <ControlTemplate TargetType="ListBox">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                            <ScrollViewer Focusable="False" CanContentScroll="False"
+                                                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                <ItemsPresenter/>
+                                            </ScrollViewer>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ListBox.Template>
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Height" Value="32"/>
+                                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                        <Setter Property="CornerRadius" Value="4"/>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel IsEnabled="{Binding HasSelectedGameProfile}">
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                            <StackPanel>
+                                <controls:SettingSwitchRow Title="Enabled" IsChecked="{Binding SelectedGameEnabled, Mode=TwoWay}"/>
+                                <controls:SettingDropdownRow Title="Performance Mode" DropdownWidth="160"
+                                    ItemsSource="{Binding GameModeNames}" SelectedItem="{Binding SelectedGameModeName, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <controls:SettingDropdownRow Title="CPU Boost" DropdownMinWidth="220"
+                                    ItemsSource="{Binding GameCpuBoostNames}"
+                                    SelectedIndex="{Binding SelectedGameProfile.CpuBoostMode, TargetNullValue=1, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <controls:SettingSwitchRow x:Name="GameCpuLimits" Title="CPU Power Limits"
+                                    IsChecked="{Binding SelectedGameProfile.ApplyCpuLimits, Mode=TwoWay}"/>
+                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuLimits}">
+                                    <controls:SettingValueRow x:Name="GamePl1" Title="Sustained Long Power [PL1]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
+                                        Value="{Binding SelectedGameProfile.CpuPl1Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <controls:SettingValueRow x:Name="GamePl2" Title="Burst Peak Power [PL2]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
+                                        Value="{Binding SelectedGameProfile.CpuPl2Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                        <Grid>
+                                            <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
+                                            <TextBlock x:Name="GameTauLabel" Style="{DynamicResource SettingValueStyle}"/>
+                                        </Grid>
+                                        <Slider x:Name="GameTauSlider" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Margin="0,4,0,0" ValueChanged="GameTau_ValueChanged"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableGpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <controls:SettingSwitchRow x:Name="GameGpuLimits" Title="GPU Power Limits"
+                                    IsChecked="{Binding SelectedGameProfile.ApplyGpuLimits, Mode=TwoWay}"/>
+                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameGpuLimits}">
+                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                        <Grid><TextBlock Text="Delta" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDeltaLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                        <Slider x:Name="GameDeltaSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                        <Grid><TextBlock Text="Dynamic Boost" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDynamicBoostLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                        <Slider x:Name="GameDynamicBoostSlider" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                        <Grid><TextBlock Text="Platform Power Limit Offset" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GamePlatformLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                        <Slider x:Name="GamePlatformSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="{Binding GameModeStatus}" TextWrapping="Wrap" Margin="4,4">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding GameModeStatus}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                    <DataTrigger Binding="{Binding GameModeStatus}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+            <UniformGrid x:Name="GamesFooter" Grid.Row="2" Columns="1" Style="{StaticResource WindowFooterPanelStyle}" Margin="14,-8,14,14">
+                <Button Content="Save" IsEnabled="{Binding HasSelectedGameProfile}"
+                    Click="SaveGame_Click" Style="{StaticResource WindowFooterButtonStyle}"/>
+            </UniformGrid>
+        </Grid>
+    </Border>
+</Window>

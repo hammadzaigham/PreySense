@@ -25,7 +25,7 @@ public sealed class OemLightingController : IDisposable
             // startup (or first use). refresh is ignored so animation/sync paths cannot re-scan.
             if (!_discovered)
                 DiscoverCore();
-            return _devices.Values.Select(d => d.Info).ToArray();
+            return LightingDeviceInfo.UniqueTargets(_devices.Values.Select(d => d.Info));
         }
     }
 
@@ -48,18 +48,20 @@ public sealed class OemLightingController : IDisposable
                 _transports.Add(usb);
                 var leds = usb.Keys.Select(k => new LightingLedInfo(k.Index, k.Name)).ToArray();
                 if (leds.Length == 0) continue;
-                var modes = new List<LightingModeInfo> { new(-1, "Static / individual keys") };
+                var modes = new List<LightingModeInfo> { new(ModeKeyLighting.FollowOperatingMode, "Mode"), new(-1, "Static / individual keys") };
                 modes.AddRange(usb.GetSupportedModes().Select(m => new LightingModeInfo(m.Id, m.Name,
-                    m.SupportsSpeed, m.SupportsColor, m.SupportsRandomColors, m.SpeedMin, m.SpeedMax)));
+                    m.SupportsSpeed, m.SupportsColor, m.SupportsRandomColors, m.SpeedMin, m.SpeedMax,
+                    m.Flags & 0x0e, m.DefaultDirection)));
                 var info = new LightingDeviceInfo("usb:" + StableId(usb.Id), usb.Name, "Keyboard", leds,
                     modes, $"{leds.Length} individually addressable keys • hardware lighting effects");
                 _devices.Add(info.Id, new(info, settings =>
                 {
-                    if (settings.Mode != -1)
+                    if (settings.Mode != -1 && settings.Mode != ModeKeyLighting.FollowOperatingMode)
                     {
                         var mode = usb.GetSupportedModes().Single(m => m.Id == settings.Mode);
                         byte speed = (byte)ResolveAnimationSpeed(settings, mode.SpeedMin, mode.SpeedMax);
                         if (!usb.TryApplyMode(mode.Id, ColorTranslator.FromHtml(settings.ColorHex), (byte)settings.Brightness, speed,
+                            direction: (byte)info.Modes.Single(m => m.Value == settings.Mode).ResolveDirection(settings.Direction),
                             randomColors: settings.RandomColors))
                             throw new IOException(usb.LastError ?? "USB hardware effect failed.");
                         return;
@@ -82,16 +84,16 @@ public sealed class OemLightingController : IDisposable
                     .Select(i => new LightingLedInfo(i, hid.Kind == "Keyboard" ? $"Zone {i + 1}" : $"LED {i + 1}")).ToArray();
                 // Hardware already advertises Static. Keep a separate direct mode only when multiple LEDs need per-LED colors.
                 var modes = new List<LightingModeInfo>();
-                // Mode Key / Turbo Key: follow operating-mode colors (first, and the default when no profile exists).
-                if (hid.Kind == "Hotkey")
-                    modes.Add(new(ModeKeyLighting.FollowOperatingMode, "Mode"));
+                // Follow operating-mode colors (first, and the default when no profile exists).
+                modes.Add(new(ModeKeyLighting.FollowOperatingMode, "Mode"));
                 if (hid.LedCount > 1)
                     modes.Add(new(-1, "Custom colors"));
                 // Mode/Turbo Key effects use the advertised speed range, just like keyboard
                 // sync. Do not suppress their slider merely because they contain one LED.
                 modes.AddRange(hid.Modes.Select(m => new LightingModeInfo(m.Value, m.Name,
                     AcerHidLightingProtocol.SupportsAnimationSpeed(hid.Target, hid.LedCount, hid.MaximumSpeed, m.Value),
-                    SpeedMinimum: 1, SpeedMaximum: hid.MaximumSpeed)));
+                    SpeedMinimum: 1, SpeedMaximum: hid.MaximumSpeed,
+                    DirectionFlags: hid.Target == 0x21 ? AcerHidLightingProtocol.DirectionFlags((byte)m.Value, hid.HasDirectionField) : 0)));
                 var info = new LightingDeviceInfo(hid.Id, hid.Name, hid.Kind, leds, modes,
                     $"{hid.LedCount} independently controlled {(hid.Kind == "Keyboard" ? "zones" : "LEDs")} • detected hardware effects");
                 _devices.Add(info.Id, new(info, settings =>
@@ -100,15 +102,22 @@ public sealed class OemLightingController : IDisposable
                         hid.ApplyColors(leds.Select(l => Pack(ColorFor(settings, l.Index))).ToArray(), (byte)settings.Brightness);
                     else if (settings.Mode == ModeKeyLighting.FollowOperatingMode)
                     {
-                        // ColorHex is already resolved to the active operating-mode color by the caller.
-                        var color = ColorTranslator.FromHtml(settings.ColorHex);
-                        hid.ApplyMode(2, 0, (byte)settings.Brightness, 0, color.R, color.G, color.B);
+                        if (hid.Kind == "Keyboard" && leds.Length == 4)
+                            hid.ApplyColors(leds.Select(l => Pack(ColorFor(settings, l.Index))).ToArray(), (byte)settings.Brightness);
+                        else
+                        {
+                            var color = ColorTranslator.FromHtml(settings.ColorHex);
+                            hid.ApplyMode(2, 0, (byte)settings.Brightness, 0, color.R, color.G, color.B);
+                        }
                     }
                     else
                     {
                         var color = ColorTranslator.FromHtml(settings.ColorHex);
                         hid.ApplyMode((byte)settings.Mode, hid.MaximumSpeed == 0 ? (byte)0 : (byte)ResolveAnimationSpeed(settings, 1, hid.MaximumSpeed),
-                            (byte)settings.Brightness, 0, color.R, color.G, color.B);
+                            (byte)settings.Brightness,
+                            info.Modes.Single(m => m.Value == settings.Mode) is { SupportsDirection: true } directional
+                                ? AcerHidLightingProtocol.NativeDirection(directional.ResolveDirection(settings.Direction)) : (byte)0,
+                            color.R, color.G, color.B);
                     }
                 }));
             }
@@ -127,12 +136,14 @@ public sealed class OemLightingController : IDisposable
                 var leds = Enumerable.Range(0, ec.LedCount)
                     .Select(i => new LightingLedInfo(i, ec.IsKeyboard ? $"Zone {i + 1}" : $"LED {i + 1}")).ToArray();
                 var modes = new List<LightingModeInfo>();
+                modes.Add(new(ModeKeyLighting.FollowOperatingMode, "Mode"));
                 if (ec.LedCount > 1)
                     modes.Add(new(-1, "Custom colors"));
                 if (ec.IsKeyboard)
                 {
                     string[] names = ["Static", "Breathing", "Neon", "Wave", "Ripple", "Zoom", "Snake", "Disco"];
-                    modes.AddRange(names.Select((name, value) => new LightingModeInfo(value, name, value != 0)));
+                    modes.AddRange(names.Select((name, value) => new LightingModeInfo(value, name, value != 0,
+                        DirectionFlags: value == 3 ? 0x0eu : value == 4 ? 2u : 0)));
                 }
                 var info = new LightingDeviceInfo(ec.Id, ec.Name, ec.IsKeyboard ? "Keyboard" : "Light bar", leds,
                     modes, ec.IsKeyboard
@@ -142,11 +153,18 @@ public sealed class OemLightingController : IDisposable
                 {
                     if (settings.Mode == -1)
                         ec.ApplyColors(leds.Select(l => Pack(ColorFor(settings, l.Index))).ToArray(), checked((byte)settings.Brightness));
+                    else if (settings.Mode == ModeKeyLighting.FollowOperatingMode)
+                    {
+                        ec.ApplyColors(leds.Select(l => Pack(ColorFor(settings, l.Index))).ToArray(), checked((byte)settings.Brightness));
+                    }
                     else
                     {
                         var color = ColorTranslator.FromHtml(settings.ColorHex);
                         ec.ApplyMode(checked((byte)settings.Mode), (byte)ResolveAnimationSpeed(settings, 1, 9),
-                            checked((byte)settings.Brightness), 1, color.R, color.G, color.B);
+                            checked((byte)settings.Brightness),
+                            info.Modes.Single(m => m.Value == settings.Mode) is { SupportsDirection: true } directional
+                                ? AcerHidLightingProtocol.NativeDirection(directional.ResolveDirection(settings.Direction)) : (byte)1,
+                            color.R, color.G, color.B);
                     }
                 }));
             }
@@ -170,11 +188,13 @@ public sealed class OemLightingController : IDisposable
                 if (colors.Length == 0 || colors.Length > 1024) continue;
                 var leds = Enumerable.Range(0, colors.Length).Select(i => new LightingLedInfo(i, $"LED {i + 1}")).ToArray();
                 var modes = device.Modes.Select(m => new LightingModeInfo(m.Value, m.Name,
-                    (m.Flags & 1) != 0, (m.Flags & 0x40) != 0, (m.Flags & 0x80) != 0, m.SpeedMinimum, m.SpeedMaximum)).ToList();
+                    (m.Flags & 1) != 0, (m.Flags & 0x40) != 0, (m.Flags & 0x80) != 0, m.SpeedMinimum, m.SpeedMaximum,
+                    m.Flags & 0x0e, m.Direction)).ToList();
                 var direct = device.Modes.FirstOrDefault(m => m.Name.Contains("direct", StringComparison.OrdinalIgnoreCase));
                 if (direct != null && colors.Length > 1)
                     modes.Insert(0, new(-1, "Custom colors"));
                 if (modes.Count == 0) continue;
+                modes.Insert(0, new(ModeKeyLighting.FollowOperatingMode, "Mode"));
                 var info = new LightingDeviceInfo($"acer-service:{index}:{StableId(device.Name)}", device.Name,
                     device.DeviceType == 5 ? "Keyboard" : "Lighting device", leds, modes,
                     "Acer Lighting Service • LED numbers follow the controller's order; physical key names are unavailable");
@@ -185,15 +205,21 @@ public sealed class OemLightingController : IDisposable
                     var liveColors = pipe.GetDeviceLedsAsync(device.Index).GetAwaiter().GetResult();
                     if (live.Name != device.Name || live.DeviceType != device.DeviceType || liveColors.Length != leds.Length)
                         throw new IOException("The lighting device changed. Close and reopen the Lighting window if it is not detected automatically.");
-                    int modeValue = settings.Mode == -1 ? direct?.Value ?? throw new InvalidOperationException("Individual LEDs are not supported by this controller.") : settings.Mode;
+                    bool followMode = ModeKeyLighting.IsFollowMode(settings.Mode);
+                    int modeValue = settings.Mode == -1 || followMode
+                        ? direct?.Value ?? (followMode
+                            ? live.Modes.FirstOrDefault(m => m.Name.Equals("Static", StringComparison.OrdinalIgnoreCase))?.Value
+                                ?? throw new InvalidOperationException("A static lighting effect is unavailable.")
+                            : throw new InvalidOperationException("Individual LEDs are not supported by this controller."))
+                        : settings.Mode;
                     var mode = live.Modes.FirstOrDefault(m => m.Value == modeValue)
                         ?? throw new InvalidOperationException("The selected hardware effect is unavailable.");
                     int brightness = Scale(settings.Brightness, mode.BrightnessMinimum, mode.BrightnessMaximum);
                     int speed = ResolveAnimationSpeed(settings, mode.SpeedMinimum, mode.SpeedMaximum);
                     uint packedColor = Pack(ColorTranslator.FromHtml(settings.ColorHex)) | (settings.RandomColors ? 0x01000000u : 0);
                     pipe.SetDeviceModeAsync(device.Index, modeValue, packedColor,
-                        speed, brightness, mode.Direction).GetAwaiter().GetResult();
-                    if (settings.Mode == -1)
+                        speed, brightness, info.Modes.Single(m => m.Value == settings.Mode).ResolveDirection(settings.Direction)).GetAwaiter().GetResult();
+                    if (settings.Mode == -1 || (followMode && direct != null))
                         pipe.SetDeviceLedsAsync(device.Index, leds.Select(l => Pack(ColorFor(settings, l.Index))).ToArray()).GetAwaiter().GetResult();
                 }));
             }
@@ -211,6 +237,9 @@ public sealed class OemLightingController : IDisposable
             if (!device.Info.Modes.Any(m => m.Value == settings.Mode)) throw new InvalidOperationException("Lighting effect is not supported by this device.");
             if (settings.RandomColors && !device.Info.Modes.Any(m => m.Value == settings.Mode && m.SupportsRandomColors))
                 throw new InvalidOperationException("Random colors are not supported by this effect.");
+            var mode = device.Info.Modes.Single(m => m.Value == settings.Mode);
+            if (settings.Direction is int direction && !mode.Directions.Any(d => d.Value == direction))
+                throw new InvalidOperationException("Direction is not supported by this effect.");
             device.Apply(settings);
         }
     }
@@ -253,13 +282,25 @@ public sealed class OemLightingController : IDisposable
         maximum > minimum ? minimum + (int)Math.Round((maximum - (double)minimum) * percent / 100) : minimum;
     private static string StableId(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
     private static uint Pack(Color c) => (uint)(c.R | c.G << 8 | c.B << 16);
-    private static Color ColorFor(DeviceLightingConfig settings, int index) => ColorTranslator.FromHtml(
-        settings.IndividualColors && settings.LedColors.TryGetValue(index, out string? color) ? color : settings.ColorHex);
+    private static Color ColorFor(DeviceLightingConfig settings, int index)
+    {
+        if (settings.Mode == ModeKeyLighting.FollowOperatingMode && settings.LedColors.Count > 0)
+        {
+            if (settings.LedColors.TryGetValue(index, out string? modeLedColor))
+                return ColorTranslator.FromHtml(modeLedColor);
+            if (settings.LedColors.TryGetValue(index % 4, out string? quadColor))
+                return ColorTranslator.FromHtml(quadColor);
+        }
+        return ColorTranslator.FromHtml(
+            settings.IndividualColors && settings.LedColors.TryGetValue(index, out string? color) ? color : settings.ColorHex);
+    }
     public static void Validate(DeviceLightingConfig settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (settings.AnimationSpeedLevel is < 0 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(settings.AnimationSpeedLevel));
+        if (settings.Direction is < 0 or > 5)
+            throw new ArgumentOutOfRangeException(nameof(settings.Direction));
         if (settings.Brightness is < 0 or > 100 || settings.Speed is < 0 or > 100 || settings.LedColors is null || settings.LedColors.Count > 1024)
             throw new ArgumentOutOfRangeException(nameof(settings), "Invalid lighting level or color count.");
         static void CheckColor(string value)

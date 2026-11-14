@@ -116,7 +116,7 @@
                     <StackPanel>
                         <Grid Margin="0,2,0,6">
                             <TextBlock Text="Overlay Metric Slots" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Button x:Name="ButtonAddSlot" Content="+ Add Slot" HorizontalAlignment="Right" Width="88" Height="26" Padding="6,2" Click="ButtonAddSlot_Click"/>
+                            <Button x:Name="ButtonAddSlot" Content="Add Slot" HorizontalAlignment="Right" Width="88" Height="26" Padding="6,2" Click="ButtonAddSlot_Click"/>
                         </Grid>
                         <StackPanel x:Name="PanelColumnsContainer"/>
                     </StackPanel>

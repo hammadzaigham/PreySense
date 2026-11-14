@@ -192,6 +192,17 @@ public static class FanCurveStorage
         return legacyMax ? FanControlMode.Max : FanControlMode.Custom;
     }
 
+    public static bool LoadSynchronizeFanSpeeds()
+    {
+        try { return PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Fans.SynchronizeFanSpeeds; }
+        catch { return true; }
+    }
+
+    public static void SaveSynchronizeFanSpeeds(bool value)
+    {
+        PreySense.Core.Configuration.ConfigurationService.Instance.Update(cfg => cfg.Fans.SynchronizeFanSpeeds = value);
+    }
+
     public static void Save(byte mode, FanCurveProfile profile)
     {
         var saved = profile.Copy();

@@ -257,6 +257,10 @@ namespace PreySense.Core.Configuration
             }
 
             // Lighting validation
+            if (config.Lighting.ModeBrightness is < 0 or > 100)
+                throw new ArgumentOutOfRangeException(nameof(config.Lighting.ModeBrightness), "Mode brightness must be 0-100.");
+            config.Lighting.PowerModeColors ??= new();
+            PreySense.Rgb.OemLightingController.Validate(new DeviceLightingConfig { PowerModeColors = config.Lighting.PowerModeColors });
             config.Lighting.Devices ??= new();
             if (config.Lighting.Devices.Count > 128) throw new ArgumentException("Too many lighting device profiles.");
             foreach (var profile in config.Lighting.Devices.Values) PreySense.Rgb.OemLightingController.Validate(profile);
@@ -304,21 +308,17 @@ namespace PreySense.Core.Configuration
             if (mode.GpuWatts is < 1 or > 999)
                 throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuWatts", $"GPU target watts for {modeName} must be between 1W and 999W.");
 
-            if (mode.GpuDeltaWatts is < 0
-                || mode.GpuDeltaWatts > Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
-                || (mode.GpuDeltaWatts is int delta && delta % 5 != 0))
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDeltaWatts",
-                    $"GPU delta for {modeName} must be 0–{Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts}W in steps of 5.");
+            if (mode.GpuDeltaWatts is < 0 or > 255 || mode.PlatformPowerOffsetWatts is < 0 or > 255
+                || mode.GpuDynamicBoostWatts is < 0 or > 25)
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuOffsets",
+                    "GPU Delta and Platform Power Offset must be 0–255W; Dynamic Boost must be 0–25W.");
 
-            if (mode.GpuDynamicBoostWatts is int db && !Hardware.DriverFactoryCalibration.IsLegalGpuDynamicBoost(db))
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuDynamicBoostWatts",
-                    $"GPU dynamic boost for {modeName} must be 0–{Hardware.DriverFactoryCalibration.MaxGpuDynamicBoostWatts}W in steps of 5.");
-
-            if (mode.PlatformPowerOffsetWatts is < 0 or > 100 || (mode.PlatformPowerOffsetWatts is int platform && platform % 5 != 0))
-                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.PlatformPowerOffsetWatts", $"Platform power offset for {modeName} must be 0–100W in steps of 5.");
+            if (mode.GpuRuntimeLimitWatts is int target && (target < 5 || target > 999))
+                throw new ArgumentOutOfRangeException($"Tuning.{modeName}.GpuRuntimeLimitWatts",
+                    $"GPU runtime target watts for {modeName} must be between 5W and 999W.");
         }
 
-        /// <summary>Promotes legacy boost bools and snaps factory GPU offsets to apply-legal steps.</summary>
+        /// <summary>Promotes legacy boost bools.</summary>
         private static void NormalizeModeTuning(ModeTuningConfig mode)
         {
             if (mode.CpuBoostMode is null && mode.CpuBoost is bool legacyBoost)
@@ -328,13 +328,6 @@ namespace PreySense.Core.Configuration
                 mode.CpuBoostMode = Math.Clamp(boost, 0, 6);
                 mode.CpuBoost = mode.CpuBoostMode > 0;
             }
-
-            if (mode.GpuDeltaWatts is int rawDelta)
-                mode.GpuDeltaWatts = Hardware.DriverFactoryCalibration.SnapGpuDelta(rawDelta);
-            if (mode.GpuDynamicBoostWatts is int rawDb)
-                mode.GpuDynamicBoostWatts = Hardware.DriverFactoryCalibration.SnapGpuDynamicBoost(rawDb);
-            if (mode.PlatformPowerOffsetWatts is int rawPlatform)
-                mode.PlatformPowerOffsetWatts = Hardware.DriverFactoryCalibration.SnapPlatformPowerOffset(rawPlatform);
         }
 
         private PreySenseConfig LoadOrInitialize()
@@ -380,6 +373,7 @@ namespace PreySense.Core.Configuration
 
                 loaded.Lighting.Keyboard ??= new KeyboardLightingConfig();
                 loaded.Lighting.Cover ??= new CoverLightingConfig();
+                loaded.Lighting.PowerModeColors ??= new();
                 loaded.Lighting.Devices ??= new();
 
                 loaded.Overlay.Slots ??= OverlayConfig.CreateDefaultSlots();

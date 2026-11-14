@@ -11,7 +11,7 @@ public sealed class FanCurveFollower
     private long _pendingSince;
 
     public (int CpuPercent, int GpuPercent, int Stage) Evaluate(
-        int cpuTemp, int gpuTemp, FanStage[] stages, int delaySeconds = 0, long nowMs = 0)
+        int cpuTemp, int gpuTemp, FanStage[] stages, int delaySeconds = 0, long nowMs = 0, bool synchronizeFanSpeeds = true)
     {
         if (stages == null || stages.Length == 0)
             return (0, 0, 0);
@@ -45,9 +45,13 @@ public sealed class FanCurveFollower
 
         int applied = Math.Clamp(_stage ?? desired, 0, stages.Length - 1);
         var current = stages[applied];
-        // Curves keep separate CPU/GPU duties; both fans run at the higher of the two.
-        int duty = Math.Max(current.CpuDutyPercent, current.GpuDutyPercent);
-        return (duty, duty, applied);
+        if (synchronizeFanSpeeds)
+        {
+            // Curves keep separate CPU/GPU duties; both fans run at the higher of the two when synchronized.
+            int duty = Math.Max(current.CpuDutyPercent, current.GpuDutyPercent);
+            return (duty, duty, applied);
+        }
+        return (current.CpuDutyPercent, current.GpuDutyPercent, applied);
     }
 
     private static bool ShouldAdvance(int cpu, int gpu, FanStage stage)

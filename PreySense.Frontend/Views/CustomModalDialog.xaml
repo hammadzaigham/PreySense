@@ -14,18 +14,6 @@
         FontFamily="{DynamicResource AppFontFamily}"
         ResizeMode="NoResize">
 
-    <Window.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="pack://application:,,,/PreySense;component/Styles/Colors.xaml" />
-                <ResourceDictionary Source="pack://application:,,,/PreySense;component/Styles/Typography.xaml" />
-                <ResourceDictionary Source="pack://application:,,,/PreySense;component/Styles/Spacing.xaml" />
-                <ResourceDictionary Source="pack://application:,,,/PreySense;component/Styles/Cards.xaml" />
-                <ResourceDictionary Source="pack://application:,,,/PreySense;component/Styles/Controls.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </Window.Resources>
-
     <Border Style="{DynamicResource AppWindowShellStyle}"
             TextElement.Foreground="{DynamicResource TextPrimaryBrush}"
             TextElement.FontFamily="{DynamicResource AppFontFamily}">
@@ -39,27 +27,22 @@
 
             <controls:WindowTitleBar x:Name="HeaderBar" Grid.Row="0" CloseClick="CloseButton_Click"/>
 
-            <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
+            <StackPanel Grid.Row="1" Margin="{DynamicResource WindowContentMargin}">
                 <TextBlock x:Name="MessageText"
                            TextWrapping="Wrap"
                            FontSize="{DynamicResource FontSizeBody}"
-                           FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            Margin="0,2,0,0"/>
             </StackPanel>
 
-            <Border Grid.Row="2" Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="0,1,0,0">
-                <UniformGrid x:Name="ButtonsPanel" Columns="2" Rows="1" Style="{StaticResource WindowFooterPanelStyle}">
+            <UniformGrid x:Name="ButtonsPanel" Grid.Row="2" Columns="2" Rows="1" Style="{DynamicResource WindowFooterPanelStyle}">
                     <Button x:Name="CancelButton" Content="Cancel"
                             Style="{DynamicResource WindowFooterButtonStyle}"
                             Click="CancelButton_Click"/>
                     <Button x:Name="ConfirmButton"
                             Style="{DynamicResource WindowFooterButtonStyle}"
-                            FontWeight="SemiBold"
-                            Padding="16,0"
                             Click="ConfirmButton_Click"/>
-                </UniformGrid>
-            </Border>
+            </UniformGrid>
         </Grid>
     </Border>
 </Window>

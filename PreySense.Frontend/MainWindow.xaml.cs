@@ -101,7 +101,8 @@ namespace PreySense.Frontend
                             if (DataContext is MainViewModel mvm)
                                 mvm.HandleModeKeyPressed();
                         });
-                    });
+                    },
+                    onBrightnessDelta: delta => vm.HandleFnBrightness(delta, "Keyboard"));
             }
             catch { }
 
@@ -137,11 +138,16 @@ namespace PreySense.Frontend
 
         public void QuitApplication()
         {
-            RunOnUi(() =>
+            RunOnUi(async () =>
             {
+                if (_isExplicitExit) return;
                 _isExplicitExit = true;
-                Close();
-                Application.Current.Shutdown();
+                try
+                {
+                    if (DataContext is MainViewModel vm) await vm.PrepareGameModeShutdownAsync();
+                }
+                catch (Exception ex) { PreySense.AppLogger.Error($"Game tuning shutdown restore failed: {ex}"); }
+                finally { Close(); Application.Current.Shutdown(); }
             });
         }
 
@@ -185,6 +191,9 @@ namespace PreySense.Frontend
 
         private void FansButton_Click(object sender, RoutedEventArgs e) =>
             ShowToolWindow<Views.FanCurveWindow>();
+
+        private void GamesButton_Click(object sender, RoutedEventArgs e) =>
+            ShowToolWindow<Views.GamesWindow>();
 
         private void ShowModeSettingsWindow() => ShowToolWindow<Views.ModeSettingsWindow>();
 

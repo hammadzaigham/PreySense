@@ -84,6 +84,48 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="LightingDeviceTabStyle" TargetType="{x:Type RadioButton}">
+          <Setter Property="Background" Value="{DynamicResource ButtonRaisedBgBrush}" />
+          <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+          <Setter Property="BorderBrush" Value="{DynamicResource ButtonRaisedBorderBrush}" />
+          <Setter Property="BorderThickness" Value="1" />
+          <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+          <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+          <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+          <Setter Property="HorizontalContentAlignment" Value="Center" />
+          <Setter Property="VerticalContentAlignment" Value="Center" />
+          <Setter Property="Height" Value="36" />
+          <Setter Property="Padding" Value="4,0" />
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="{x:Type RadioButton}">
+                <Border Name="border" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}" CornerRadius="5">
+                  <ContentPresenter HorizontalAlignment="{TemplateBinding Control.HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding Control.VerticalContentAlignment}" Margin="{TemplateBinding Control.Padding}" RecognizesAccessKey="True" />
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="UIElement.IsMouseOver" Value="True">
+                    <Setter TargetName="border" Property="Border.Background" Value="{DynamicResource ButtonHoverBrush}" />
+                  </Trigger>
+                  <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="border" Property="Border.Background" Value="{DynamicResource ButtonSecondBrush}" />
+                  </Trigger>
+                  <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="border" Property="Background" Value="{DynamicResource DisabledControlBrush}" />
+                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BorderSecondBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+          <Style.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+              <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}"/>
+            </Trigger>
+          </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Border Style="{DynamicResource AppWindowShellStyle}">
@@ -98,6 +140,11 @@
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="{StaticResource WindowContentMargin}">
+
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
+                    <controls:SettingActionRow Title="Lighting Mode Settings" ActionText="Open" Click="LightingSettings_Click"/>
+                </Border>
+                <Separator HorizontalAlignment="Stretch" Margin="0,2,0,12"/>
 
                 <!-- Detected devices replace Keyboard/Logo when OEM lighting targets are present. -->
                 <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
@@ -114,7 +161,7 @@
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Background" Value="Transparent"/>
                                 <Setter Property="Padding" Value="0"/>
-                                <Setter Property="Margin" Value="2,0"/>
+                                <Setter Property="Margin" Value="0"/>
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 <Setter Property="HorizontalAlignment" Value="Stretch"/>
                                 <Setter Property="Template">
@@ -129,11 +176,11 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <RadioButton Style="{StaticResource SegmentedTabRadioStyle}" GroupName="LightingDeviceTabs"
+                                <RadioButton Style="{StaticResource LightingDeviceTabStyle}" GroupName="LightingDeviceTabs"
                                              IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}"
                                              HorizontalAlignment="Stretch" Margin="0">
-                                    <TextBlock Text="{Binding DisplayName, Converter={StaticResource TranslateConverter}}" Margin="8,0" TextTrimming="CharacterEllipsis"
-                                               TextAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DisplayName, Converter={StaticResource TranslateConverter}}" Margin="4,0"
+                                               TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Stretch"/>
                                 </RadioButton>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -162,27 +209,14 @@
                             <TextBlock Text="{Binding KbdTimeoutDisplay}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                         </Grid>
                         <Slider Minimum="0" Maximum="120" SmallChange="10" LargeChange="30" IsSnapToTickEnabled="True" TickFrequency="10"
-                                Value="{Binding KbdTimeoutSeconds, Mode=TwoWay}"
+                                Value="{Binding KbdTimeoutSeconds, Mode=TwoWay, Delay=150}"
                                 Style="{StaticResource ReferenceBatterySliderStyle}"/>
                     </StackPanel>
                 </Border>
 
                 <!-- SECTION 1: KEYBOARD LIGHTING CONTROLS (4-zone / software effects) -->
                 <StackPanel x:Name="SectionKeyboard" Visibility="{Binding IsLegacyKeyboardEditorVisible, Converter={StaticResource BoolToVis}}">
-                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
-                    <StackPanel>
-                        <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding RgbBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </Grid>
-                        <Slider Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay}"
-                                SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
-                                IsMoveToPointEnabled="True"/>
-                    </StackPanel>
-                </Border>
+
 
                     <!-- Lighting Mode Dropdown (Static vs Dynamic) - Clean Row Layout -->
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
@@ -194,14 +228,40 @@
 
                             <TextBlock Text="Lighting Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                            <ComboBox Grid.Column="1" x:Name="ComboLightingMode" SelectedIndex="0" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
+                            <ComboBox Grid.Column="1" x:Name="ComboLightingMode" SelectedIndex="0" Width="210" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                       SelectionChanged="ComboLightingMode_SelectionChanged">
+                                <ComboBoxItem Content="Mode"/>
                                 <ComboBoxItem Content="Static"/>
                                 <ComboBoxItem Content="Dynamic"/>
                                 <ComboBoxItem Content="Software"/>
                             </ComboBox>
                         </Grid>
                     </Border>
+
+                    <Border x:Name="PanelKeyboardBrightness" Margin="0,0,0,8">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding LightingEffectTag}" Value="MODE"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                <DataTrigger Binding="{Binding LightingEffectTag}" Value="HW:Mode"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding RgbBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Grid>
+                        <Slider Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay, Delay=150}"
+                                SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
+                                IsMoveToPointEnabled="True"/>
+                    </StackPanel>
+                </Border>
+
+
 
                     <!-- Zone Selection & Palette (Static Mode Only) -->
                     <Border x:Name="PanelStaticControls" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
@@ -234,6 +294,7 @@
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboPresetStatic_SelectionChanged">
                                     <ComboBoxItem Content="Custom" Tag="Custom"/>
+                                    <ComboBoxItem Content="Mode" Tag="Mode"/>
                                     <ComboBoxItem Content="Predator" Tag="Predator"/>
                                     <ComboBoxItem Content="Cyberpunk" Tag="Cyberpunk"/>
                                     <ComboBoxItem Content="Fire &amp; Ice" Tag="FireIce"/>
@@ -300,7 +361,7 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding SelectedHexColor, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding SelectedHexColor, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextHexColorInput" Text="{Binding SelectedHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -320,7 +381,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <TextBlock Text="Dynamic Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="1" x:Name="ComboDynamicSelect" Width="210" Height="28" MaxDropDownHeight="360"
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
@@ -332,6 +393,16 @@
                                     <ComboBoxItem Content="Zoom" Tag="HW:5"/>
                                     <ComboBoxItem Content="Snake" Tag="HW:6"/>
                                     <ComboBoxItem Content="Disco" Tag="HW:7"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <Grid Margin="{StaticResource StandardRowMargin}"
+                                  Visibility="{Binding HasKeyboardLightingDirection, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Direction" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" Width="210" Height="28" ItemsSource="{Binding KeyboardLightingDirections}"
+                                          SelectedValuePath="Value" SelectedValue="{Binding KeyboardLightingDirection}">
+                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name, Converter={StaticResource TranslateConverter}}"/></DataTemplate></ComboBox.ItemTemplate>
                                 </ComboBox>
                             </Grid>
 
@@ -348,7 +419,7 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding KeyboardAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider Grid.Row="1" Minimum="1" Maximum="10" Value="{Binding KeyboardAnimationSpeedLevel, Mode=TwoWay}"
+                                <Slider Grid.Row="1" Minimum="1" Maximum="10" Value="{Binding KeyboardAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
@@ -363,7 +434,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <TextBlock Text="Software Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="1" x:Name="ComboSoftwareSelect" Width="210" Height="28" MaxDropDownHeight="360"
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
@@ -398,7 +469,7 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding RgbSpeed}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay}"
+                                <Slider Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
@@ -414,32 +485,6 @@
                                                   IsChecked="{Binding IsCoverSyncWithKeyboard, Mode=TwoWay}"/>
                     </Border>
 
-                    <Border x:Name="PanelCoverBrightness" Margin="0,0,0,8">
-                        <Border.Style>
-                            <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsCoverSyncWithKeyboard}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <StackPanel>
-                            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding CoverBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                            </Grid>
-                            <Slider Minimum="0" Maximum="100" Value="{Binding CoverBrightness, Mode=TwoWay}"
-                                    SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
-                                    IsMoveToPointEnabled="True"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Logo Effect Mode -->
                     <Border x:Name="PanelCoverEffectMode" Margin="0,0,0,8">
                         <Border.Style>
                             <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
@@ -457,16 +502,46 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="Effect Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Lighting Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
 
-                            <ComboBox Grid.Column="1" x:Name="ComboCoverMode" Width="154" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
+                            <ComboBox Grid.Column="1" x:Name="ComboCoverMode" Width="210" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                       SelectionChanged="ComboCoverMode_SelectionChanged">
+                                <ComboBoxItem Content="Mode" Tag="4"/>
                                 <ComboBoxItem Content="Static" Tag="1"/>
                                 <ComboBoxItem Content="Breathing" Tag="2"/>
                                 <ComboBoxItem Content="Neon" Tag="3"/>
                             </ComboBox>
                         </Grid>
                     </Border>
+
+                    <Border x:Name="PanelCoverBrightness" Margin="0,0,0,8">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource OriginalSectionPanelStyle}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCoverSyncWithKeyboard}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding CoverLightingMode}" Value="4"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}" Margin="0,0,0,2">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding CoverBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </Grid>
+                            <Slider Minimum="0" Maximum="100" Value="{Binding CoverBrightness, Mode=TwoWay, Delay=150}"
+                                    SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    IsMoveToPointEnabled="True"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Logo Lighting Mode -->
+
 
                     <!-- Logo presets and color wheel — Static only; Breathing/Neon show speed instead -->
                     <Border x:Name="PanelCoverColorWheel" Margin="0,0,0,8">
@@ -533,7 +608,7 @@
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding CoverHexColor, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding CoverHexColor, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextCoverHexColorInput" Text="{Binding CoverHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -555,7 +630,7 @@
                                 <TextBlock Text="{Binding LogoAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
                             <Grid Margin="0,0,0,2">
-                                <Slider Minimum="1" Maximum="5" Value="{Binding LogoAnimationSpeedLevel, Mode=TwoWay}"
+                                <Slider Minimum="1" Maximum="5" Value="{Binding LogoAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0"/>
                             </Grid>
                         </StackPanel>
@@ -586,7 +661,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Lighting Mode" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Text="Effect" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding LightingDeviceModes}" SelectedItem="{Binding SelectedLightingDeviceMode}"
                                       DisplayMemberPath="Name" MinWidth="210" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"
                                       FontSize="{DynamicResource FontSizeControl}"/>
@@ -601,6 +676,7 @@
                                     <DataTrigger Binding="{Binding IsModeKeySyncWithKeyboard}" Value="True">
                                         <Setter Property="Visibility" Value="Collapsed"/>
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsModeKeyFollowMode}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
@@ -617,7 +693,7 @@
                                     LargeChange="{Binding DeviceLightingBrightnessStep}"
                                     TickFrequency="{Binding DeviceLightingBrightnessStep}"
                                     IsSnapToTickEnabled="True"
-                                    Value="{Binding DeviceLightingBrightness}"
+                                    Value="{Binding DeviceLightingBrightness, Delay=150}"
                                     IsMoveToPointEnabled="True"/>
                         </StackPanel>
                     </Border>
@@ -634,48 +710,26 @@
                             </Grid>
                             <Slider Minimum="{Binding DeviceLightingSpeedMinimum}" Maximum="{Binding DeviceLightingSpeedMaximum}"
                                     SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding DeviceLightingSpeedLevel}"/>
+                                    Value="{Binding DeviceLightingSpeedLevel, Delay=150}"/>
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
                         <StackPanel>
+                            <Grid Margin="0,0,0,8" Visibility="{Binding HasDeviceLightingDirection, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Direction" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" Width="210" Height="28" ItemsSource="{Binding DeviceLightingDirections}"
+                                          SelectedValuePath="Value" SelectedValue="{Binding DeviceLightingDirection}">
+                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name, Converter={StaticResource TranslateConverter}}"/></DataTemplate></ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
                             <controls:SettingSwitchRow Title="Random colors" IsChecked="{Binding DeviceLightingRandomColors}"
                                 Visibility="{Binding HasDeviceLightingRandomColors, Converter={StaticResource BoolToVis}}" Margin="0,0,0,6"/>
+                            <controls:SettingSwitchRow Title="Sync All LEDs" IsChecked="{Binding SyncAllBarLeds, Mode=TwoWay}"
+                                Visibility="{Binding ShowSyncAllBarLeds, Converter={StaticResource BoolToVis}}" Margin="0,0,0,6"/>
 
-                            <StackPanel Margin="0,2,0,6"
-                                        Visibility="{Binding ShowModePowerModeColors, Converter={StaticResource BoolToVis}}">
-                                <ItemsControl ItemsSource="{Binding ModePowerModeColorEditors}" Margin="0,0,0,8">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <UniformGrid Rows="1" Columns="5"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Content="{Binding Name}" Height="32" Margin="2,0"
-                                                    Background="{Binding ColorHex}" Foreground="{Binding ForegroundHex}"
-                                                    Click="ModePowerModeColor_Click" Tag="{Binding}"
-                                                    Style="{StaticResource ZoneColorButtonStyle}"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <StackPanel HorizontalAlignment="Center">
-                                    <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
-                                        IsEnabled="{Binding HasSelectedModePowerModeColor}"
-                                        SelectedColor="{Binding SelectedModePowerModeColor.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                                Background="{Binding SelectedModePowerModeColor.ColorHex, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding SelectedModePowerModeColor.ColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
-                                                 Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
-                                                 FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
-                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                                 IsEnabled="{Binding HasSelectedModePowerModeColor}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </StackPanel>
+
 
                             <StackPanel HorizontalAlignment="Center" Margin="0,2,0,6"
                                         Visibility="{Binding ShowDeviceColorFields, Converter={StaticResource BoolToVis}}">
@@ -686,7 +740,7 @@
                                             Visibility="{Binding ShowDeviceColorWheel, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding DeviceLightingColorHex, FallbackValue='#3B82F6'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding DeviceLightingColorHex, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding DeviceLightingColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"

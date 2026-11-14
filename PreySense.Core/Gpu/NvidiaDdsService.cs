@@ -193,7 +193,7 @@ namespace PreySense.Gpu
                 }
 
                 _isInitialized = true;
-                AppLogger.Log("NvidiaDdsService: Initialized successfully with nvcpl.dll.");
+                AppLogger.Log($"NvidiaDdsService: Initialized {dllPath} (version {System.Diagnostics.FileVersionInfo.GetVersionInfo(dllPath).FileVersion}).");
                 return true;
             }
             catch (Exception ex)
@@ -255,7 +255,7 @@ namespace PreySense.Gpu
                     {
                         _lastGetInfoRet = ret;
                         _lastGetInfoLogTime = DateTime.UtcNow;
-                        AppLogger.Log($"NvidiaDdsService: NvCplApiGetInfo(0x17) failed with ret={ret}.");
+                        AppLogger.Log($"NvidiaDdsService: NvCplApiGetInfo(0x17) status unavailable: ret={ret} ({DescribeStatusReadFailure(ret)}), returned size={size}. No display switch was requested by this read.");
                     }
                     return null;
                 }
@@ -265,6 +265,15 @@ namespace PreySense.Gpu
                 }
             }
         }
+
+        // Verified against NVIDIA App nvcpl.dll 8.17.15.5527's exception-to-result mapping.
+        // Keep the raw code: this private API's mappings can change between versions.
+        internal static string DescribeStatusReadFailure(int result) => result switch
+        {
+            1 => "general NVIDIA API failure",
+            9 => "access denied in NVIDIA API",
+            _ => "unclassified NVIDIA API failure"
+        };
 
         public bool HasBlockingApps()
         {

@@ -1,7 +1,9 @@
 using System;
 using System.Threading.Tasks;
 using PreySense.Core.Configuration;
+using PreySense.Core.Driver;
 using PreySense.Core.Hardware;
+using PreySense.Core.Services;
 using PreySense.Frontend.Services;
 using PreySense.Mode;
 
@@ -10,8 +12,11 @@ namespace PreySense.Frontend.ViewModels;
 public partial class MainViewModel
 {
     internal readonly record struct DriverTuningRequest(byte Mode, int Pl1, int Pl2, int Tau,
-        PreySense.Core.Driver.GpuPowerOffsets Offsets, int? ProchotOffsetCelsius = null,
-        bool ApplyCpuLimits = true, bool ApplyGpuLimits = true, bool RestoreMsrToStaticFloor = false);
+        int? GpuRuntimeLimitWatts = null, int? ProchotOffsetCelsius = null,
+        bool ApplyCpuLimits = true, bool RestoreMsrToStaticFloor = false, GpuPowerOffsets? GpuOffsets = null)
+    {
+        public bool ApplyGpuLimits => GpuOffsets is not null || GpuRuntimeLimitWatts.HasValue;
+    }
     internal readonly record struct DriverTuningResult(bool Success, string Status);
     // Allows regression tests to exercise the same automatic/manual orchestration without hardware writes.
     internal Func<DriverTuningRequest, DriverTuningResult>? DriverTuningExecutor { get; set; }
@@ -27,6 +32,10 @@ public partial class MainViewModel
         ProchotOffsetCelsius = t.ProchotOffsetCelsius;
         IsProchotOffsetLocked = t.FactoryProchotOffsetLocked == true;
         IsProchotOffsetEnabled = t.ApplyProchotOffset && !IsProchotOffsetLocked;
+        EnableCpuPowerLimitControl = t.EnableCpuPowerLimitControl;
+        EnableGpuPowerLimitControl = t.EnableGpuPowerLimitControl;
+        EnableGpuOverclockingControl = t.EnableGpuOverclockingControl;
+        EnableCpuBoostTuningControl = t.EnableCpuBoostTuningControl;
 
         void ApplyEditor(int index, Action<ModeTuningConfig> assign)
         {
@@ -39,30 +48,35 @@ public partial class MainViewModel
             CustomEcoPl1 = d.CpuPl1Watts ?? CustomEcoPl1; CustomEcoPl2 = d.CpuPl2Watts ?? CustomEcoPl2;
             CustomEcoTau = d.TauSeconds ?? CustomEcoTau; CustomEcoGpuWatts = d.GpuWatts ?? CustomEcoGpuWatts;
             CustomEcoCpuBoost = d.EffectiveCpuBoostMode ?? CustomEcoCpuBoost;
+            CustomEcoGpuRuntimeWatts = d.GpuRuntimeLimitWatts;
         });
         ApplyEditor(1, d =>
         {
             CustomQuietPl1 = d.CpuPl1Watts ?? CustomQuietPl1; CustomQuietPl2 = d.CpuPl2Watts ?? CustomQuietPl2;
             CustomQuietTau = d.TauSeconds ?? CustomQuietTau; CustomQuietGpuWatts = d.GpuWatts ?? CustomQuietGpuWatts;
             CustomQuietCpuBoost = d.EffectiveCpuBoostMode ?? CustomQuietCpuBoost;
+            CustomQuietGpuRuntimeWatts = d.GpuRuntimeLimitWatts;
         });
         ApplyEditor(2, d =>
         {
             CustomBalancedPl1 = d.CpuPl1Watts ?? CustomBalancedPl1; CustomBalancedPl2 = d.CpuPl2Watts ?? CustomBalancedPl2;
             CustomBalancedTau = d.TauSeconds ?? CustomBalancedTau; CustomBalancedGpuWatts = d.GpuWatts ?? CustomBalancedGpuWatts;
             CustomBalancedCpuBoost = d.EffectiveCpuBoostMode ?? CustomBalancedCpuBoost;
+            CustomBalancedGpuRuntimeWatts = d.GpuRuntimeLimitWatts;
         });
         ApplyEditor(3, d =>
         {
             CustomPerfPl1 = d.CpuPl1Watts ?? CustomPerfPl1; CustomPerfPl2 = d.CpuPl2Watts ?? CustomPerfPl2;
             CustomPerfTau = d.TauSeconds ?? CustomPerfTau; CustomPerfGpuWatts = d.GpuWatts ?? CustomPerfGpuWatts;
             CustomPerfCpuBoost = d.EffectiveCpuBoostMode ?? CustomPerfCpuBoost;
+            CustomPerfGpuRuntimeWatts = d.GpuRuntimeLimitWatts;
         });
         ApplyEditor(4, d =>
         {
             CustomTurboPl1 = d.CpuPl1Watts ?? CustomTurboPl1; CustomTurboPl2 = d.CpuPl2Watts ?? CustomTurboPl2;
             CustomTurboTau = d.TauSeconds ?? CustomTurboTau; CustomTurboGpuWatts = d.GpuWatts ?? CustomTurboGpuWatts;
             CustomTurboCpuBoost = d.EffectiveCpuBoostMode ?? CustomTurboCpuBoost;
+            CustomTurboGpuRuntimeWatts = d.GpuRuntimeLimitWatts;
         });
     }
 
@@ -93,15 +107,16 @@ public partial class MainViewModel
         if (request.ApplyCpuLimits &&
             (request.Pl1 is < 5 or > 300 || request.Pl2 < request.Pl1 || request.Pl2 > 300 || request.Tau is < 0 or > 449))
             return new(false, "CPU limits are out of range.");
-        if (request.ApplyGpuLimits &&
-            (request.Offsets.DeltaWatts is < 0
-                || request.Offsets.DeltaWatts > DriverFactoryCalibration.MaxGpuDeltaWatts
-                || request.Offsets.DeltaWatts % 5 != 0 ||
-                !DriverFactoryCalibration.IsLegalGpuDynamicBoost(request.Offsets.DynamicBoostWatts) ||
-                request.Offsets.PlatformOffsetWatts is < 0 or > 100 || request.Offsets.PlatformOffsetWatts % 5 != 0))
-            return new(false, "GPU limits are out of range.");
+        int minGpu = GpuPowerTargetMin > 0 ? GpuPowerTargetMin : (PreySense.Core.Driver.GpuPowerBaseline.ReadWatts() ?? 55);
+        int maxGpu = GpuPowerTargetMax > 0 ? GpuPowerTargetMax : 180;
+        if (request.GpuRuntimeLimitWatts is int requestedGpuWatts &&
+            (requestedGpuWatts < minGpu || requestedGpuWatts > maxGpu))
+            return new(false, "GPU limit is out of range.");
         if (request.ProchotOffsetCelsius is < 0 or > 63)
             return new(false, "PROCHOT offset must be between 0 and 63°C.");
+        if (request.GpuOffsets is { } direct && (!direct.IsValid || direct.DeltaWatts % 5 != 0
+            || !DriverFactoryCalibration.IsLegalGpuDynamicBoost(direct.DynamicBoostWatts) || direct.PlatformOffsetWatts % 5 != 0))
+            return new(false, "GPU offsets are outside the supported Acer profile range or step.");
         if (DriverTuningExecutor is not null) return DriverTuningExecutor(request);
         var backend = CpuDriverRuntime.Backend ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var cpu = CpuDriverRuntime.PowerLimits ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
@@ -112,13 +127,21 @@ public partial class MainViewModel
         if (request.ApplyCpuLimits && !backend.TryReadMchbar(out mchbar))
             return new(false, "Could not find CPU power registers.");
 
+        // Same transaction as v3.0.8: stage DB/CT/CP while the target is inactive,
+        // activate the target once, verify the bytes, then apply CPU limits last.
         if (request.ApplyGpuLimits)
         {
+            var offsets = request.GpuOffsets;
+            if (offsets is null && !TryResolveGpuTarget(request.Mode, request.GpuRuntimeLimitWatts!.Value, out offsets, out string status))
+                return new(false, status);
+            if (offsets is null || !offsets.IsValid || offsets.DeltaWatts % 5 != 0
+                || !DriverFactoryCalibration.IsLegalGpuDynamicBoost(offsets.DynamicBoostWatts)
+                || offsets.PlatformOffsetWatts % 5 != 0)
+                return new(false, "GPU offsets are outside the supported Acer profile range or step.");
             var gpu = new AcerProfileApplyTransaction(backend, new TuningModeController(this))
-                .Apply(request.Mode, request.Offsets.DeltaWatts, request.Offsets.DynamicBoostWatts, (byte)request.Offsets.PlatformOffsetWatts);
+                .Apply(request.Mode, offsets!.DeltaWatts, offsets.DynamicBoostWatts, (byte)offsets.PlatformOffsetWatts);
             if (!gpu.Success) return new(false, gpu.Status);
         }
-        // Apply/Save with GPU off leaves the current Acer mode alone; mode restores set it first.
 
         if (request.ApplyCpuLimits)
         {
@@ -148,29 +171,33 @@ public partial class MainViewModel
             0 => tuning.Quiet, 1 => tuning.Balanced, 4 => tuning.Performance,
             5 => tuning.Turbo, 6 => tuning.Eco, _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
+        bool applyCpuLimits = tuning.EnableCpuPowerLimitControl && profile.ApplyCpuLimits;
         int? prochot = tuning.ApplyProchotOffset && !IsProchotOffsetLocked ? tuning.ProchotOffsetCelsius : null;
-        bool applyGpu = profile.ApplyGpuLimits && IsGpuProfileTuningAvailable;
-        if (profile.ApplyGpuClockOffsets && !profile.HasGpuClockValues)
+        int? gpuRuntime = tuning.EnableGpuPowerLimitControl && !profile.ApplyGpuLimits ? profile.GpuRuntimeLimitWatts : null;
+        var gpuOffsets = tuning.EnableGpuPowerLimitControl && profile.ApplyGpuLimits && profile.HasGpuLimitValues
+            ? new GpuPowerOffsets(profile.GpuDeltaWatts!.Value, profile.GpuDynamicBoostWatts!.Value, profile.PlatformPowerOffsetWatts!.Value) : null;
+        if (tuning.EnableGpuPowerLimitControl && profile.ApplyGpuLimits && gpuOffsets is null)
+            return new(false, "Set all GPU offsets before applying.");
+        bool applyClockOffsets = tuning.EnableGpuOverclockingControl && profile.ApplyGpuClockOffsets;
+        if (applyClockOffsets && !profile.HasGpuClockValues)
             return new(false, "Set GPU core and memory offsets before applying.");
-        DriverTuningResult ApplyProfile(DriverTuningRequest request) => ExecuteRequestedTuning(request,
-            profile.ApplyGpuClockOffsets, profile.HasGpuClockValues
+        DriverTuningResult ApplyProfile(DriverTuningRequest request) => ExecuteRequestedTuning(request with { GpuOffsets = gpuOffsets },
+            applyClockOffsets, profile.HasGpuClockValues
                 ? new(profile.GpuCoreClockOffsetMhz!.Value, profile.GpuMemoryClockOffsetMhz!.Value) : null);
-        if (!profile.ApplyCpuLimits && !applyGpu)
+        if (!applyCpuLimits && !gpuRuntime.HasValue && gpuOffsets is null)
         {
             if (!_hw.SetPowerMode(mode))
                 return new(false, "Could not switch Acer mode.");
-            return ApplyProfile(new(mode, 0, 0, 0, new(0, 0, 0), prochot, false, false));
+            return ApplyProfile(new(mode, 0, 0, 0, null, prochot, false));
         }
         if (!profile.HasValues)
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected.")
                 : new(false, "Could not switch Acer mode.");
-        // GPU apply switches Acer mode itself; CPU/PROCHOT-only restores must switch first.
-        if (!applyGpu && !_hw.SetPowerMode(mode))
+        if (!_hw.SetPowerMode(mode))
             return new(false, "Could not switch Acer mode.");
         return ApplyProfile(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,
-            new(profile.GpuDeltaWatts ?? 0, profile.GpuDynamicBoostWatts ?? 0, profile.PlatformPowerOffsetWatts ?? 0),
-            prochot, profile.ApplyCpuLimits, applyGpu));
+            gpuRuntime, prochot, applyCpuLimits));
     }
 
     internal DriverTuningResult RestoreSavedPowerMode(byte mode)
@@ -216,10 +243,10 @@ public partial class MainViewModel
                 profile.TauSeconds = null;
                 profile.CpuBoost = null;
                 profile.CpuBoostMode = null;
+                profile.ApplyCpuBoost = false;
                 profile.GpuWatts = null;
-                profile.GpuDeltaWatts = null;
-                profile.GpuDynamicBoostWatts = null;
-                profile.PlatformPowerOffsetWatts = null;
+                profile.GpuRuntimeLimitWatts = null;
+                profile.GpuDeltaWatts = profile.GpuDynamicBoostWatts = profile.PlatformPowerOffsetWatts = null;
                 profile.ApplyCpuLimits = false;
                 profile.ApplyGpuLimits = false;
                 profile.ApplyGpuClockOffsets = false;
@@ -242,10 +269,10 @@ public partial class MainViewModel
     }
 
     internal async Task<bool> ApplyTuningProfileAsync(byte mode, int pl1, int pl2, int tau,
-        PreySense.Core.Driver.GpuPowerOffsets offsets, bool persist, int? prochotOffsetCelsius = null, bool applyProchotOffset = false,
-        bool applyCpuLimits = true, bool applyGpuLimits = true, bool persistApplySwitches = true,
+        int? gpuRuntimeLimitWatts, bool persist, int? prochotOffsetCelsius = null, bool applyProchotOffset = false,
+        bool applyCpuLimits = true, bool persistApplySwitches = true,
         bool restoreMsrToStaticFloor = false,
-        PreySense.Gpu.GpuClockOffsets? clockOffsets = null, bool applyGpuClockOffsets = false)
+        PreySense.Gpu.GpuClockOffsets? clockOffsets = null, bool applyGpuClockOffsets = false, bool applyCpuBoost = false, GpuPowerOffsets? gpuOffsets = null)
     {
         applyProchotOffset &= !IsProchotOffsetLocked;
         if (applyProchotOffset && prochotOffsetCelsius is null)
@@ -255,11 +282,13 @@ public partial class MainViewModel
         }
         if (!IsHardwareTuningEnabled || IsBusy)
         {
-            DiagnosticMessage = IsBusy ? "Tuning is busy. Try again in a moment." : "Turn on Hardware Tuning first.";
+            DiagnosticMessage = IsBusy ? "Tuning is busy. Try again in a moment." : "Tuning is unavailable until factory defaults are ready.";
             AppLogger.Error($"[Tuning] {DiagnosticMessage}");
             return false;
         }
-        if (!applyCpuLimits && !applyGpuLimits && !applyProchotOffset && !applyGpuClockOffsets)
+        if (!applyCpuLimits && !gpuRuntimeLimitWatts.HasValue && gpuOffsets is null && !applyProchotOffset && !applyGpuClockOffsets && applyCpuBoost)
+            return await ApplyCpuBoostOnlyAsync(mode, persist, persistApplySwitches);
+        if (!applyCpuLimits && !gpuRuntimeLimitWatts.HasValue && gpuOffsets is null && !applyProchotOffset && !applyGpuClockOffsets)
         {
             if (!persist) { DiagnosticMessage = "Turn on CPU limits, GPU limits, GPU overclocking, or PROCHOT first."; return false; }
             try
@@ -269,7 +298,9 @@ public partial class MainViewModel
                     var profile = mode switch { 0 => cfg.Tuning.Quiet, 1 => cfg.Tuning.Balanced,
                         4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
                         _ => throw new ArgumentOutOfRangeException(nameof(mode)) };
-                    profile.ApplyCpuLimits = profile.ApplyGpuLimits = profile.ApplyGpuClockOffsets = false;
+                    profile.ApplyCpuLimits = profile.ApplyGpuClockOffsets = profile.ApplyCpuBoost = false;
+                    profile.GpuRuntimeLimitWatts = null;
+                    profile.ApplyGpuLimits = false;
                     cfg.Tuning.ApplyProchotOffset = false;
                 });
                 DiagnosticMessage = "Saved. Disabled tuning sections were skipped.";
@@ -286,20 +317,19 @@ public partial class MainViewModel
         IsBusy = true;
         try
         {
-            AppLogger.Log($"[Tuning] Apply mode=0x{mode:X2} CPU={(applyCpuLimits ? $"{pl1}/{pl2}/τ{tau}" : "off")} GPU={(applyGpuLimits ? $"Δ{offsets.DeltaWatts}/DB{offsets.DynamicBoostWatts}/CP{offsets.PlatformOffsetWatts}" : "off")}");
-            var applied = await Task.Run(() => ExecuteRequestedTuning(new(mode, pl1, pl2, tau, offsets,
-                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, applyGpuLimits, restoreMsrToStaticFloor),
+            AppLogger.Log($"[Tuning] Apply mode=0x{mode:X2} CPU={(applyCpuLimits ? $"{pl1}/{pl2}/τ{tau}" : "off")} GPU={(gpuRuntimeLimitWatts.HasValue ? $"{gpuRuntimeLimitWatts}W" : "OEM dynamic")}");
+            var applied = await Task.Run(() => ExecuteRequestedTuning(new(mode, pl1, pl2, tau, gpuRuntimeLimitWatts,
+                applyProchotOffset ? prochotOffsetCelsius : null, applyCpuLimits, restoreMsrToStaticFloor, gpuOffsets),
                 applyGpuClockOffsets, clockOffsets));
             if (!applied.Success) throw new InvalidOperationException(applied.Status);
             ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode);
             UpdateModeName(ActivePowerMode);
             NotifyModeSelectionsChanged();
-            bool boostOk = await ApplyCpuBoostForModeAsync(mode);
+            bool boostOk = !applyCpuBoost || _hw.CurrentPowerMode != mode || await WriteCpuBoostAsync(mode);
             if (persist)
             {
                 int boost = CpuBoostModeForMode(mode);
                 bool saveCpu = persistApplySwitches && applyCpuLimits;
-                bool saveGpu = persistApplySwitches && applyGpuLimits;
                 bool saveProchot = persistApplySwitches && applyProchotOffset;
                 TuningStore.Update(cfg =>
                 {
@@ -307,7 +337,6 @@ public partial class MainViewModel
                         4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
                         _ => throw new ArgumentOutOfRangeException(nameof(mode)) };
                     profile.ApplyCpuLimits = saveCpu;
-                    profile.ApplyGpuLimits = saveGpu;
                     profile.ApplyGpuClockOffsets = persistApplySwitches && applyGpuClockOffsets;
                     if (applyGpuClockOffsets)
                     {
@@ -317,11 +346,21 @@ public partial class MainViewModel
                     profile.CpuPl1Watts = pl1; profile.CpuPl2Watts = pl2; profile.TauSeconds = tau;
                     cfg.Tuning.ProchotOffsetCelsius = prochotOffsetCelsius;
                     cfg.Tuning.ApplyProchotOffset = saveProchot;
-                    profile.GpuDeltaWatts = offsets.DeltaWatts; profile.GpuDynamicBoostWatts = offsets.DynamicBoostWatts;
-                    profile.PlatformPowerOffsetWatts = offsets.PlatformOffsetWatts;
-                    profile.CpuBoostMode = boost;
-                    profile.CpuBoost = boost > 0;
-                    profile.GpuWatts = offsets.NominalReferenceWatts(GpuBasePowerWatts);
+                    profile.GpuRuntimeLimitWatts = gpuOffsets is null && persistApplySwitches ? gpuRuntimeLimitWatts : null;
+                    profile.ApplyGpuLimits = persistApplySwitches && gpuOffsets is not null;
+                    if (gpuOffsets is not null)
+                    {
+                        profile.GpuDeltaWatts = gpuOffsets.DeltaWatts;
+                        profile.GpuDynamicBoostWatts = gpuOffsets.DynamicBoostWatts;
+                        profile.PlatformPowerOffsetWatts = gpuOffsets.PlatformOffsetWatts;
+                    }
+                    profile.ApplyCpuBoost = persistApplySwitches && applyCpuBoost;
+                    if (applyCpuBoost)
+                    {
+                        profile.CpuBoostMode = boost;
+                        profile.CpuBoost = boost > 0;
+                    }
+                    profile.GpuWatts = gpuRuntimeLimitWatts ?? profile.GpuWatts;
                 });
                 if (!persistApplySwitches)
                     IsProchotOffsetEnabled = false;

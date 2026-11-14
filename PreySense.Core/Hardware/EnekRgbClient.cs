@@ -28,6 +28,7 @@ namespace PreySense
         private const byte EffectBreathing = 0x04;
         private const byte EffectNeon = 0x05;
         private const byte EffectWave = 0x07;
+        private const byte EffectShifting = 0x08;
         private const byte EffectZoom = 0x09;
         private const byte EffectMeteor = 0x0A;
         private const byte EffectTwinkling = 0x0B;
@@ -221,7 +222,7 @@ namespace PreySense
                     1 => EffectBreathing, // 0x04
                     2 => EffectNeon,      // 0x05
                     3 => EffectWave,      // 0x07
-                    4 => EffectWave,      // 0x07 (Shifting uses wave opcode with direction)
+                    4 => EffectShifting,  // 0x08, recovered OEM Shifting opcode
                     5 => EffectZoom,      // 0x09
                     6 => EffectMeteor,    // 0x0A (Snake/Meteor)
                     7 => EffectTwinkling, // 0x0B
@@ -229,7 +230,8 @@ namespace PreySense
                 };
 
                 byte hidSpeed = (byte)Math.Clamp((int)speed, 1, 10);
-                byte hidDir = (byte)(direction != 0 ? 1 : 0);
+                // KYD directions are native values 1..6; do not collapse all choices to 1.
+                byte hidDir = direction <= 6 ? direction : throw new ArgumentOutOfRangeException(nameof(direction));
 
                 return SendFeatureReport(effectOpcode, b, hidSpeed, hidDir, color.R, color.G, color.B, 0x0F);
             }

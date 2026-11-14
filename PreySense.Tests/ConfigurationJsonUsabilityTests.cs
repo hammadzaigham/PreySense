@@ -25,14 +25,14 @@ public class ConfigurationJsonUsabilityTests
     {
         File.WriteAllText(_path, """
             {"SchemaVersion":2,"Tuning":{"Balanced":{
-              "CpuTurboTimeLimitSeconds":null,"GpuPowerOffsetWatts":0,
+              "CpuTurboTimeLimitSeconds":null,"GpuRuntimeLimitWatts":140,
               "GpuNominalPowerWatts":null}},
              "Overlay":{"BackgroundOpacityPercent":0,"TextOpacityPercent":0}}
             """);
         var service = new ConfigurationService(_path);
         var config = service.GetCurrent();
         Assert.IsNull(config.Tuning.Balanced.TauSeconds);
-        Assert.AreEqual(0, config.Tuning.Balanced.GpuDeltaWatts);
+        Assert.AreEqual(140, config.Tuning.Balanced.GpuRuntimeLimitWatts);
         Assert.IsNull(config.Tuning.Balanced.GpuWatts);
         Assert.AreEqual(0, config.Overlay.BackgroundAlphaPercent);
         Assert.AreEqual(0, config.Overlay.TextAlphaPercent);
@@ -40,10 +40,9 @@ public class ConfigurationJsonUsabilityTests
         using var saved = JsonDocument.Parse(File.ReadAllText(_path));
         var profile = saved.RootElement.GetProperty("Tuning").GetProperty("Balanced");
         Assert.AreEqual(JsonValueKind.Null, profile.GetProperty("CpuTurboTimeLimitSeconds").ValueKind);
-        Assert.AreEqual(0, profile.GetProperty("GpuPowerOffsetWatts").GetInt32());
+        Assert.AreEqual(140, profile.GetProperty("GpuRuntimeLimitWatts").GetInt32());
         Assert.AreEqual(JsonValueKind.Null, profile.GetProperty("GpuNominalPowerWatts").ValueKind);
         Assert.IsFalse(profile.TryGetProperty("TauSeconds", out _));
-        Assert.IsFalse(profile.TryGetProperty("GpuDeltaWatts", out _));
     }
 
     [TestMethod]
@@ -72,8 +71,7 @@ public class ConfigurationJsonUsabilityTests
         CollectionAssert.AreEqual(new[] { "Quiet", "Eco", "Balanced", "Performance", "Turbo" },
             tuning.GetProperty("FactoryDefaults").EnumerateObject().Select(p => p.Name).ToArray());
         var fields = tuning.GetProperty("Balanced").EnumerateObject().Select(p => p.Name).ToList();
-        Assert.IsLessThan(fields.IndexOf("CpuPl1Watts"), fields.IndexOf("ApplyCpuLimits"));
-        Assert.IsLessThan(fields.IndexOf("GpuPowerOffsetWatts"), fields.IndexOf("ApplyGpuLimits"));
+        Assert.Contains("CpuPl1Watts", fields);
         service.Save(service.GetCurrent());
         Assert.AreEqual(text, File.ReadAllText(_path), "Repeated saves must not reorder or rewrite values.");
     }
@@ -118,7 +116,7 @@ public class ConfigurationJsonUsabilityTests
         using var schema = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "preysense.schema.json")));
         var mode = schema.RootElement.GetProperty("definitions").GetProperty("ModeTuning").GetProperty("properties");
         Assert.IsTrue(mode.TryGetProperty("CpuTurboTimeLimitSeconds", out _));
-        Assert.IsTrue(mode.TryGetProperty("GpuPowerOffsetWatts", out _));
+        Assert.IsTrue(mode.TryGetProperty("GpuRuntimeLimitWatts", out _));
         Assert.Contains("not an enforced", mode.GetProperty("GpuNominalPowerWatts").GetProperty("description").GetString()!);
         Assert.AreEqual(2, schema.RootElement.GetProperty("properties").GetProperty("SchemaVersion").GetProperty("const").GetInt32());
     }

@@ -42,11 +42,28 @@ namespace PreySense.Core.Configuration
         /// <summary>Per-mode custom fan curve settings.</summary>
         public FanConfig Fans { get; set; } = new();
 
+        /// <summary>Synchronize CPU and GPU fan speeds across custom curve stages / manual controls.</summary>
+        [JsonIgnore]
+        public bool SynchronizeFanSpeeds
+        {
+            get => Fans.SynchronizeFanSpeeds;
+            set => Fans.SynchronizeFanSpeeds = value;
+        }
+
         /// <summary>RGB Keyboard and Cover lighting configuration.</summary>
         public LightingConfig Lighting { get; set; } = new();
 
         /// <summary>On-Screen Display (OSD) overlay layout and metric preferences.</summary>
         public OverlayConfig Overlay { get; set; } = new();
+
+        /// <summary>Opt-in game detection and executable-to-operating-mode profiles.</summary>
+        public GamesConfig Games { get; set; } = new();
+    }
+
+    public sealed class GamesConfig
+    {
+        public bool Enabled { get; set; } = false;
+        public List<GameProfile> Profiles { get; set; } = new();
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ApplicationTheme>))]
@@ -54,7 +71,7 @@ namespace PreySense.Core.Configuration
 
     public sealed class GeneralConfig
     {
-        /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR').</summary>
+        /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR', 'tr-TR').</summary>
         public string Language { get; set; } = "en-US";
 
         /// <summary>True for light theme, false for dark theme.</summary>
@@ -114,6 +131,21 @@ namespace PreySense.Core.Configuration
         public bool ApplyProchotOffset { get; set; }
         [JsonPropertyOrder(1)]
         public int? ProchotOffsetCelsius { get; set; }
+
+        /// <summary>Master toggle: Enable CPU Power Limit Control across all performance modes.</summary>
+        [JsonPropertyOrder(2)]
+        public bool EnableCpuPowerLimitControl { get; set; } = true;
+
+        /// <summary>Master toggle: Enable GPU Power Limit Control across all performance modes.</summary>
+        [JsonPropertyOrder(3)]
+        public bool EnableGpuPowerLimitControl { get; set; } = true;
+
+        /// <summary>Master toggle: Enable GPU Overclocking across all performance modes.</summary>
+        [JsonPropertyOrder(4)]
+        public bool EnableGpuOverclockingControl { get; set; } = true;
+
+        /// <summary>Apply each selected mode's CPU boost policy on every mode change.</summary>
+        public bool EnableCpuBoostTuningControl { get; set; } = true;
         [JsonPropertyOrder(9)]
         public int? FactoryProchotOffsetCelsius { get; set; }
         [JsonPropertyOrder(10)]
@@ -145,29 +177,15 @@ namespace PreySense.Core.Configuration
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasFactoryDefaults => new[] { "Eco", "Quiet", "Balanced", "Performance", "Turbo" }
             .All(name => FactoryDefaults != null && FactoryDefaults.TryGetValue(name, out var profile)
-                && profile != null && HasValidFactoryCpu(profile) && HasValidFactoryGpuOrNone(profile));
+                && profile != null && HasValidFactoryCpu(profile));
 
-        /// <summary>True when factory capture included ERM4 GPU offsets for every mode.</summary>
-        [System.Text.Json.Serialization.JsonIgnore]
-        public bool HasFactoryGpuProfiles => HasFactoryDefaults
-            && FactoryDefaults.Values.All(p => p.HasGpuLimitValues);
+        [JsonIgnore]
+        public bool HasFactoryGpuProfiles => HasFactoryDefaults && FactoryDefaults.Values.All(p => p.HasGpuLimitValues);
 
         private static bool HasValidFactoryCpu(ModeTuningConfig profile) =>
             profile.CpuPl1Watts is >= 5 and <= 300
             && profile.CpuPl2Watts is >= 5 and <= 300 && profile.CpuPl2Watts >= profile.CpuPl1Watts
             && profile.TauSeconds is >= 0 and <= 449;
-
-        private static bool HasValidFactoryGpuOrNone(ModeTuningConfig profile)
-        {
-            bool any = profile.GpuDeltaWatts.HasValue || profile.GpuDynamicBoostWatts.HasValue
-                || profile.PlatformPowerOffsetWatts.HasValue;
-            if (!any) return true;
-            return profile.GpuDeltaWatts is >= 0 and <= Hardware.DriverFactoryCalibration.MaxGpuDeltaWatts
-                && profile.GpuDeltaWatts % 5 == 0
-                && profile.GpuDynamicBoostWatts is int db
-                && Hardware.DriverFactoryCalibration.IsLegalGpuDynamicBoost(db)
-                && profile.PlatformPowerOffsetWatts is >= 0 and <= 100 && profile.PlatformPowerOffsetWatts % 5 == 0;
-        }
 
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasFactoryStaticCpuLimits =>
@@ -205,14 +223,13 @@ namespace PreySense.Core.Configuration
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasCpuLimitValues => CpuPl1Watts.HasValue && CpuPl2Watts.HasValue && TauSeconds.HasValue;
 
-        [System.Text.Json.Serialization.JsonIgnore]
-        public bool HasGpuLimitValues => GpuDeltaWatts.HasValue && GpuDynamicBoostWatts.HasValue
-            && PlatformPowerOffsetWatts.HasValue;
+        [JsonIgnore]
+        public bool HasGpuLimitValues => GpuDeltaWatts.HasValue && GpuDynamicBoostWatts.HasValue && PlatformPowerOffsetWatts.HasValue;
 
-        /// <summary>True when at least one apply flag is on and that side has complete values.</summary>
+        /// <summary>True when at least one apply flag or custom GPU target is active.</summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasValues =>
-            (ApplyCpuLimits || ApplyGpuLimits || ApplyGpuClockOffsets)
+            (ApplyCpuLimits || ApplyGpuLimits || GpuRuntimeLimitWatts.HasValue || ApplyGpuClockOffsets)
             && (!ApplyCpuLimits || HasCpuLimitValues)
             && (!ApplyGpuLimits || HasGpuLimitValues)
             && (!ApplyGpuClockOffsets || HasGpuClockValues);
@@ -251,27 +268,29 @@ namespace PreySense.Core.Configuration
         [JsonPropertyOrder(10)]
         public int? GpuWatts { get; set; }
 
-
-        /// <summary>GPU NVPCF base offset in Watts.</summary>
-        [JsonPropertyName("GpuPowerOffsetWatts")]
-        [JsonPropertyOrder(7)]
-        public int? GpuDeltaWatts { get; set; }
-
-        /// <summary>GPU NVPCF dynamic boost offset in Watts.</summary>
-        [JsonPropertyOrder(8)]
-        public int? GpuDynamicBoostWatts { get; set; }
-
-        /// <summary>ERM4 platform power offset (CP) in Watts.</summary>
-        [JsonPropertyOrder(9)]
-        public int? PlatformPowerOffsetWatts { get; set; }
-
         /// <summary>Apply CPU limits flag for this profile.</summary>
         [JsonPropertyOrder(0)]
         public bool ApplyCpuLimits { get; set; } = false;
 
-        /// <summary>Apply GPU limits flag for this profile.</summary>
+        /// <summary>Apply the selected Windows CPU boost policy independently of power limits.</summary>
+        public bool ApplyCpuBoost { get; set; }
+
+        /// <summary>Apply the independent ERM4 GPU offsets for this mode.</summary>
+        public bool ApplyGpuLimits { get; set; }
+
+        /// <summary>
+        /// GPU target in Watts: null uses the factory profile; custom targets are staged through Acer ERM4.
+        /// </summary>
         [JsonPropertyOrder(6)]
-        public bool ApplyGpuLimits { get; set; } = false;
+        public int? GpuRuntimeLimitWatts { get; set; }
+
+        [JsonPropertyName("GpuPowerOffsetWatts")]
+        [JsonPropertyOrder(7)]
+        public int? GpuDeltaWatts { get; set; }
+        [JsonPropertyOrder(8)]
+        public int? GpuDynamicBoostWatts { get; set; }
+        [JsonPropertyOrder(9)]
+        public int? PlatformPowerOffsetWatts { get; set; }
 
         [JsonPropertyOrder(11)]
         public bool ApplyGpuClockOffsets { get; set; }
@@ -288,10 +307,19 @@ namespace PreySense.Core.Configuration
 
     public sealed class FanConfig
     {
+        /// <summary>Synchronize CPU and GPU fan speeds across custom curve stages / manual controls.</summary>
+        [JsonPropertyOrder(1)]
+        public bool SynchronizeFanSpeeds { get; set; } = true;
+
+        [JsonPropertyOrder(2)]
         public ModeFanCurveConfig Quiet { get; set; } = ModeFanCurveConfig.CreateDefaultQuiet();
+        [JsonPropertyOrder(3)]
         public ModeFanCurveConfig Eco { get; set; } = ModeFanCurveConfig.CreateDefaultEco();
+        [JsonPropertyOrder(4)]
         public ModeFanCurveConfig Balanced { get; set; } = ModeFanCurveConfig.CreateDefaultBalanced();
+        [JsonPropertyOrder(5)]
         public ModeFanCurveConfig Performance { get; set; } = ModeFanCurveConfig.CreateDefaultPerformance();
+        [JsonPropertyOrder(6)]
         public ModeFanCurveConfig Turbo { get; set; } = ModeFanCurveConfig.CreateDefaultTurbo();
     }
 
@@ -395,6 +423,9 @@ namespace PreySense.Core.Configuration
 
     public sealed class LightingConfig
     {
+        public int ModeBrightness { get; set; } = 100;
+        /// <summary>Shared color overrides for Mode lighting on every device; hex operating-mode keys.</summary>
+        public Dictionary<string, string> PowerModeColors { get; set; } = new();
         public KeyboardLightingConfig Keyboard { get; set; } = new();
         public CoverLightingConfig Cover { get; set; } = new();
         public Dictionary<string, DeviceLightingConfig> Devices { get; set; } = new();
@@ -403,14 +434,16 @@ namespace PreySense.Core.Configuration
     /// <summary>Explicit settings for a detected device; discovery never creates profiles.</summary>
     public sealed class DeviceLightingConfig
     {
-        public int Mode { get; set; } = -1;
+        public int Mode { get; set; } = PreySense.Rgb.ModeKeyLighting.FollowOperatingMode;
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         /// <summary>Exact native animation level selected in the UI; null uses the existing normalized Speed.</summary>
         public int? AnimationSpeedLevel { get; set; }
-
-        public string ColorHex { get; set; } = "#3B82F6";
+        /// <summary>Native effect direction selected from the device's advertised options.</summary>
+        public int? Direction { get; set; }
+        public string ColorHex { get; set; } = "#00AEC7";
         public bool IndividualColors { get; set; }
+        public bool SyncLeds { get; set; }
         public bool RandomColors { get; set; }
         public Dictionary<int, string> LedColors { get; set; } = new();
         /// <summary>Per Acer operating-mode colors for Mode Key "Mode" lighting (keys are hex mode bytes, e.g. "05").</summary>
@@ -421,25 +454,27 @@ namespace PreySense.Core.Configuration
 
     public sealed class KeyboardLightingConfig
     {
+        public int? Direction { get; set; }
+        public Dictionary<string, string> PowerModeColors { get; set; } = new();
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         public int BacklightTimeoutSeconds { get; set; } = 30;
-        public string SelectedColorHex { get; set; } = "#3B82F6";
+        public string SelectedColorHex { get; set; } = "#00AEC7";
         public int SelectedZone { get; set; } = 1;
         public bool SyncZones { get; set; } = false;
-        public string Zone1ColorHex { get; set; } = "#3B82F6";
-        public string Zone2ColorHex { get; set; } = "#3B82F6";
-        public string Zone3ColorHex { get; set; } = "#3B82F6";
-        public string Zone4ColorHex { get; set; } = "#3B82F6";
-        public string EffectTag { get; set; } = "HW:0";
-        public string PresetTheme { get; set; } = "Predator";
+        public string Zone1ColorHex { get; set; } = "#00AEC7";
+        public string Zone2ColorHex { get; set; } = "#00AEC7";
+        public string Zone3ColorHex { get; set; } = "#00E5FF";
+        public string Zone4ColorHex { get; set; } = "#00E5FF";
+        public string EffectTag { get; set; } = "MODE";
+        public string PresetTheme { get; set; } = "Mode";
     }
 
     public sealed class CoverLightingConfig
     {
         public bool Enabled { get; set; } = true;
-        public int Mode { get; set; } = 1;
-        public string ColorHex { get; set; } = "#3B82F6";
+        public int Mode { get; set; } = 4;
+        public string ColorHex { get; set; } = "#00AEC7";
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         public bool SyncWithKeyboard { get; set; } = false;

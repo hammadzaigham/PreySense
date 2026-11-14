@@ -176,20 +176,75 @@ namespace PreySense
             return IsPhysicalModeKey(category, subEventId, param);
         }
 
+        /// <summary>
+        /// Checks whether an ACPI/WMI hotkey event represents a keyboard brightness / lighting adjustment
+        /// (e.g. Fn+F11, Fn+F12, backlight toggle/level). These must NEVER trigger a mode switch.
+        /// </summary>
+        public static bool IsBrightnessEvent(byte category, byte subEventId, ushort param)
+        {
+            // Known Fn+F11 / Fn+F12 and backlight event codes / scancodes:
+            // 0x11: Fn+F11 (brightness down) on Acer gaming laptops
+            // 0x12: Fn+F12 (brightness up) on Acer gaming laptops
+            // 0x02: Keyboard backlight toggle / step
+            // 0x1A: Illumination down (acer_wmi)
+            // 0x1B: Illumination up (acer_wmi)
+            // 0x44: F11 scancode
+            // 0x45: F12 scancode
+            // 0x57: F11 PS/2 scancode
+            // 0x58: F12 PS/2 scancode
+            // 0x78: F11 PS/2 set 2
+            // 0x07: F12 PS/2 set 2
+            // 0x79: Keyboard illumination increment
+            // 0x7A: Keyboard illumination decrement
+            // 0x7C: PHN16S vendor brightness up
+            // 0x7D: PHN16S vendor brightness down
+            // 0x84: Automatic keyboard backlight toggle (acer-wmi)
+            // 0x8B: Vendor brightness down
+            // 0x8C: Vendor brightness up
+            // 0xC4: acer-wmi illumination up
+            // 0xC5: acer-wmi illumination down
+            if (subEventId is 0x11 or 0x12 or 0x02 or 0x1A or 0x1B or 0x44 or 0x45 or
+                0x57 or 0x58 or 0x78 or 0x79 or 0x7A or 0x7C or 0x7D or
+                0x84 or 0x8B or 0x8C or 0xC4 or 0xC5)
+            {
+                return true;
+            }
+
+            if (category == 0x01 && subEventId is 0x11 or 0x12 or 0x02 or 0x1A or 0x1B or 0x44 or 0x45 or 0x57 or 0x58)
+                return true;
+
+            if (param is 0x11 or 0x12 or 0x02 or 0x1A or 0x1B or 0x44 or 0x45 or 0x57 or 0x58 or 0x79 or 0x7A or 0x7C or 0x7D or 0x84 or 0x8B or 0x8C or 0xC4 or 0xC5)
+                return true;
+
+            return false;
+        }
+
         public static bool IsPhysicalModeKey(byte category, byte subEventId, ushort param)
         {
-            // WMID_GAMING_TURBO_KEY_EVENT — any 0x07 notify is the chassis Mode key family.
-            if (category == ModeKeyCategory)
+            // Strictly filter out Fn+F11 / Fn+F12 and keyboard backlight events
+            if (IsBrightnessEvent(category, subEventId, param))
+                return false;
+
+            // WMID_GAMING_TURBO_KEY_EVENT (Category 0x07) — only GHKE = 0x05 (ModeKeyId) is the chassis Mode key.
+            // On Acer Predator/Nitro, Notify(WMID, 0xBC) passes Category 0x07 for ALL gaming hotkeys
+            // (where GHKE 0x05 = Mode, 0x11 = Fn+F11, 0x12 = Fn+F12). Do NOT treat any 0x07 as Mode!
+            if (category == ModeKeyCategory && (subEventId == ModeKeyId || param == ModeKeyId))
                 return true;
+
+            // Legacy firmware: Category 0x07 with no subEvent / param (single Turbo button event)
+            if (category == ModeKeyCategory && subEventId == 0 && param == 0)
+                return true;
+
             // GHKE stuffed as the first byte, GHKN as the second
             if (category == ModeKeyId && subEventId <= 1)
                 return true;
+
             if (subEventId == ModeKeyId && category is 0 or 1)
                 return true;
-            if (subEventId == ModeKeyCategory)
-                return true;
+
             if (category == 0x03 && (subEventId == 0x01 || param == ModeKeyCategory))
                 return true;
+
             return false;
         }
 

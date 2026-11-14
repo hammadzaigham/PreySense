@@ -6,6 +6,7 @@ using PreySense.Core.Configuration;
 using PreySense.Core.Services;
 using PreySense.Frontend.Services;
 using PreySense.Frontend.ViewModels;
+using PreySense.Rgb;
 
 namespace PreySense.Tests;
 
@@ -140,10 +141,10 @@ public class LatestBackgroundWorkerTests
         var worker = CreateLightingWorker(vm.ApplyLightingRequest);
         var keyboard = new KeyboardLightingConfig
         {
-            Brightness = 50, BacklightTimeoutSeconds = 60,
+            EffectTag = "HW:0", Brightness = 50, BacklightTimeoutSeconds = 60,
             Zone1ColorHex = "#112233", Zone2ColorHex = "#224466", Zone3ColorHex = "#336699", Zone4ColorHex = "#4488CC"
         };
-        var cover = new CoverLightingConfig { ColorHex = "#445566", Brightness = 25 };
+        var cover = new CoverLightingConfig { Mode = 1, ColorHex = "#445566", Brightness = 25 };
         try
         {
             // Keep this caller occupied, so a reused thread-pool continuation cannot
@@ -171,8 +172,8 @@ public class LatestBackgroundWorkerTests
         var worker = CreateLightingWorker(CreateLightingViewModel(hardware).ApplyLightingRequest);
         try
         {
-            await worker.Submit(new(new() { Brightness = 75 },
-                new() { SyncWithKeyboard = true, ColorHex = "#445566", Brightness = 25 }, MainViewModel.LightingWork.Brightness))
+            await worker.Submit(new(new() { EffectTag = "HW:0", Brightness = 75 },
+                new() { Mode = 1, SyncWithKeyboard = true, ColorHex = "#445566", Brightness = 25 }, MainViewModel.LightingWork.Brightness))
                 .WaitAsync(TimeSpan.FromSeconds(5));
             var calls = recorder.Calls.ToArray();
             Assert.HasCount(1, calls);
@@ -232,13 +233,75 @@ public class LatestBackgroundWorkerTests
         var previous = store.GetCurrent().Lighting;
         try
         {
-            CreateLightingViewModel(hardware).ApplyLightingRequest(new(new() { Brightness = 0 },
+            CreateLightingViewModel(hardware).ApplyLightingRequest(new(new() { EffectTag = "HW:0", Brightness = 0 },
                 new(), MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Save, SavedKeyboardBrightness: 75));
             var write = ((LightingHardwareProxy)hardware).Calls.Single(call => call.Name == "SetRgbAllZones");
             Assert.AreEqual((byte)0, write.Arguments[4], "Idle dimming must still reach the hardware.");
             Assert.AreEqual(75, store.GetCurrent().Lighting.Keyboard.Brightness);
         }
         finally { store.Update(config => config.Lighting = previous); }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void ModeLightingRecomputesColorsFromActiveModeInsteadOfSavedStaticZones()
+    {
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        try
+        {
+        store.Update(cfg => cfg.Lighting.PowerModeColors.Clear());
+        var hardware = DispatchProxy.Create<IHardwareService, LightingHardwareProxy>();
+        var recorder = (LightingHardwareProxy)hardware;
+        var vm = CreateLightingViewModel(hardware);
+        var keyboard = new KeyboardLightingConfig
+        {
+            EffectTag = "MODE", Zone1ColorHex = "#112233", Zone4ColorHex = "#445566",
+            PowerModeColors = new() { ["05"] = "#ABCDEF" }
+        };
+        foreach (var (mode, expected) in new[] { ((byte)5, "#C700FF"), ((byte)0, "#A0FF90"), ((byte)1, "#00AEC7") })
+        {
+            typeof(MainViewModel).GetField("_activePowerMode", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, mode);
+            vm.ApplyLightingRequest(new(keyboard, new() { SyncWithKeyboard = true }, MainViewModel.LightingWork.Keyboard));
+            var call = recorder.Calls.Last(c => c.Name == "SetRgbAllZones");
+            Assert.IsTrue(call.Arguments.Take(4).All(c => (Color)c! == ColorTranslator.FromHtml(expected)));
+            var cover = recorder.Calls.Last(c => c.Name == "SetCoverLogoLighting");
+            Assert.AreEqual(ColorTranslator.FromHtml(expected), (Color)cover.Arguments[1]!);
+        }
+        Assert.AreEqual("#112233", keyboard.Zone1ColorHex, "Applying Mode must preserve the saved static palette.");
+        Assert.AreEqual("#ABCDEF", keyboard.PowerModeColors["05"], "Legacy individual overrides are ignored without rewriting them.");
+        }
+        finally { store.Save(original); }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void ModeBrightnessOverridesLegacyBrightnessAndCoverEnableWithoutChangingSavedStaticValues()
+    {
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var hardware = DispatchProxy.Create<IHardwareService, LightingHardwareProxy>();
+        var recorder = (LightingHardwareProxy)hardware;
+        var vm = CreateLightingViewModel(hardware);
+        var keyboard = new KeyboardLightingConfig { EffectTag = "MODE", Brightness = 17 };
+        var cover = new CoverLightingConfig { Mode = 4, Enabled = false, Brightness = 0 };
+        try
+        {
+            store.Update(cfg => cfg.Lighting.ModeBrightness = 60);
+            vm.ApplyLightingRequest(new(keyboard, cover, MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Cover));
+            Assert.AreEqual((byte)60, recorder.Calls.Last(c => c.Name == "SetRgbAllZones").Arguments[4]);
+            var coverWrite = recorder.Calls.Last(c => c.Name == "SetCoverLogoLighting");
+            Assert.AreEqual((byte)60, coverWrite.Arguments[2]);
+            Assert.IsTrue((bool)coverWrite.Arguments[4]!);
+            store.Update(cfg => cfg.Lighting.ModeBrightness = 0);
+            vm.ApplyLightingRequest(new(keyboard, cover, MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Cover));
+            Assert.AreEqual((byte)0, recorder.Calls.Last(c => c.Name == "SetRgbAllZones").Arguments[4]);
+            Assert.IsFalse((bool)recorder.Calls.Last(c => c.Name == "SetCoverLogoLighting").Arguments[4]!);
+            Assert.AreEqual(17, keyboard.Brightness);
+            Assert.AreEqual(0, cover.Brightness);
+            Assert.IsFalse(cover.Enabled);
+        }
+        finally { store.Save(original); }
     }
 
     private static MainViewModel CreateLightingViewModel(IHardwareService hardware)

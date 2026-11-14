@@ -7,30 +7,28 @@ public class GpuPowerOffsetsTests
 {
     [TestMethod]
     [DoNotParallelize]
-    public void SavedOffsetsAreReadFreshWhileUnsavedEditsArePreserved()
+    public void SavedRuntimeLimitsAreReadFreshWhileUnsavedEditsArePreserved()
     {
-        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PreySenseOffsets-" + Guid.NewGuid().ToString("N"));
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PreySenseLimits-" + Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(directory);
         var store = new PreySense.Core.Configuration.ConfigurationService(System.IO.Path.Combine(directory, "preysense.json"));
         try
         {
             var vm = (PreySense.Frontend.ViewModels.MainViewModel)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PreySense.Frontend.ViewModels.MainViewModel));
-            var drafts = new Dictionary<int, GpuPowerOffsets>();
-            typeof(PreySense.Frontend.ViewModels.MainViewModel).GetField("_gpuOffsets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, drafts);
+            var drafts = new Dictionary<int, int?>();
+            typeof(PreySense.Frontend.ViewModels.MainViewModel).GetField("_gpuRuntimeLimits", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, drafts);
             vm.TuningConfigurationStore = store;
             store.Update(cfg =>
             {
-                cfg.Tuning.Balanced.GpuDeltaWatts = 10;
-                cfg.Tuning.Balanced.GpuDynamicBoostWatts = 15;
-                cfg.Tuning.Balanced.PlatformPowerOffsetWatts = 5;
+                cfg.Tuning.Balanced.GpuRuntimeLimitWatts = 140;
             });
-            Assert.AreEqual(new GpuPowerOffsets(10, 15, 5), vm.GpuOffsetsForMode(2));
-            store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 20);
-            Assert.AreEqual(new GpuPowerOffsets(20, 15, 5), vm.GpuOffsetsForMode(2));
-            vm.StoreGpuOffsets(2, new GpuPowerOffsets(30, 5, 10));
-            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2));
-            store.Update(cfg => cfg.Tuning.Balanced.GpuDeltaWatts = 40);
-            Assert.AreEqual(new GpuPowerOffsets(30, 5, 10), vm.GpuOffsetsForMode(2), "Newly saved values must not overwrite an unsaved editor draft.");
+            Assert.AreEqual(140, vm.GpuRuntimeLimitForModeIndex(2));
+            store.Update(cfg => cfg.Tuning.Balanced.GpuRuntimeLimitWatts = 145);
+            Assert.AreEqual(145, vm.GpuRuntimeLimitForModeIndex(2));
+            vm.StoreGpuRuntimeLimit(2, 150);
+            Assert.AreEqual(150, vm.GpuRuntimeLimitForModeIndex(2));
+            store.Update(cfg => cfg.Tuning.Balanced.GpuRuntimeLimitWatts = 155);
+            Assert.AreEqual(150, vm.GpuRuntimeLimitForModeIndex(2), "Newly saved values must not overwrite an unsaved editor draft.");
         }
         finally
         {
@@ -50,7 +48,8 @@ public class GpuPowerOffsetsTests
     [TestMethod]
     public void ByteFieldsRejectOverflowRatherThanWrapping()
     {
-        Assert.IsTrue(new GpuPowerOffsets(255, 255).IsValid);
+        Assert.IsTrue(new GpuPowerOffsets(255, 25, 255).IsValid);
+        Assert.IsFalse(new GpuPowerOffsets(255, 26).IsValid);
         Assert.IsFalse(new GpuPowerOffsets(256, 15).IsValid);
         Assert.IsFalse(new GpuPowerOffsets(50, 256).IsValid);
         Assert.IsFalse(new GpuPowerOffsets(-1, 15).IsValid);
@@ -66,13 +65,14 @@ public class GpuPowerOffsetsTests
     }
 
     [TestMethod]
-    public void PlatformPowerOffsetControlIsPresentWithGpuOffsets()
+    public void GpuPowerLimitControlExposesIndependentOffsets()
     {
         string root = Root();
         string xaml = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml"));
-        Assert.Contains("Platform Power Limit", xaml);
+        Assert.Contains("GPU Power Limit", xaml);
+        Assert.Contains("SwitchApplyGpuLimits", xaml);
+        Assert.Contains("BorderGpuPowerLimit", xaml);
         Assert.Contains("SliderPlatformPowerOffset", xaml);
-        Assert.Contains("ModePlatformPowerOffsetValue", xaml);
         Assert.Contains("SliderGpuDelta", xaml);
         Assert.Contains("SliderGpuDynamicBoost", xaml);
     }

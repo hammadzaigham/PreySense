@@ -17,8 +17,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Row 0: Custom Title Bar -->
-                <RowDefinition Height="Auto"/> <!-- Row 1: Tuning toggle -->
-                <RowDefinition Height="Auto"/> <!-- Row 2: Tuning Controls & Action Buttons -->
+                <RowDefinition Height="*"/> <!-- Row 1: Tuning Controls & Action Buttons -->
             </Grid.RowDefinitions>
 
             <!-- ============================================== -->
@@ -26,61 +25,16 @@
             <!-- ============================================== -->
             <controls:WindowTitleBar Grid.Row="0" Title="Tuning"/>
 
-            <!-- ============================================== -->
-            <!-- 1. TUNING STATUS      -->
-            <!-- ============================================== -->
-            <Border Grid.Row="1" Style="{StaticResource OriginalSectionPanelStyle}" Margin="14,8,14,0">
-                <StackPanel>
-                    <controls:SettingSwitchRow Title="Enable Tuning"
-                        IsChecked="{Binding IsHardwareTuningEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Separator/>
-                    <StackPanel IsEnabled="{Binding IsHardwareTuningEnabled}">
-                        <Grid Margin="0,4,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding ProchotActivationLabel}"
-                                       Style="{StaticResource SettingLabelStyle}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding TjMaxLabel}"
-                                       Style="{StaticResource SettingLabelStyle}"
-                                       HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <controls:SettingValueRow x:Name="RowProchotOffset"
-                                Title="CPU PROCHOT Offset" AllowEmpty="True" Minimum="0" Maximum="63" Unit="&#xB0;C"
-                                IsValueEnabled="{Binding CanEditProchotOffset}"
-                                ValueAutomationId="GlobalProchotOffsetValue" LostFocus="RowProchotOffset_LostFocus"/>
-                            <controls:RectangularSwitch x:Name="SwitchProchotOffset" Grid.Column="1" Width="56" Height="28"
-                                Margin="12,0,0,0" VerticalAlignment="Center"
-                                IsEnabled="{Binding CanToggleProchotOffset}"
-                                IsChecked="{Binding IsProchotOffsetEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                Checked="ProchotOffsetToggle_Changed" Unchecked="ProchotOffsetToggle_Changed"
-                                AutomationProperties.AutomationId="EnableGlobalProchotOffset"
-                                AutomationProperties.Name="Include PROCHOT offset"/>
-                        </Grid>
-                    </StackPanel>
-                    <Separator/>
-                </StackPanel>
-            </Border>
-
-            <!-- ============================================== -->
-            <!-- 2. TUNING CONTROLS CONTAINER -->
-            <!-- ============================================== -->
-            <Grid Grid.Row="2" IsEnabled="{Binding IsHardwareTuningEnabled}">
+            <Grid Grid.Row="1" IsEnabled="{Binding IsHardwareTuningEnabled}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/> <!-- Performance Profile Selector -->
-                    <RowDefinition Height="Auto"/> <!-- Scrollable Content Area -->
+                    <RowDefinition Height="*"/> <!-- Scrollable Content Area -->
                     <RowDefinition Height="Auto"/> <!-- Driver readback confirmation -->
                     <RowDefinition Height="Auto"/> <!-- Pinned Footer Action Buttons -->
                 </Grid.RowDefinitions>
 
                 <!-- PERFORMANCE PROFILE SELECTOR -->
-                <Border Grid.Row="0" Style="{StaticResource OriginalSectionPanelStyle}" Margin="14,8,14,8">
+                <Border Grid.Row="0" Style="{StaticResource OriginalSectionPanelStyle}" Margin="14,8,14,4">
                     <StackPanel>
                         <Grid Margin="{StaticResource StandardRowMargin}">
                             <Grid.ColumnDefinitions>
@@ -102,15 +56,19 @@
                 </Border>
 
                 <!-- SCROLLABLE CONTENT -->
-                <ScrollViewer x:Name="TuningScroll" Grid.Row="1" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="14,0,14,0">
+                <ScrollViewer x:Name="TuningScroll" Grid.Row="1" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="14,0,14,2">
 
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
-                            <controls:SettingDropdownRow x:Name="DropdownCpuBoost" Title="CPU Boost" DropdownMinWidth="220"/>
+                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
+                                Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <controls:SettingDropdownRow x:Name="DropdownCpuBoost" Title="CPU Boost" DropdownMinWidth="220"
+                                    IsEnabled="{Binding EnableCpuBoostTuningControl}"/>
+                            </StackPanel>
                         </Border>
 
                         <!-- CPU POWER LIMITS -->
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
+                        <Border x:Name="BorderCpuLimits" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
                             <StackPanel>
                                 <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
                                     <Grid.ColumnDefinitions>
@@ -151,8 +109,8 @@
                                     <Grid Margin="{StaticResource StandardRowMargin}">
                                         <StackPanel Margin="0,5,0,0">
                                             <Grid>
-                                                <TextBlock Text="Turbo Time Limit [Tau]" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="LabelTau" Text="" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
+                                                <TextBlock x:Name="LabelTau" Text="" Style="{DynamicResource SettingValueStyle}"/>
                                             </Grid>
                                             <Slider x:Name="SliderTau" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="SliderTau_ValueChanged"/>
                                         </StackPanel>
@@ -161,7 +119,8 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
+                        <!-- GPU OVERCLOCKING -->
+                        <Border x:Name="BorderGpuOverclocking" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
                             <StackPanel>
                                 <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
                                     <Grid.ColumnDefinitions>
@@ -195,7 +154,7 @@
                         </Border>
 
                         <!-- GPU POWER LIMITS & DYNAMIC BOOST -->
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
+                        <Border x:Name="BorderGpuPowerLimit" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
                             <StackPanel>
                                 <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
                                     <Grid.ColumnDefinitions>
@@ -226,29 +185,28 @@
 
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
                                         <Grid>
-                                            <TextBlock Text="Delta" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="LabelGpuDelta" HorizontalAlignment="Right"/>
+                                            <TextBlock Text="Delta" Style="{DynamicResource SettingLabelStyle}"/>
+                                            <TextBlock x:Name="LabelGpuDelta" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
-                                        <Slider x:Name="SliderGpuDelta" Minimum="0" Maximum="100" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDeltaValue" AutomationProperties.Name="GPU Delta" ValueChanged="GpuOffsets_ValueChanged"/>
+                                        <Slider x:Name="SliderGpuDelta" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDeltaValue" AutomationProperties.Name="GPU Delta" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
                                         <Grid>
-                                            <TextBlock Text="Dynamic Boost" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="LabelGpuDynamicBoost" HorizontalAlignment="Right"/>
+                                            <TextBlock Text="Dynamic Boost" Style="{DynamicResource SettingLabelStyle}"/>
+                                            <TextBlock x:Name="LabelGpuDynamicBoost" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
                                         <Slider x:Name="SliderGpuDynamicBoost" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDynamicBoostValue" AutomationProperties.Name="GPU Dynamic Boost" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
                                         <Grid>
-                                            <TextBlock Text="Platform Power Limit Offset" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="LabelPlatformPowerOffset" HorizontalAlignment="Right"/>
+                                            <TextBlock Text="Platform Power Limit Offset" Style="{DynamicResource SettingLabelStyle}"/>
+                                            <TextBlock x:Name="LabelPlatformPowerOffset" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
-                                        <Slider x:Name="SliderPlatformPowerOffset" Minimum="0" Maximum="100" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModePlatformPowerOffsetValue" AutomationProperties.Name="Platform Power Limit Offset" ValueChanged="GpuOffsets_ValueChanged"/>
+                                        <Slider x:Name="SliderPlatformPowerOffset" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModePlatformPowerOffsetValue" AutomationProperties.Name="Platform Power Limit Offset" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-
 
                     </StackPanel>
                 </ScrollViewer>

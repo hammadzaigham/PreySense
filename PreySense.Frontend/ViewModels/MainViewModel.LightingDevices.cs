@@ -83,6 +83,8 @@ public partial class MainViewModel
     private void OnLightingLedColorEdited(object? sender, PropertyChangedEventArgs e)
     {
         if (_loadingDeviceEditor || _propagatingKeyColor || e.PropertyName != nameof(LightingLedEditor.ColorHex)) return;
+        if (SyncAllBarLeds && ShowSyncAllBarLeds && sender is LightingLedEditor changed)
+            SynchronizeBarLeds(changed.ColorHex);
         if (ReferenceEquals(sender, SelectedLightingKey) && SelectedLightingKeys?.Count > 1)
         {
             _propagatingKeyColor = true;
@@ -105,7 +107,8 @@ public partial class MainViewModel
         _propagatingKeyColor = true;
         try
         {
-            IEnumerable<LightingLedEditor> keys = SelectedLightingKeys is { Count: > 0 } ? SelectedLightingKeys
+            IEnumerable<LightingLedEditor> keys = SyncAllBarLeds && ShowSyncAllBarLeds ? LightingLedEditors
+                : SelectedLightingKeys is { Count: > 0 } ? SelectedLightingKeys
                 : SelectedLightingKey is { } single ? [single] : Array.Empty<LightingLedEditor>();
             foreach (var key in keys)
             {
@@ -158,6 +161,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsModeKeyFollowMode));
         OnPropertyChanged(nameof(IsModeKeyLightingDevice));
         OnPropertyChanged(nameof(ShowModeKeyIndependentControls));
+        OnPropertyChanged(nameof(ShowSyncAllBarLeds));
     }
 
     private LightingModeInfo? _selectedLightingDeviceMode;
@@ -176,12 +180,17 @@ public partial class MainViewModel
                 OnPropertyChanged(nameof(DeviceLightingSpeedLevel));
             }
             finally { _updatingDeviceSpeedRange = false; }
-            if (value?.Value == -1) DeviceLightingIndividualColors = true;
+            if (value?.Value == -1)
+            {
+                DeviceLightingIndividualColors = true;
+                if (SelectedLightingKey == null) SelectedLightingKey = LightingLedEditors.FirstOrDefault();
+            }
             OnPropertyChanged(nameof(IsDirectLightingDeviceMode));
             OnPropertyChanged(nameof(ShowIndividualLightingEditors));
             OnPropertyChanged(nameof(ShowDeviceIndividualColors));
             OnPropertyChanged(nameof(ShowKeyboardLayout));
             OnPropertyChanged(nameof(ShowIndividualLedGrid));
+            OnPropertyChanged(nameof(ShowSyncAllBarLeds));
             OnPropertyChanged(nameof(ShowDeviceColorFields));
             OnPropertyChanged(nameof(ShowDeviceColorWheel));
             OnPropertyChanged(nameof(IsModeKeyFollowMode));
@@ -189,6 +198,10 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(ShowModeKeyIndependentControls));
             OnPropertyChanged(nameof(HasDeviceLightingSpeed));
             OnPropertyChanged(nameof(HasDeviceLightingRandomColors));
+            OnPropertyChanged(nameof(DeviceLightingDirections));
+            OnPropertyChanged(nameof(HasDeviceLightingDirection));
+            _deviceLightingDirection = value?.ResolveDirection(null) ?? 0;
+            OnPropertyChanged(nameof(DeviceLightingDirection));
             if (value?.Value == ModeKeyLighting.FollowOperatingMode && !_loadingDeviceEditor && !IsModeKeySyncWithKeyboard)
                 SyncModePowerModeColorEditorsFromProfile();
             // Mirrored Breathing/Neon (4/5) must not clear sync — only a real user pick does.
@@ -205,6 +218,18 @@ public partial class MainViewModel
         !IsModeKeySyncWithKeyboard && SelectedLightingDeviceMode?.SupportsSpeed == true;
     public bool HasDeviceLightingRandomColors =>
         !IsModeKeySyncWithKeyboard && SelectedLightingDeviceMode?.SupportsRandomColors == true;
+    public IReadOnlyList<LightingDirectionInfo> DeviceLightingDirections => SelectedLightingDeviceMode?.Directions ?? [];
+    public bool HasDeviceLightingDirection => !IsModeKeySyncWithKeyboard && SelectedLightingDeviceMode?.SupportsDirection == true;
+    private int _deviceLightingDirection;
+    public int DeviceLightingDirection
+    {
+        get => _deviceLightingDirection;
+        set
+        {
+            int selected = SelectedLightingDeviceMode?.ResolveDirection(value) ?? 0;
+            if (SetProperty(ref _deviceLightingDirection, selected)) ScheduleDeviceLighting();
+        }
+    }
     private bool _deviceLightingRandomColors;
     public bool DeviceLightingRandomColors { get => _deviceLightingRandomColors; set { if (SetProperty(ref _deviceLightingRandomColors, value)) ScheduleDeviceLighting(); } }
     public bool IsDirectLightingDeviceMode => SelectedLightingDeviceMode?.Value == -1;
@@ -264,6 +289,7 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(ShowDeviceColorWheel));
             OnPropertyChanged(nameof(HasDeviceLightingSpeed));
             OnPropertyChanged(nameof(HasDeviceLightingRandomColors));
+            OnPropertyChanged(nameof(HasDeviceLightingDirection));
             if (_loadingDeviceEditor) return;
             if (value)
                 MirrorModeKeyEditorFromKeyboard();
@@ -393,7 +419,7 @@ public partial class MainViewModel
         try
         {
             var detected = await Task.Run(() => (Devices: hardware.DiscoverLightingDevices(), Cover: _hw.IsCoverLightingAvailable));
-            var devices = detected.Devices;
+            var devices = LightingDeviceInfo.UniqueTargets(detected.Devices);
             if (_disposed) return;
             HasCoverLighting = detected.Cover;
             if (!HasCoverLighting && IsCoverTabSelected) SelectedLightingTab = 0;
@@ -411,6 +437,7 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(HasLightingDevices));
             OnPropertyChanged(nameof(ShowLegacyLightingControls));
             OnPropertyChanged(nameof(LightingDeviceTabColumns));
+            NotifyKeyboardLightingDirection();
             NotifyLightingEditorVisibility();
             LightingDeviceStatus = devices.Count == 0
                 ? "Using built-in keyboard lighting."
@@ -449,8 +476,7 @@ public partial class MainViewModel
                 settings.LedColors = device.Leds.Select((led, index) => (led.Index, Color: _zoneHexColors[index]))
                     .ToDictionary(item => item.Index, item => item.Color);
             }
-            if (!saved.ContainsKey(device.Id) && device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase))
-                settings.Mode = ModeKeyLighting.FollowOperatingMode;
+            // Missing profiles use the same Mode default for every physical lighting target.
             foreach (var mode in device.GetEditorModes()) LightingDeviceModes.Add(mode);
             LoadDeviceLightingSettings(settings);
             LightingDeviceStatus = device.Details;
@@ -469,19 +495,21 @@ public partial class MainViewModel
             if (device == null) return;
             ClearLightingLedEditors();
             SelectedLightingDeviceMode = LightingDeviceModes.FirstOrDefault(mode => mode.Value == settings.Mode)
-                ?? (device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)
-                    ? LightingDeviceModes.FirstOrDefault(m => m.Value == ModeKeyLighting.FollowOperatingMode)
-                    : null)
+                ?? (device.Modes.Any(m => ModeKeyLighting.IsFollowMode(m.Value))
+                    ? LightingDeviceModes.FirstOrDefault(m => ModeKeyLighting.IsFollowMode(m.Value)) : null)
                 ?? LightingDeviceModes.FirstOrDefault();
-            DeviceLightingBrightness = settings.Brightness;
+            DeviceLightingBrightness = ModeKeyLighting.IsFollowMode(settings.Mode)
+                ? ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness : settings.Brightness;
             DeviceLightingSpeed = settings.Speed;
+            DeviceLightingDirection = SelectedLightingDeviceMode?.ResolveDirection(settings.Direction) ?? 0;
             _deviceLightingNativeSpeed = settings.AnimationSpeedLevel;
             OnPropertyChanged(nameof(DeviceLightingSpeedLevel));
             DeviceLightingColorHex = ModeKeyLighting.IsFollowMode(settings.Mode)
-                ? ModeKeyLighting.ColorFor(settings, ActivePowerMode)
+                ? ModeKeyLighting.SharedColorFor(ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors, ActivePowerMode)
                 : settings.ColorHex;
             DeviceLightingIndividualColors = SelectedLightingDeviceMode?.Value == -1 || settings.IndividualColors;
             DeviceLightingRandomColors = settings.RandomColors;
+            SyncAllBarLeds = device.IsLightBar && settings.SyncLeds;
             IsModeKeySyncWithKeyboard = device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) && settings.SyncWithKeyboard;
             foreach (var led in device.Leds)
             {
@@ -491,7 +519,7 @@ public partial class MainViewModel
             }
             if (IsDirectLightingDeviceMode && !IsPerKeyKeyboard)
                 SelectedLightingKey = LightingLedEditors.FirstOrDefault();
-            if (device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) && !settings.SyncWithKeyboard)
+            if ((device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) || ModeKeyLighting.IsFollowMode(settings.Mode)) && !settings.SyncWithKeyboard)
                 LoadModePowerModeColorEditors(settings);
             else
                 ClearModePowerModeColorEditors();
@@ -547,27 +575,17 @@ public partial class MainViewModel
             Brightness = DeviceLightingBrightness,
             Speed = DeviceLightingSpeed,
             AnimationSpeedLevel = !sync && HasDeviceLightingSpeed ? DeviceLightingSpeedLevel : null,
+            Direction = !sync && HasDeviceLightingDirection ? DeviceLightingDirection : null,
             ColorHex = DeviceLightingColorHex,
             IndividualColors = !sync && IsDirectLightingDeviceMode,
             RandomColors = !sync && HasDeviceLightingRandomColors && DeviceLightingRandomColors,
+            SyncLeds = SelectedLightingDevice?.IsLightBar == true && SyncAllBarLeds,
             SyncWithKeyboard = sync,
             LedColors = !sync && IsDirectLightingDeviceMode
                 ? LightingLedEditors.ToDictionary(led => led.Index, led => led.ColorHex) : new()
         };
         if (!sync && ModeKeyLighting.IsFollowMode(settings.Mode))
-        {
-            var edited = ModePowerModeColorEditors.ToDictionary(
-                e => ModeKeyLighting.Key(e.PowerMode), e => e.ColorHex, StringComparer.OrdinalIgnoreCase);
-            // Only persist colors the user actually changed away from defaults.
-            settings.PowerModeColors = ModeKeyLighting.OnlyCustomOverrides(edited);
-            settings.ColorHex = ModeKeyLighting.ColorFor(settings, ActivePowerMode);
-        }
-        else if (IsModeKeyLightingDevice && ModePowerModeColorEditors.Count > 0)
-        {
-            var edited = ModePowerModeColorEditors.ToDictionary(
-                e => ModeKeyLighting.Key(e.PowerMode), e => e.ColorHex, StringComparer.OrdinalIgnoreCase);
-            settings.PowerModeColors = ModeKeyLighting.OnlyCustomOverrides(edited);
-        }
+            settings.ColorHex = ModeKeyLighting.SharedColorFor(ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors, ActivePowerMode);
         return settings;
     }
 
@@ -587,11 +605,12 @@ public partial class MainViewModel
         finally { _loadingDeviceEditor = false; }
     }
 
-    /// <summary>Acer HID: Static=2, Breathing=4, Neon=5. Wave-family keyboard effects fall back to Static.</summary>
-    private static int SyncedModeKeyModeFromKeyboardEffect(string effectTag) => effectTag switch
+    /// <summary>Acer HID: Static=2, Breathing=4, Neon=5. Other dynamic effects sync as Neon.</summary>
+    internal static int SyncedModeKeyModeFromKeyboardEffect(string effectTag) => effectTag switch
     {
         "HW:1" => 4,
         "HW:2" => 5,
+        _ when IsDynamicNeonSyncEffect(effectTag) => 5,
         _ => 2,
     };
 
@@ -641,7 +660,9 @@ public partial class MainViewModel
                 try
                 {
                     OemLightingController.Validate(settings);
-                    hardware.ApplyLightingDevice(device.Id, settings);
+                    hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode,
+                        ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors,
+                        ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness));
                 }
                 catch (Exception ex)
                 {
@@ -679,7 +700,7 @@ public partial class MainViewModel
         foreach (var slot in ModeKeyLighting.Slots)
         {
             var editor = new ModePowerModeColorEditor(
-                slot.PowerMode, slot.Name, slot.DefaultHex, ModeKeyLighting.ColorFor(settings, slot.PowerMode));
+                slot.PowerMode, slot.Name, slot.DefaultHex, ModeKeyLighting.SharedColorFor(ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors, slot.PowerMode));
             editor.PropertyChanged += OnModePowerModeColorEdited;
             ModePowerModeColorEditors.Add(editor);
         }
@@ -724,7 +745,9 @@ public partial class MainViewModel
             var settings = JsonSerializer.Deserialize<DeviceLightingConfig>(request.SettingsJson)!;
             lock (ExtendedLightingWriteGate)
             {
-                hardware.ApplyLightingDevice(request.DeviceId, settings);
+                hardware.ApplyLightingDevice(request.DeviceId, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode,
+                    ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors,
+                        ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness));
                 ConfigurationService.Instance.Update(config =>
                 {
                     config.Lighting.Devices[request.DeviceId] = settings;
@@ -767,13 +790,13 @@ public partial class MainViewModel
         {
             await keyboardStartup.ConfigureAwait(false);
             if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-            if (ConfigurationService.Instance.GetCurrent().Lighting.Devices.Count == 0) return;
             await Task.Run(() =>
             {
                 var devices = hardware.DiscoverLightingDevices();
                 lock (ExtendedLightingWriteGate)
                 {
-                    var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
+                    var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
+                    var profiles = lighting.Devices;
                     bool useLegacyEditors = !devices.Any(device => device.HasNamedKeys);
                     foreach (var device in devices)
                     {
@@ -782,8 +805,8 @@ public partial class MainViewModel
                         // device profile must not overwrite the settings just restored by that path.
                         if (useLegacyEditors && device is { Kind: "Keyboard", Leds.Count: 4 } && _hw.IsRgbAvailable) continue;
                         if (useLegacyEditors && IsLogoLightingKind(device) && _hw.IsCoverLightingAvailable) continue;
-                        if (!profiles.TryGetValue(device.Id, out var settings)) continue;
-                        try { hardware.ApplyLightingDevice(device.Id, settings); }
+                        var settings = profiles.TryGetValue(device.Id, out var saved) ? saved : new DeviceLightingConfig();
+                        try { hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode, lighting.PowerModeColors, lighting.ModeBrightness)); }
                         catch (Exception ex) { AppLogger.Log($"Saved device lighting unavailable ({device.Name}): {ex.Message}"); }
                     }
                 }
@@ -795,48 +818,65 @@ public partial class MainViewModel
         }
     }
 
-    /// <summary>
-    /// EC overwrites Mode Key / Turbo Key when SetGamingMiscSetting changes the power mode.
-    /// Reassert saved Hotkey lighting after a short delay so the firmware flash does not stick.
-    /// When "Mode" lighting is selected, highlight the slot for the new operating mode (no color rewrite).
-    /// </summary>
+    /// <summary>Firmware can overwrite any LED during a mode transition, even when the desired color is unchanged.</summary>
+    private int _modeLightingRestoreRevision;
+
     private void ScheduleHotkeyLightingRestoreAfterModeSwitch()
     {
-        if (_disposed || _hw is not IExtendedLightingHardware) return;
-        _dispatcher.BeginInvoke(() =>
-        {
-            if (_disposed || !IsModeKeyFollowMode) return;
-            SelectedModePowerModeColor = ModePowerModeColorEditors.FirstOrDefault(e => e.PowerMode == ActivePowerMode)
-                ?? SelectedModePowerModeColor;
-        });
+        if (_disposed || _dispatcher == null) return;
+        int revision = System.Threading.Interlocked.Increment(ref _modeLightingRestoreRevision);
         _ = Task.Run(async () =>
         {
             try
             {
                 await Task.Delay(ModeKeyLighting.EcModeTransitionDelay).ConfigureAwait(false);
-                if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-                lock (ExtendedLightingWriteGate)
+                if (_disposed || revision != System.Threading.Volatile.Read(ref _modeLightingRestoreRevision)) return;
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
-                    var profiles = lighting.Devices;
-                    if (profiles.Count == 0) return;
-                    foreach (var device in hardware.DiscoverLightingDevices())
-                    {
-                        if (_disposed) return;
-                        if (!device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!profiles.TryGetValue(device.Id, out var settings)) continue;
-                        try
-                        {
-                            var apply = settings.SyncWithKeyboard
-                                ? BuildSyncedModeKeySettings(lighting.Keyboard, settings)
-                                : settings;
-                            hardware.ApplyLightingDevice(device.Id, apply);
-                        }
-                        catch (Exception ex) { AppLogger.Log($"Hotkey lighting restore after mode switch failed ({device.Name}): {ex.Message}"); }
-                    }
-                }
+                    if (_disposed || revision != System.Threading.Volatile.Read(ref _modeLightingRestoreRevision))
+                        return Task.CompletedTask;
+                    if (IsModeKeyFollowMode && ModePowerModeColorEditors != null)
+                        SelectedModePowerModeColor = ModePowerModeColorEditors.FirstOrDefault(e => e.PowerMode == ActivePowerMode)
+                            ?? SelectedModePowerModeColor;
+                    if (_zoneHexColors != null) UpdateKeyboardForMode(ActivePowerMode);
+                    return ApplySharedModePaletteAsync();
+                }).Task.Unwrap().ConfigureAwait(false);
+                if (!_disposed && revision == System.Threading.Volatile.Read(ref _modeLightingRestoreRevision))
+                    ReapplyExtendedModeLighting();
             }
-            catch (Exception ex) { AppLogger.Log($"Hotkey lighting restore after mode switch failed: {ex.Message}"); }
+            catch (Exception ex) { AppLogger.Log($"Lighting restore after mode switch failed: {ex.Message}"); }
         });
+    }
+
+    internal void ReapplyExtendedModeLighting(bool includeOtherHotkeyProfiles = true)
+    {
+        if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
+        lock (ExtendedLightingWriteGate)
+        {
+            var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
+            var devices = hardware.DiscoverLightingDevices();
+            bool useLegacyEditors = !devices.Any(device => device.HasNamedKeys);
+            foreach (var device in devices)
+            {
+                if (_disposed) return;
+                // Keep the same single authoritative profile as startup. A stale extended
+                // profile must not replace the four-zone or cover editor's current choice.
+                if (useLegacyEditors && device is { Kind: "Keyboard", Leds.Count: 4 } && _hw.IsRgbAvailable) continue;
+                if (useLegacyEditors && IsLogoLightingKind(device) && _hw.IsCoverLightingAvailable) continue;
+                var settings = lighting.Devices.TryGetValue(device.Id, out var saved) ? saved : new DeviceLightingConfig();
+                bool shouldRestore = ModeKeyLighting.IsFollowMode(settings.Mode)
+                    || (includeOtherHotkeyProfiles && (device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) || settings.SyncWithKeyboard));
+                if (!shouldRestore) continue;
+                try
+                {
+                    var apply = settings.SyncWithKeyboard
+                        ? BuildSyncedModeKeySettings(lighting.Keyboard, settings) : settings;
+                    // Resolve for every write rather than caching color equality. This also gives
+                    // every transport and fake the same explicit current-mode color.
+                    hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(apply, ActivePowerMode, lighting.PowerModeColors, lighting.ModeBrightness));
+                }
+                catch (Exception ex) { AppLogger.Log($"Lighting restore after mode switch failed ({device.Name}): {ex.Message}"); }
+            }
+        }
     }
 }

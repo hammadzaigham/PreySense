@@ -55,7 +55,7 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
         if (delta is < 0 || delta > DriverFactoryCalibration.MaxGpuDeltaWatts || delta % 5 != 0
             || !DriverFactoryCalibration.IsLegalGpuDynamicBoost(boost))
             return new(false, "GPU offsets are out of range.");
-        if (platformOffset is byte po && (po > 100 || po % 5 != 0))
+        if (platformOffset is byte po && po % 5 != 0)
             return new(false, "Platform power offset is out of range.");
         if (!AcerErm4Table.EnsureResolved(memory, out _))
             return new(false, "GPU profile table was not found on this laptop.");

@@ -239,9 +239,9 @@ namespace PreySense.Frontend.Services
         {
             if (_wmi.OemLighting.Discover().Any(d => d.Id == deviceId && d.Kind == "Keyboard") && _lightingEngine.IsValueCreated)
                 LightingEngine.StopAndWait();
-            byte powerMode = TryGetPowerMode(out byte live) ? live : (byte)0x01;
-            var resolved = PreySense.Rgb.ModeKeyLighting.ResolveForApply(settings, powerMode);
-            _wmi.OemLighting.Apply(deviceId, resolved);
+            // The view model already resolved the shared palette for the confirmed mode.
+            // Reading firmware again here can return the previous mode during a transition.
+            _wmi.OemLighting.Apply(deviceId, settings);
         }
 
         public void SetRgbStatic(byte zone, Color color)

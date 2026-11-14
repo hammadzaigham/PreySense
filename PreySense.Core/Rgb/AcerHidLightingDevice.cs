@@ -20,6 +20,7 @@ public sealed class AcerHidLightingDevice : IDisposable
     public string Name { get; }
     public string Kind { get; }
     public byte Target { get; }
+    public bool HasDirectionField => _updateWidths.ContainsKey(0x44);
     public int LedCount { get; }
     public byte MaximumSpeed { get; }
     public IReadOnlyList<AcerHidLightingMode> Modes { get; }

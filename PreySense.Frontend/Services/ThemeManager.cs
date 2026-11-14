@@ -52,8 +52,8 @@ public static class ThemeManager
             ["ControlThumbHoverColor"] = (Parse("#758197"), Parse("#F7F9FB")),
             ["ControlThumbPressedColor"] = (Parse("#8B97AF"), Parse("#E9EDF2")),
             ["ControlSelectedColor"] = (Parse("#1A1A1A"), Parse("#DFEAFE")),
-            ["ControlSelectedBorderColor"] = (Parse("#3B82F6"), Parse("#3B82F6")),
-            ["ControlFocusedBorderColor"] = (Parse("#3B82F6"), Parse("#3B82F6")),
+            ["ControlSelectedBorderColor"] = (Parse("#00AEC7"), Parse("#00AEC7")),
+            ["ControlFocusedBorderColor"] = (Parse("#00AEC7"), Parse("#00AEC7")),
             ["ControlActiveColor"] = (Parse("#222222"), Parse("#DCE8FD")),
             ["ControlThumbBorderColor"] = (Parse("#EAEFF5"), Parse("#66717E")),
             ["ToastSurfaceColor"] = (Parse("#0A0A0A"), Parse("#F2FFFFFF")),
@@ -130,8 +130,8 @@ public static class ThemeManager
                 SetBrush("SelectedTileGradientBrush", Parse("#3514151C"));
                 SetBrush("ControlActiveBrush", Parse("#3514151C"));
                 SetBrush("ControlSelectedBrush", Parse("#3514151C"));
-                SetBrush("ControlSelectedBorderBrush", Parse("#3B82F6"));
-                SetBrush("ControlFocusedBorderBrush", Parse("#3B82F6"));
+                SetBrush("ControlSelectedBorderBrush", Parse("#00AEC7"));
+                SetBrush("ControlFocusedBorderBrush", Parse("#00AEC7"));
                 SetBrush("ControlThumbBrush", Parse("#C05C6576"));
                 SetBrush("ControlThumbHoverBrush", Parse("#E0758197"));
                 SetBrush("ControlThumbPressedBrush", Parse("#FF8B97AF"));

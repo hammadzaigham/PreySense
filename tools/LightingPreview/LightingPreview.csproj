@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../PreySense.Frontend/PreySense.Frontend.csproj" /></ItemGroup>
+  <ItemGroup><Resource Include="../../PreySense.Frontend/Resources/*.png" Link="Resources/%(Filename)%(Extension)" /></ItemGroup>
+</Project>

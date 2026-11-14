@@ -19,6 +19,10 @@ namespace PreySense.Frontend
 
         public App()
         {
+            // A background control panel must not retain a WPF Direct3D device across
+            // NVIDIA's automatic display transitions. Setting this only around manual
+            // switches leaves the normal Auto path hardware-accelerated (#66).
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
             // Install before InitializeComponent/OnStartup can load resources or configuration.
             DispatcherUnhandledException += (_, args) =>
             {

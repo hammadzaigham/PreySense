@@ -100,6 +100,27 @@ namespace PreySense.Frontend.Services
             return SetWindowsHookEx(WH_KEYBOARD_LL, proc, IntPtr.Zero, 0);
         }
 
+        public static bool IsBrightnessKey(uint vkCode, uint scanCode)
+        {
+            if (vkCode is 0x7A or 0x7B) // VK_F11, VK_F12
+                return true;
+
+            // Firmware usages overlap ordinary keyboard scan codes (1 is 0x02).
+            // Only classify OEM/unknown virtual-key events as brightness usages.
+            if (vkCode is not (0xFF or 0x00 or 0x08))
+                return false;
+
+            // Known brightness / backlight scancodes on Acer laptops
+            if (scanCode is 0x11 or 0x12 or 0x02 or 0x1A or 0x1B or 0x44 or 0x45 or
+                0x57 or 0x58 or 0x78 or 0x07 or 0x79 or 0x7A or 0x7C or 0x7D or
+                0x84 or 0x8B or 0x8C or 0xC4 or 0xC5)
+            {
+                return true;
+            }
+
+            return TryGetBrightnessDelta(vkCode, scanCode, out _);
+        }
+
         public static bool IsChassisModeKey(uint vkCode, uint scanCode)
         {
             // Acer Copilot firmware may expose this as the unknown 0x6E
@@ -108,27 +129,27 @@ namespace PreySense.Frontend.Services
                 return false;
             if (scanCode == SC_PREDATOR)
                 return false;
-            if (TryGetBrightnessDelta(vkCode, scanCode, out _))
+            if (IsBrightnessKey(vkCode, scanCode))
                 return false;
-            if (scanCode == SC_MODE_KEY || scanCode == 0x6E || scanCode == 0x6A || scanCode == 0x6B || scanCode == 0x7E)
+            if (scanCode == SC_MODE_KEY || scanCode == 0x6A || scanCode == 0x6B || scanCode == 0x7E)
                 return true;
-            return (vkCode == 0xFF || vkCode == 0x00) && scanCode != 0;
+            return false;
         }
 
         public static bool TryGetBrightnessDelta(uint vkCode, uint scanCode, out int delta)
         {
             delta = 0;
             // Plain F11/F12 (vk 0x7A/0x7B) stay with the app. Fn+F11/F12 on this
-            // EC arrive as the same scancodes with vk 0xFF/0x00, or as HID
+            // EC arrive as the same scancodes with vk 0xFF/0x00/0x08, or as HID
             // keyboard-illum usages 0x7A/0x79.
             if (vkCode is not (0xFF or 0x00 or 0x08))
                 return false;
-            if (scanCode is 0x57 or 0x44 or 0x7A or 0x7D or 0x8B)
+            if (scanCode is 0x11 or 0x1A or 0x44 or 0x57 or 0x78 or 0x7A or 0x7D or 0x8B or 0xC5)
             {
                 delta = -1;
                 return true;
             }
-            if (scanCode is 0x58 or 0x45 or 0x79 or 0x7C or 0x8C)
+            if (scanCode is 0x12 or 0x1B or 0x45 or 0x58 or 0x07 or 0x79 or 0x7C or 0x8C or 0xC4)
             {
                 delta = 1;
                 return true;
@@ -154,22 +175,24 @@ namespace PreySense.Frontend.Services
                 {
                     var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
-                    bool isPhysicalPredatorKey = hookStruct.scanCode == SC_PREDATOR;
-
-                    if (TryGetBrightnessDelta(hookStruct.vkCode, hookStruct.scanCode, out int brightnessDelta) &&
-                        _onBrightnessDelta != null)
+                    if (IsBrightnessKey(hookStruct.vkCode, hookStruct.scanCode))
                     {
-                        if (isKeyDown && !_brightnessKeyDown)
+                        if (TryGetBrightnessDelta(hookStruct.vkCode, hookStruct.scanCode, out int brightnessDelta) &&
+                            _onBrightnessDelta != null)
                         {
-                            _brightnessKeyDown = true;
-                            PreySense.AppLogger.Log($"TurboKey: Fn brightness vk=0x{hookStruct.vkCode:X2} sc=0x{hookStruct.scanCode:X2} delta={brightnessDelta}");
-                            _onBrightnessDelta(brightnessDelta);
+                            if (isKeyDown && !_brightnessKeyDown)
+                            {
+                                _brightnessKeyDown = true;
+                                PreySense.AppLogger.Log($"TurboKey: Fn brightness vk=0x{hookStruct.vkCode:X2} sc=0x{hookStruct.scanCode:X2} delta={brightnessDelta}");
+                                _onBrightnessDelta(brightnessDelta);
+                            }
+                            else if (isKeyUp)
+                            {
+                                _brightnessKeyDown = false;
+                            }
+                            return (IntPtr)1;
                         }
-                        else if (isKeyUp)
-                        {
-                            _brightnessKeyDown = false;
-                        }
-                        return (IntPtr)1;
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
 
                     if (IsChassisModeKey(hookStruct) && _onModeKeyPressed != null)
@@ -227,7 +250,7 @@ namespace PreySense.Frontend.Services
                                 _predatorUsedInCombo = true;
                                 _suppressPredatorReleaseAction = true;
                                 _activePredatorNumber = number;
-                            _onPredatorNumberPressed(number);
+                                _onPredatorNumberPressed(number);
                             }
                         }
                         else if (isKeyUp && _activePredatorNumber == number)

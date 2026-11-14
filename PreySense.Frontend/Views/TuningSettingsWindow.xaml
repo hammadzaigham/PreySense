@@ -1,0 +1,85 @@
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.Views.TuningSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        mc:Ignorable="d"
+        Title="PreySense &#x2022; Tuning Settings"
+        Width="460"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}"
+        ResizeMode="NoResize">
+
+    <Border Style="{DynamicResource AppWindowShellStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Row 0: Custom Title Bar -->
+                <RowDefinition Height="Auto"/> <!-- Row 1: Content -->
+                <RowDefinition Height="Auto"/> <!-- Row 2: Footer Button -->
+            </Grid.RowDefinitions>
+
+            <!-- Custom Title Bar -->
+            <controls:WindowTitleBar Grid.Row="0" Title="Tuning Settings"/>
+
+            <!-- Main Content -->
+            <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,0">
+                    <StackPanel>
+                        <!-- Master Toggles -->
+                        <controls:SettingSwitchRow Title="Enable CPU Boost Tuning"
+                            IsChecked="{Binding EnableCpuBoostTuningControl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <controls:SettingSwitchRow Title="Enable CPU Power Limit Control"
+                            IsChecked="{Binding EnableCpuPowerLimitControl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <controls:SettingSwitchRow Title="Enable GPU Power Limit Control"
+                            IsEnabled="{Binding IsGpuProfileTuningAvailable}"
+                            IsChecked="{Binding EnableGpuPowerLimitControl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <controls:SettingSwitchRow Title="Enable GPU Overclocking"
+                            IsChecked="{Binding EnableGpuOverclockingControl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+                        <Separator Margin="0,8,0,12"/>
+
+                        <!-- PROCHOT Section -->
+                        <Grid Margin="0,2,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ProchotActivationLabel}"
+                                       Style="{StaticResource SettingLabelStyle}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding TjMaxLabel}"
+                                       Style="{StaticResource SettingLabelStyle}"
+                                       HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <controls:SettingValueRow x:Name="RowProchotOffset"
+                                Title="CPU PROCHOT Offset" AllowEmpty="True" Minimum="0" Maximum="63" Unit="&#xB0;C"
+                                IsValueEnabled="{Binding CanEditProchotOffset}"
+                                ValueAutomationId="GlobalProchotOffsetValue" LostFocus="RowProchotOffset_LostFocus"/>
+                            <controls:RectangularSwitch x:Name="SwitchProchotOffset" Grid.Column="1" Width="56" Height="28"
+                                Margin="12,0,0,0" VerticalAlignment="Center"
+                                IsEnabled="{Binding CanToggleProchotOffset}"
+                                IsChecked="{Binding IsProchotOffsetEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Checked="ProchotOffsetToggle_Changed" Unchecked="ProchotOffsetToggle_Changed"
+                                AutomationProperties.AutomationId="EnableGlobalProchotOffset"
+                                AutomationProperties.Name="Include PROCHOT offset"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="SaveStatus" TextWrapping="Wrap" Foreground="{DynamicResource WarningTextBrush}"/>
+            </StackPanel>
+
+            <!-- Pinned Footer Button -->
+            <UniformGrid Grid.Row="2" Columns="1" Rows="1" Style="{StaticResource WindowFooterPanelStyle}" Margin="14,-14,14,14">
+                <Button x:Name="BtnSave" Content="Save" Style="{StaticResource WindowFooterButtonStyle}" Click="BtnSave_Click"/>
+            </UniformGrid>
+        </Grid>
+    </Border>
+</Window>

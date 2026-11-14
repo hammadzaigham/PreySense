@@ -18,7 +18,7 @@ Identical saves leave the file untouched. Before skipping a write, the service c
 
 | Section | Purpose |
 | --- | --- |
-| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`), theme, Acer-service preference and tuning enable flag. |
+| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`, `tr-TR`), theme, Acer-service preference and tuning enable flag. |
 | `Display` | Automatic refresh-rate preference. |
 | `Battery` | Charge-limit, USB power-off charging and Windows Energy Saver preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |
@@ -94,3 +94,18 @@ Advanced appearance settings live only in `Overlay` in JSON; there are no corres
 The overlay uses per-pixel transparency; pixels outside the rounded boundary remain transparent, including when dragging. Invalid colors or ranges are rejected rather than silently replaced.
 
 The accompanying `preysense.schema.json` lists supported fields, descriptive titles, units, nullability and validation ranges. It describes the canonical version 2 file format.
+
+### CPU boost tuning
+
+`Tuning.EnableCpuBoostTuningControl` defaults to `true` and is controlled by **Enable CPU Boost Tuning** in Tuning Settings. When enabled, every performance-mode change writes that mode's `CpuBoostMode` Windows policy (0–6), even if the policy value matches the previous mode. The per-mode dropdown remains in Tuning. Legacy per-mode `ApplyCpuBoost` flags do not gate automatic mode changes. Explicit per-game CPU boost overrides remain independent and restore the previous policy when the game session ends.
+
+GPU offset controls use independent `GpuPowerOffsetWatts` (Delta, 0–255 W), `GpuDynamicBoostWatts` (0–25 W), and `PlatformPowerOffsetWatts` (0–255 W), in 5 W steps. `ApplyGpuLimits` enables those offsets for the selected mode. The displayed nominal GPU wattage is a reference; Platform Power Offset is independent of it.
+
+
+Shared Mode lighting colors are stored in `Lighting.PowerModeColors`, keyed by the Acer performance-mode hex byte (`06` Eco, `00` Quiet, `01` Balanced, `04` Performance, `05` Turbo). The Lighting Settings window edits this single palette for every device set to Mode. Missing entries use the firmware colors. Returning an entry to its firmware color removes the custom override. Explicit device effects and static colors are unchanged. Older keyboard/device-local `PowerModeColors` fields are retained for file compatibility but do not override the shared palette; no migration is performed.
+
+Game tuning uses the same CPU PL1/PL2 rows, discrete Tau ladder (Off through infinity), and independent GPU Delta/Dynamic Boost/Platform Power Offset controls as the mode editor. When CPU boost tuning is globally enabled, each game applies its selected CPU boost policy and restores the prior policy on exit; the legacy per-game `ApplyCpuBoost` field no longer gates it. Existing game watt targets are still readable, while new offset edits use the three independent fields.
+
+`Lighting.ModeBrightness` (0–100, default 100) is shared by all devices using Mode lighting. Their ordinary per-device brightness values remain saved for other effects. Fn keyboard brightness steps adjust this shared value when the keyboard uses Mode.
+
+The Tuning Settings master section toggles also govern game overrides. Disabled CPU limits, GPU limits, or CPU boost sections are hidden in Games and skipped during validation, snapshots, writes, and restoration. The game retains its saved selections for re-enabling later. Games has no separate GPU overclocking controls; the selected performance mode's normal overclocking policy remains authoritative.

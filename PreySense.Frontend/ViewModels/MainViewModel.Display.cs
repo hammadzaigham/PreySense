@@ -100,7 +100,7 @@ namespace PreySense.Frontend.ViewModels
                 try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
 
                 DdsStatus? dds = null;
-                if (!biosDiscrete && _hw.IsDdsAvailable && _hw.IsDdsSupported())
+                if (!biosDiscrete && _hw.IsDdsAvailable)
                 {
                     try { dds = _hw.GetDdsStatus(); }
                     catch (Exception ex) { AppLogger.Error($"GPU display status read failed: {ex.Message}"); }

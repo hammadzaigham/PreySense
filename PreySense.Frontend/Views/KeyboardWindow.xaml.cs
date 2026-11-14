@@ -53,9 +53,10 @@ namespace PreySense.Frontend.Views
                 // Cover Mode ComboBox Selection
                 switch (vm.CoverLightingMode)
                 {
-                    case 2: ComboCoverMode.SelectedIndex = 1; break; // Breathing
-                    case 3: ComboCoverMode.SelectedIndex = 2; break; // Neon
-                    default: ComboCoverMode.SelectedIndex = 0; break; // Static
+                    case 4: ComboCoverMode.SelectedIndex = 0; break; // Mode
+                    case 2: ComboCoverMode.SelectedIndex = 2; break; // Breathing
+                    case 3: ComboCoverMode.SelectedIndex = 3; break; // Neon
+                    default: ComboCoverMode.SelectedIndex = 1; break; // Static
                 }
 
                 UpdateCoverModePanels(vm.CoverLightingMode);
@@ -108,10 +109,10 @@ namespace PreySense.Frontend.Views
             }
         }
 
-        private void ModePowerModeColor_Click(object sender, RoutedEventArgs e)
+        private void LightingSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (DataContext is MainViewModel vm && sender is FrameworkElement { Tag: ModePowerModeColorEditor editor })
-                vm.SelectModePowerModeColor(editor);
+            if (DataContext is not MainViewModel vm) return;
+            new LightingSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
         }
 
         private void UpdateLightingWindowWidth(MainViewModel vm)
@@ -123,19 +124,20 @@ namespace PreySense.Frontend.Views
         private void RestoreLightingModeUi(MainViewModel vm)
         {
             string tag = vm.LightingEffectTag;
+            bool isMode = tag.Equals("MODE", StringComparison.OrdinalIgnoreCase) || tag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase);
             bool isSoftwareEffect = tag.StartsWith("DYN:", StringComparison.Ordinal);
-            bool isHardwareDyn = tag.StartsWith("HW:", StringComparison.Ordinal) && tag != "HW:0";
+            bool isHardwareDyn = tag.StartsWith("HW:", StringComparison.Ordinal) && tag != "HW:0" && !isMode;
 
-            int modeIndex = isSoftwareEffect ? 2 : (isHardwareDyn ? 1 : 0);
+            int modeIndex = isMode ? 0 : (isSoftwareEffect ? 3 : (isHardwareDyn ? 2 : 1));
             if (ComboLightingMode != null)
                 ComboLightingMode.SelectedIndex = modeIndex;
 
             if (PanelStaticControls != null)
-                PanelStaticControls.Visibility = modeIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
+                PanelStaticControls.Visibility = modeIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             if (PanelDynamicControls != null)
-                PanelDynamicControls.Visibility = modeIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+                PanelDynamicControls.Visibility = modeIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
             if (PanelSoftwareControls != null)
-                PanelSoftwareControls.Visibility = modeIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+                PanelSoftwareControls.Visibility = modeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
 
             // Always sync static presets so "Custom" (or the active preset) is selected
             SyncStaticPresetSelection(vm);
@@ -288,7 +290,7 @@ namespace PreySense.Frontend.Views
 
                 string presetHex = tag switch
                 {
-                    "Predator" => "#3B82F6",
+                    "Predator" => "#00AEC7",
                     "Fire" => "#FF0033",
                     "Amber" => "#F59E0B",
                     "Neon" => "#FF007F",
@@ -380,17 +382,18 @@ namespace PreySense.Frontend.Views
 
         private void UpdateCoverModePanels(int coverMode)
         {
-            bool isStatic = coverMode <= 1;
+            bool isStatic = coverMode == 1;
+            bool isMode = coverMode == 4;
             bool sync = DataContext is MainViewModel vm && vm.IsCoverSyncWithKeyboard;
             if (PanelCoverColorWheel != null)
             {
-                PanelCoverColorWheel.Visibility = (isStatic && !sync)
+                PanelCoverColorWheel.Visibility = (isStatic && !sync && !isMode)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }
             if (PanelCoverSpeed != null)
             {
-                PanelCoverSpeed.Visibility = (!isStatic && !sync)
+                PanelCoverSpeed.Visibility = (!isStatic && !sync && !isMode)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }
@@ -450,13 +453,22 @@ namespace PreySense.Frontend.Views
 
             int selected = ComboLightingMode?.SelectedIndex ?? 0;
             if (PanelStaticControls != null)
-                PanelStaticControls.Visibility = selected == 0 ? Visibility.Visible : Visibility.Collapsed;
+                PanelStaticControls.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
             if (PanelDynamicControls != null)
-                PanelDynamicControls.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
+                PanelDynamicControls.Visibility = selected == 2 ? Visibility.Visible : Visibility.Collapsed;
             if (PanelSoftwareControls != null)
-                PanelSoftwareControls.Visibility = selected == 2 ? Visibility.Visible : Visibility.Collapsed;
+                PanelSoftwareControls.Visibility = selected == 3 ? Visibility.Visible : Visibility.Collapsed;
 
-            if (selected == 0) // Static
+            if (selected == 0) // Mode
+            {
+                _pendingLightingEffectTag = "MODE";
+                if (DataContext is MainViewModel modeVm)
+                {
+                    modeVm.SetLightingEffect(_pendingLightingEffectTag);
+                    modeVm.UpdateKeyboardForMode(modeVm.ActivePowerMode);
+                }
+            }
+            else if (selected == 1) // Static
             {
                 _pendingLightingEffectTag = "HW:0";
                 if (DataContext is MainViewModel staticVm)
@@ -465,7 +477,7 @@ namespace PreySense.Frontend.Views
                     SyncStaticPresetSelection(staticVm);
                 }
             }
-            else if (selected == 1) // Dynamic (Hardware)
+            else if (selected == 2) // Dynamic (Hardware)
             {
                 if (ComboDynamicSelect != null)
                 {
@@ -480,7 +492,7 @@ namespace PreySense.Frontend.Views
                     }
                 }
             }
-            else if (selected == 2) // Software
+            else if (selected == 3) // Software
             {
                 if (ComboSoftwareSelect != null)
                 {

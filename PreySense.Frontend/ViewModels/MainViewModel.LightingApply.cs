@@ -53,7 +53,9 @@ public partial class MainViewModel
                 Brightness = brightness, Speed = RgbSpeed, BacklightTimeoutSeconds = KbdTimeoutSeconds,
                 SelectedColorHex = selected, SelectedZone = SelectedRgbZone, SyncZones = IsRgbSyncZonesEnabled,
                 Zone1ColorHex = z1, Zone2ColorHex = z2, Zone3ColorHex = z3, Zone4ColorHex = z4,
-                EffectTag = _lightingEffectTag, PresetTheme = _selectedZonePreset
+                EffectTag = _lightingEffectTag, PresetTheme = _selectedZonePreset,
+                PowerModeColors = new(),
+                Direction = HasKeyboardLightingDirection ? KeyboardLightingDirection : _keyboardLightingDirection
             }, new()
             {
                 Enabled = CoverBrightness > 0, Mode = CoverLightingMode, ColorHex = CoverHexColor,
@@ -77,11 +79,16 @@ public partial class MainViewModel
         var keyboard = request.Keyboard;
         var cover = request.Cover;
         var color = ColorTranslator.FromHtml(keyboard.SelectedColorHex);
-        byte brightness = (byte)Math.Clamp(keyboard.Brightness, 0, 100);
+        bool keyboardMode = keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
+            || keyboard.EffectTag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase);
+        var sharedLighting = ConfigurationService.Instance.GetCurrent().Lighting;
+        byte brightness = (byte)Math.Clamp(keyboardMode ? sharedLighting.ModeBrightness : keyboard.Brightness, 0, 100);
         bool fullKeyboard = request.Work.HasFlag(LightingWork.Keyboard);
         if (fullKeyboard)
         {
-            bool dynamic = keyboard.EffectTag.StartsWith("DYN:", StringComparison.Ordinal);
+            bool isMode = keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
+                || keyboard.EffectTag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase);
+            bool dynamic = !isMode && keyboard.EffectTag.StartsWith("DYN:", StringComparison.Ordinal);
             if (_hw is ProductionHardwareService prod)
             {
                 var engine = prod.LightingEngine;
@@ -102,11 +109,21 @@ public partial class MainViewModel
                     }
                 }
             }
-            if (!dynamic)
+            if (isMode)
+            {
+                // Resolve on every apply; stale static colors cannot replace Mode.
+                var (z1, z2, z3, z4) = ModeKeyLighting.GetZoneColors(ActivePowerMode,
+                    new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors });
+                _hw.SetRgbAllZones(
+                    ColorTranslator.FromHtml(z1), ColorTranslator.FromHtml(z2),
+                    ColorTranslator.FromHtml(z3), ColorTranslator.FromHtml(z4), brightness);
+            }
+            else if (!dynamic)
             {
                 if (keyboard.EffectTag.StartsWith("HW:", StringComparison.Ordinal) &&
                     int.TryParse(keyboard.EffectTag.AsSpan(3), out int mode) && mode != 0)
-                    _hw.SetRgbHardwareEffect(mode, color.R, color.G, color.B, brightness, ToHidKeyboardSpeed(keyboard.Speed), 1);
+                    _hw.SetRgbHardwareEffect(mode, color.R, color.G, color.B, brightness, ToHidKeyboardSpeed(keyboard.Speed),
+                        mode is 3 or 4 && keyboard.Direction is int direction ? AcerHidLightingProtocol.NativeDirection(direction) : (byte)1);
                 else
                 {
                     _hw.SetRgbAllZones(
@@ -129,16 +146,34 @@ public partial class MainViewModel
         bool coverFrameWrite = dynFrame && cover.SyncWithKeyboard;
         if ((coverWrite || coverFrameWrite) && _hw.IsCoverLightingAvailable)
         {
-            int mode = !cover.Enabled ? 0 : coverFrameWrite ? 1 : cover.Mode;
-            _hw.SetCoverLogoLighting(mode, ColorTranslator.FromHtml(cover.ColorHex),
-                (byte)Math.Clamp(cover.SyncWithKeyboard ? keyboard.Brightness : cover.Brightness, 0, 100),
-                ToHidLogoSpeed(cover.SyncWithKeyboard ? keyboard.Speed : cover.Speed), cover.Enabled);
+            bool syncKeyboardMode = cover.SyncWithKeyboard &&
+                (keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
+                || keyboard.EffectTag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase));
+            bool modeCover = syncKeyboardMode || cover.Mode == 4;
+            bool coverEnabled = modeCover ? sharedLighting.ModeBrightness > 0 : cover.Enabled;
+            int mode = !coverEnabled ? 0 : cover.SyncWithKeyboard
+                ? SyncedCoverModeFromKeyboardEffect(keyboard.EffectTag)
+                : cover.Mode == 4 ? 1 : cover.Mode;
+            var coverColor = syncKeyboardMode
+                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors }, ActivePowerMode))
+                : cover.Mode == 4
+                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors }, ActivePowerMode))
+                : ColorTranslator.FromHtml(cover.ColorHex);
+            _hw.SetCoverLogoLighting(mode, coverColor,
+                (byte)Math.Clamp(syncKeyboardMode || cover.Mode == 4 ? sharedLighting.ModeBrightness
+                    : cover.SyncWithKeyboard ? brightness : cover.Brightness, 0, 100),
+                ToHidLogoSpeed(cover.SyncWithKeyboard ? keyboard.Speed : cover.Speed), coverEnabled);
         }
         // Mode Key frame sync must run even when Cover sync is off (idle-off included).
         if ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness) || dynFrame)
             && AnyModeKeySyncWithKeyboard())
             ApplySyncedModeKeyDevices(keyboard);
         if (request.Work.HasFlag(LightingWork.Save))
+        {
+            var brightnessTargets = request.Work.HasFlag(LightingWork.Brightness)
+                && _hw is IExtendedLightingHardware lighting
+                    ? lighting.DiscoverLightingDevices().Where(d => d.Kind == "Keyboard").Select(d => d.Id).ToArray()
+                    : Array.Empty<string>();
             ConfigurationService.Instance.Update(config =>
             {
                 // Idle dimming affects hardware output, never the user's saved brightness.
@@ -146,6 +181,9 @@ public partial class MainViewModel
                     keyboard.Brightness = savedBrightness;
                 config.Lighting.Keyboard = keyboard;
                 config.Lighting.Cover = cover;
+                foreach (string id in brightnessTargets)
+                    if (config.Lighting.Devices.TryGetValue(id, out var saved)) saved.Brightness = keyboard.Brightness;
             });
+        }
     }
 }

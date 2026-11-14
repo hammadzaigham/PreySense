@@ -11,8 +11,8 @@
   <Color x:Key="IconForegroundColor">#FFFFFF</Color>
   <Color x:Key="TextSecondaryColor">#A8A8A8</Color>
   <Color x:Key="TextMutedColor">#787878</Color>
-  <Color x:Key="AccentColor">#3B82F6</Color>
-  <Color x:Key="AccentSubtleColor">#203B82F6</Color>
+  <Color x:Key="AccentColor">#00AEC7</Color>
+  <Color x:Key="AccentSubtleColor">#2000AEC7</Color>
   <Color x:Key="TransparentColor">#00FFFFFF</Color>
   <Color x:Key="ShadowColor">#000000</Color>
   <Color x:Key="TextOnAccentColor">#FFFFFF</Color>
@@ -23,8 +23,8 @@
   <Color x:Key="ControlThumbHoverColor">#758197</Color>
   <Color x:Key="ControlThumbPressedColor">#8B97AF</Color>
   <Color x:Key="ControlSelectedColor">#1A1A1A</Color>
-  <Color x:Key="ControlSelectedBorderColor">#3B82F6</Color>
-  <Color x:Key="ControlFocusedBorderColor">#3B82F6</Color>
+  <Color x:Key="ControlSelectedBorderColor">#00AEC7</Color>
+  <Color x:Key="ControlFocusedBorderColor">#00AEC7</Color>
   <Color x:Key="ControlActiveColor">#222222</Color>
   <Color x:Key="ControlThumbBorderColor">#EAEFF5</Color>
   <Color x:Key="ToastSurfaceColor">#0A0A0A</Color>
@@ -39,11 +39,11 @@
   <Color x:Key="SuccessSurfaceColor">#142618</Color>
   <Color x:Key="SuccessTextColor">#82E0AA</Color>
   <!-- Predator Sense performance-mode palette, matching the supplied EC colors. -->
-  <Color x:Key="PredatorSenseEcoColor">#33FF77</Color>
-  <Color x:Key="PredatorSenseQuietColor">#00FF00</Color>
-  <Color x:Key="PredatorSenseBalancedColor">#3B82F6</Color>
-  <Color x:Key="PredatorSensePerformanceColor">#FF00EA</Color>
-  <Color x:Key="PredatorSenseTurboColor">#BF00FF</Color>
+  <Color x:Key="PredatorSenseEcoColor">#10FF10</Color>
+  <Color x:Key="PredatorSenseQuietColor">#A0FF90</Color>
+  <Color x:Key="PredatorSenseBalancedColor">#00AEC7</Color>
+  <Color x:Key="PredatorSensePerformanceColor">#2E09D0</Color>
+  <Color x:Key="PredatorSenseTurboColor">#C700FF</Color>
   <Color x:Key="ModeCustomColor">#FF8000</Color>
   <Thickness x:Key="WindowShellBorderThickness">0</Thickness>
   <SolidColorBrush x:Key="SeparatorBrush" Color="{StaticResource BorderMainColor}" />

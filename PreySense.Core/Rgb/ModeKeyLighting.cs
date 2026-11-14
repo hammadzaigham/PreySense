@@ -8,7 +8,8 @@ namespace PreySense.Rgb;
 
 /// <summary>
 /// Mode Key "Mode" lighting follows the active Acer operating mode color.
-/// Defaults match stock Predator Sense / EC Mode Key colors (not PreySense UI accents).
+/// Palette recovered from PHN16S-71 BIOS V1.26 EC firmware, lighting state 5.
+/// Explicit RGB writes are used; firmware OPMODE is not required.
 /// Only non-default overrides are persisted.
 /// </summary>
 public static class ModeKeyLighting
@@ -20,11 +21,11 @@ public static class ModeKeyLighting
 
     public static readonly IReadOnlyList<(byte PowerMode, string Name, string DefaultHex)> Slots =
     [
-        (0x06, "Eco", "#33FF77"),
-        (0x00, "Quiet", "#00FF00"),
-        (0x01, "Balanced", "#3B82F6"),
-        (0x04, "Performance", "#FF00EA"),
-        (0x05, "Turbo", "#BF00FF"),
+        (0x06, "Eco", "#10FF10"),
+        (0x00, "Quiet", "#A0FF90"),
+        (0x01, "Balanced", "#00AEC7"),
+        (0x04, "Performance", "#2E09D0"),
+        (0x05, "Turbo", "#C700FF"),
     ];
 
     public static readonly IReadOnlyDictionary<byte, string> DefaultPowerModeColors =
@@ -89,10 +90,18 @@ public static class ModeKeyLighting
         return colors;
     }
 
+    /// <summary>Keyboard Mode uses the same defaults and override rules as the Mode Key.</summary>
+    public static (string Z1, string Z2, string Z3, string Z4) GetZoneColors(byte powerMode, DeviceLightingConfig? settings = null)
+    {
+        string color = ColorFor(settings ?? new DeviceLightingConfig(), powerMode);
+        return (color, color, color, color);
+    }
+
     public static DeviceLightingConfig ResolveForApply(DeviceLightingConfig settings, byte powerMode)
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (settings.Mode != FollowOperatingMode) return settings;
+        var (z1, z2, z3, z4) = GetZoneColors(powerMode, settings);
         return new DeviceLightingConfig
         {
             Mode = FollowOperatingMode,
@@ -101,9 +110,24 @@ public static class ModeKeyLighting
             ColorHex = ColorFor(settings, powerMode),
             IndividualColors = false,
             RandomColors = false,
-            LedColors = new(),
+            LedColors = new() { [0] = z1, [1] = z2, [2] = z3, [3] = z4 },
             PowerModeColors = OnlyCustomOverrides(settings.PowerModeColors),
         };
+    }
+
+    /// <summary>Application Mode colors always come from the single shared palette.</summary>
+    public static string SharedColorFor(IReadOnlyDictionary<string, string>? colors, byte powerMode) =>
+        ColorFor(new DeviceLightingConfig { PowerModeColors = OnlyCustomOverrides(colors) }, powerMode);
+
+    public static DeviceLightingConfig ResolveForApply(DeviceLightingConfig settings, byte powerMode,
+        IReadOnlyDictionary<string, string>? sharedColors, int? sharedBrightness = null)
+    {
+        if (!IsFollowMode(settings.Mode)) return settings;
+        return ResolveForApply(new DeviceLightingConfig
+        {
+            Mode = settings.Mode, Brightness = Math.Clamp(sharedBrightness ?? settings.Brightness, 0, 100), Speed = settings.Speed,
+            PowerModeColors = OnlyCustomOverrides(sharedColors)
+        }, powerMode);
     }
 
     public static bool IsFollowMode(int mode) => mode == FollowOperatingMode;
