@@ -20,7 +20,7 @@ public class GpuClockTuningTests
         public bool TryReadClockTuning(out GpuClockTuningState? state, out string status)
         {
             Reads++;
-            state = new(new(0, 500), new(0, 3200), new(0, 0));
+            state = new(new(0, 500), new(0, 3200));
             status = "ready";
             return true;
         }
@@ -153,7 +153,7 @@ public class GpuClockTuningTests
     {
         Assert.AreEqual(new GpuClockRange(-199, 500), GpuClockRange.FromKilohertz(-199999, 999999, 500));
         Assert.AreEqual(new GpuClockRange(-499, 3299), GpuClockRange.FromKilohertz(-499999, 3299999));
-        Assert.IsFalse(new GpuClockTuningState(new(0, 1000), new(0, 5000), default).Allows(new(501, 0)));
+        Assert.IsFalse(new GpuClockTuningState(new(0, 1000), new(0, 5000)).Allows(new(501, 0)));
     }
 
     [TestMethod]

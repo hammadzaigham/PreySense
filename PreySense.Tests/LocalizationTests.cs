@@ -22,7 +22,7 @@ public class LocalizationTests
                 if (attribute.Name.LocalName is not ("Title" or "Text" or "Content" or "Header" or "ActionText" or "LeftText" or "RightText" or "Subtitle")) continue;
                 string value = attribute.Value;
                 if (value.StartsWith('{') || value.StartsWith("PreySense") || !System.Text.RegularExpressions.Regex.IsMatch(value, "[a-zA-Z]{2}")) continue;
-                if (value is "CPU" or "GPU" or "N/A" or "MHz" or "RPM" or "W" or "V" or "GB" or "MT/s") continue;
+                if (value is "CPU" or "GPU" or "—" or "MHz" or "RPM" or "W" or "V" or "GB" or "MT/s") continue;
                 labels.Add(value);
             }
         }

@@ -169,7 +169,7 @@ namespace PreySense.Frontend.ViewModels
 
                     if (source == PowerSourceKind.Unknown)
                     {
-                        restoreWarning = "Power source: N/A. Source-specific settings were not applied.";
+                        restoreWarning = "Power source: —. Source-specific settings were not applied.";
                         return;
                     }
                     mode = source == PowerSourceKind.Battery

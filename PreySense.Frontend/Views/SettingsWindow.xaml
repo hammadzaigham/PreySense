@@ -93,10 +93,16 @@
                         </StackPanel>
                     </Border>
 
+                    <Separator HorizontalAlignment="Stretch" Margin="0,4,0,12"/>
+
                     <Border x:Name="TuningSection" Style="{StaticResource OriginalSectionPanelStyle}" CornerRadius="4" Margin="{StaticResource StandardSectionMargin}">
                         <StackPanel>
                             <controls:SettingActionRow x:Name="RowTuningSettings" Title="Tuning Settings" ActionText="Open"
                                 Click="BtnOpenTuningSettings_Click"/>
+                            <controls:SettingActionRow x:Name="RowFanSettings" Title="Fan Settings" ActionText="Open"
+                                Click="BtnOpenFanSettings_Click"/>
+                            <controls:SettingActionRow x:Name="RowLightingModeSettings" Title="Lighting Settings" ActionText="Open"
+                                Click="BtnOpenLightingModeSettings_Click"/>
                         </StackPanel>
                     </Border>
 

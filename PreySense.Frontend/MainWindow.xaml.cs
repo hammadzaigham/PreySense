@@ -144,7 +144,11 @@ namespace PreySense.Frontend
                 _isExplicitExit = true;
                 try
                 {
-                    if (DataContext is MainViewModel vm) await vm.PrepareGameModeShutdownAsync();
+                    if (DataContext is MainViewModel vm)
+                    {
+                        await vm.PrepareFanCalibrationShutdownAsync();
+                        await vm.PrepareGameModeShutdownAsync();
+                    }
                 }
                 catch (Exception ex) { PreySense.AppLogger.Error($"Game tuning shutdown restore failed: {ex}"); }
                 finally { Close(); Application.Current.Shutdown(); }

@@ -180,10 +180,10 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void FanCurveWindow_ContainsSynchronizedFanSpeedSwitchAboveDelay()
+        public void FanSettingsWindow_ContainsSynchronizedFanSpeedSwitchAboveDelay()
         {
             string root = GetSolutionRoot();
-            string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml"));
+            string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
             Assert.Contains("x:Name=\"SyncFansRow\"", fanWindowXaml);

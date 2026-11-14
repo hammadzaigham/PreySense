@@ -15,6 +15,7 @@ public sealed class OemLightingController : IDisposable
     private readonly List<IDisposable> _transports = new();
     private IReadOnlyList<AcerEcLightingDevice> _ecDevices = Array.Empty<AcerEcLightingDevice>();
     private bool _discovered, _disposed;
+    private IReadOnlyList<LightingDeviceInfo>? _deviceSnapshot;
 
     public IReadOnlyList<LightingDeviceInfo> Discover(bool refresh = false)
     {
@@ -25,7 +26,7 @@ public sealed class OemLightingController : IDisposable
             // startup (or first use). refresh is ignored so animation/sync paths cannot re-scan.
             if (!_discovered)
                 DiscoverCore();
-            return LightingDeviceInfo.UniqueTargets(_devices.Values.Select(d => d.Info));
+            return _deviceSnapshot ??= Array.AsReadOnly(LightingDeviceInfo.UniqueTargets(_devices.Values.Select(d => d.Info)).ToArray());
         }
     }
 
@@ -34,6 +35,7 @@ public sealed class OemLightingController : IDisposable
         foreach (var transport in _transports) transport.Dispose();
         _transports.Clear();
         _devices.Clear();
+        _deviceSnapshot = null;
         _ecDevices = Array.Empty<AcerEcLightingDevice>();
         _discovered = false;
     }

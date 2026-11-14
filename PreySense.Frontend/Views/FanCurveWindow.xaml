@@ -22,17 +22,31 @@
                     LeftIcon="pack://application:,,,/PreySense;component/Resources/icons8-processor-32.png"
                     RightIcon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
                     SelectionChanged="FanTab_Changed"/>
-                <StackPanel x:Name="CurveEditor">
-                    <controls:SettingSwitchRow x:Name="SyncFansRow" Title="Synchronize Fan Speed"
-                        IsChecked="{Binding SynchronizeFanSpeeds, Mode=TwoWay}" Margin="0,0,0,8"/>
-                    <controls:SettingSliderRow x:Name="DelayRow" Title="Fan Control Delay"
-                        Minimum="0" Maximum="5" SmallChange="1" LargeChange="1" TickFrequency="1"
-                        IsSnapToTickEnabled="True" Value="0" ValueText="0 s"
-                        ValueChanged="DelayRow_ValueChanged" Margin="0,0,0,8"/>
+                <StackPanel>
+                    <UniformGrid Columns="2" Margin="0,0,0,8">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="CPU" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock x:Name="CpuTemperatureReading" Text="—" FontWeight="SemiBold"/>
+                                <TextBlock Text="  •  " Foreground="{DynamicResource TextMutedBrush}"/>
+                                <TextBlock x:Name="CpuFanReading" Text="—" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Margin="8,0,0,0" HorizontalAlignment="Right">
+                            <TextBlock Text="GPU" TextAlignment="Right" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock x:Name="GpuTemperatureReading" Text="—" FontWeight="SemiBold"/>
+                                <TextBlock Text="  •  " Foreground="{DynamicResource TextMutedBrush}"/>
+                                <TextBlock x:Name="GpuFanReading" Text="—" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </UniformGrid>
+                    <StackPanel x:Name="CurveEditor">
                     <controls:WpfFanCurveControl x:Name="Curve" Height="260"/>
                     <controls:SettingValueRow x:Name="RowTemp" Title="Temp" Minimum="40" Maximum="100" Unit="&#xB0;C" ValueCommitted="StageField_Committed" Margin="0,8,0,0"/>
                     <controls:SettingValueRow x:Name="RowDuty" Title="Duty" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
                     <controls:SettingValueRow x:Name="RowRpm" Title="RPM" Minimum="0" Maximum="6400" Unit="RPM" ValueCommitted="StageField_Committed"/>
+                </StackPanel>
                 </StackPanel>
                 <TextBlock x:Name="OperationError" Visibility="Collapsed" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>

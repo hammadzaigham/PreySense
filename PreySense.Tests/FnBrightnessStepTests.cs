@@ -18,6 +18,25 @@ public class FnBrightnessStepTests
     }
 
     [TestMethod]
+    public void PerKeyFnBrightnessUsesSavedKeyboardProfileWhenItsEditorIsNotSelected()
+    {
+        var vm = (MainViewModel)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        typeof(MainViewModel).GetField("_rgbBrightness", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, 100);
+        var keyboard = new PreySense.Rgb.LightingDeviceInfo("usb:keyboard", "Keyboard", "Keyboard",
+            Enumerable.Range('A', 26).Select((letter, i) => new PreySense.Rgb.LightingLedInfo(i, ((char)letter).ToString())).ToArray(), [], "");
+        var lighting = new PreySense.Core.Configuration.LightingConfig();
+        lighting.Devices[keyboard.Id] = new() { Mode = -1, Brightness = 60 };
+        int current = vm.KeyboardBrightnessForFn(lighting, keyboard);
+        Assert.AreEqual(60, current);
+        Assert.AreEqual(50, MainViewModel.StepFnBrightness(current, -1));
+        var pendingSave = new TaskCompletionSource();
+        typeof(MainViewModel).GetField("_fnKeyboardBrightnessSave", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, pendingSave.Task);
+        typeof(MainViewModel).GetField("_rgbBrightness", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, 50);
+        Assert.AreEqual(25, MainViewModel.StepFnBrightness(vm.KeyboardBrightnessForFn(lighting, keyboard), -1),
+            "A second press must use the previous press even before its background save completes.");
+    }
+
+    [TestMethod]
     public void OrdinaryF11AndF12AreNotConsumedAsFnBrightness()
     {
         Assert.IsFalse(KeyboardHook.TryGetBrightnessDelta(0x7A, 0x57, out _));

@@ -50,7 +50,7 @@ public class GlobalProchotTuningTests
             var vm = Create(new());
             vm.TuningConfigurationStore = store;
             vm.TjMaxCelsius = 100;
-            Assert.AreEqual("PROCHOT N/A", vm.ProchotActivationLabel);
+            Assert.AreEqual("PROCHOT —", vm.ProchotActivationLabel);
             vm.ProchotOffsetCelsius = 0;
             Assert.AreEqual("PROCHOT 100°C", vm.ProchotActivationLabel);
             vm.ProchotOffsetCelsius = null;

@@ -622,7 +622,7 @@ namespace PreySense.Helpers
         public bool GetLedTimeout()
         {
             ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x88401ul);
-            if (!status.HasValue) throw new InvalidOperationException("Keyboard timeout: N/A.");
+            if (!status.HasValue) throw new InvalidOperationException("Keyboard timeout: —.");
             return status != 0x80000ul && status != 0;
         }
 
@@ -642,7 +642,7 @@ namespace PreySense.Helpers
         public bool GetBootSound()
         {
             var (success, result) = SendCommand(AcerWmi.GamingMethods.GetMiscSetting, 0x06ul);
-            if (!success) throw new InvalidOperationException("Boot sound: N/A.");
+            if (!success) throw new InvalidOperationException("Boot sound: —.");
             return result == 0x100ul;
         }
 
@@ -686,7 +686,7 @@ namespace PreySense.Helpers
         public void SetUsbChargingLevel(int percent)
         {
             if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, EncodeUsbChargingLevel(percent)).HasValue)
-                throw new InvalidOperationException("USB power-off charging: N/A.");
+                throw new InvalidOperationException("USB power-off charging: —.");
             AppLogger.Log($"USB power-off charging cutoff: {percent}%");
         }
 

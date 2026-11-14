@@ -23,11 +23,30 @@ Identical saves leave the file untouched. Before skipping a write, the service c
 | `Battery` | Charge-limit, USB power-off charging and Windows Energy Saver preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |
 | `Tuning` | Optional global controls, per-mode user profiles and separately captured factory defaults. |
-| `Fans` | Per-mode Auto/Max/Custom fan control, stage values and ramp-up delay. |
+| `Fans` | Per-mode Auto/Max/Custom fan control and stage values, shared control delay, and fan maximum RPM. |
 | `Lighting` | Keyboard and cover effects, colors, brightness, speed and timeout preferences. |
 | `Overlay` | Visibility, FPS, scale, opacity, position and selected metric slots. |
 
 A preference is a desired setting, not confirmation of a live hardware reading. The application verifies hardware operations separately.
+
+## Fan control delay
+
+`Fans.ControlDelaySeconds` is the single delay shared by every performance mode and both fans. It defaults to `0` seconds and accepts integers from `0` to `5`. The Fan Settings window saves this setting immediately. With synchronization off, each fan starts the same configured delay when its own temperature crosses a curve threshold. With synchronization on, the coupled transition uses that delay. Auto and Max remain firmware-controlled modes and do not use the custom curve delay.
+
+Old per-mode `RampUpSeconds` values remain readable for file compatibility but do not control runtime behavior. Editing or saving a curve does not overwrite the shared delay; no per-mode delay is migrated into it.
+
+## Fan maximum RPM
+
+`Fans.CpuMaxRpm` and `Fans.GpuMaxRpm` specify the speed corresponding to 100% duty for each fan. Both default to `6400` when omitted and accept integers from `1` to `65535`. Set them to the measured maximum RPM of the respective fans on your laptop for accurate conversion between curve RPM targets and duty percentages. These values do not change the fans' physical maximum speed or add RPM feedback control.
+
+Close PreySense before editing these values in `preysense.json`, then restart it. Existing per-stage duty percentages remain percentages; changing a maximum changes the corresponding displayed RPM rather than scaling the saved duty.
+
+```json
+"Fans": {
+  "CpuMaxRpm": 6400,
+  "GpuMaxRpm": 6400
+}
+```
 
 ## USB power-off charging
 

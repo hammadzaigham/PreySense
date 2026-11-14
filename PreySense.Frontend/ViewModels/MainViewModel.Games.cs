@@ -59,8 +59,12 @@ public partial class MainViewModel
             if (_disposed || _gameModeStopping || revision != _gameWatcherRevision) return;
             if (!await RestoreModeAfterGameAsync()) return;
             if (_disposed || _gameModeStopping || !IsGameModeEnabled || revision != _gameWatcherRevision) return;
+            // Explicit profile edits recreate the watcher. Keep its own saved snapshot so
+            // every foreground event does not clone the complete configuration again.
+            var profiles = ConfigurationService.Instance.GetCurrent().Games?.Profiles?.ToArray() ?? [];
+            if (!profiles.Any(profile => profile.Enabled)) return;
             _gameLaunchWatcher = new GameLaunchWatcher(
-            () => ConfigurationService.Instance.GetCurrent().Games?.Profiles ?? [],
+            () => profiles,
             profile => _dispatcher.InvokeAsync(async () =>
             {
                 if (_disposed || _gameModeStopping || !IsGameModeEnabled || revision != _gameWatcherRevision) return;

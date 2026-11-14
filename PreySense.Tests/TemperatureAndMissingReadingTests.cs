@@ -21,17 +21,17 @@ public class TemperatureAndMissingReadingTests
     [TestMethod]
     public void MissingOverlayValuesAreNotFormattedAsZero()
     {
-        Assert.AreEqual("N/A", TelemetryText.Format(null, "W"));
-        Assert.AreEqual("N/A", TelemetryText.Format(-1, "MHz"));
-        Assert.AreEqual("N/A", TelemetryText.Format(double.NaN, "%"));
-        Assert.AreEqual("N/A", TelemetryText.Format(double.PositiveInfinity, "W"));
-        Assert.AreEqual("N/A", TelemetryText.Format(0, "°C", allowZero: false));
+        Assert.AreEqual("—", TelemetryText.Format(null, "W"));
+        Assert.AreEqual("—", TelemetryText.Format(-1, "MHz"));
+        Assert.AreEqual("—", TelemetryText.Format(double.NaN, "%"));
+        Assert.AreEqual("—", TelemetryText.Format(double.PositiveInfinity, "W"));
+        Assert.AreEqual("—", TelemetryText.Format(0, "°C", allowZero: false));
         Assert.AreEqual("0RPM", TelemetryText.Format(0, "RPM"));
         Assert.AreEqual("0%", TelemetryText.Format(0, "%"));
         Assert.AreEqual("52°C", TelemetryText.Format(52, "°C", allowZero: false));
         Assert.AreEqual("58.7°C", TelemetryText.Format(58.71875f, "°C", 1, allowZero: false));
         Assert.AreEqual("64.0°C", TelemetryText.Format(64.0f, "°C", 1, allowZero: false));
-        Assert.AreEqual("N/A", TelemetryText.Format(null, "°C", 1, allowZero: false));
+        Assert.AreEqual("—", TelemetryText.Format(null, "°C", 1, allowZero: false));
     }
 
     [TestMethod]

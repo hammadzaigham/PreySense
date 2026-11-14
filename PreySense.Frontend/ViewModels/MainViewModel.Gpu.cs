@@ -70,8 +70,8 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _customBalancedGpuWatts = 115;
         [ObservableProperty] private int _customPerfGpuWatts = 125;
         [ObservableProperty] private int _customTurboGpuWatts = 130;
-        [ObservableProperty] private string _gpuStateDescription = "N/A";
-        [ObservableProperty] private string _activeGpuPowerCeiling = "N/A";
+        [ObservableProperty] private string _gpuStateDescription = "—";
+        [ObservableProperty] private string _activeGpuPowerCeiling = "—";
         private bool _gpuHardwareInitialized;
 
         public void EnsureGpuHardwareInitialized()
@@ -100,7 +100,7 @@ namespace PreySense.Frontend.ViewModels
                     GpuBasePowerWatts = baseline;
                     if (baseline.HasValue)
                         GpuPowerTargetMin = baseline.Value;
-                    ActiveGpuPowerCeiling = "N/A";
+                    ActiveGpuPowerCeiling = "—";
                 });
             }
             catch (Exception ex)
@@ -118,7 +118,7 @@ namespace PreySense.Frontend.ViewModels
         [NotifyPropertyChangedFor(nameof(IsGpuUltimateActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAdvancedOptimusActive))]
         private int _activeGpuMuxMode = -1; // 0 = Optimus (iGPU), 1 = Automatic (Auto DDS), 2 = NVIDIA GPU Only (dGPU)
-        [ObservableProperty] private string _gpuMuxModeName = "N/A";
+        [ObservableProperty] private string _gpuMuxModeName = "—";
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsGpuEnduranceActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuStandardActive))]
@@ -201,7 +201,7 @@ namespace PreySense.Frontend.ViewModels
             2 => "NVIDIA GPU Only",
             1 => "Automatic",
             0 => "Optimus",
-            _ => "N/A"
+            _ => "—"
         };
 
         private static void SaveGpuModePreference(int mode)

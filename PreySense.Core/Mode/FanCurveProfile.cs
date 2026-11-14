@@ -10,6 +10,8 @@ public sealed class FanCurveProfile
     public static bool ValidTemperatures(int cpu, int gpu) => cpu is > 0 and <= 125;
     public static int CoolingTemperature(int cpu, int gpu) => gpu is > 0 and <= 125 ? Math.Max(cpu, gpu) : cpu;
 
+    public int CpuMaxRpm { get; set; } = FanStage.CpuMaxRpm;
+    public int GpuMaxRpm { get; set; } = FanStage.GpuMaxRpm;
     public FanControlMode ControlMode { get; set; } = FanControlMode.Auto;
     public int RampUpSeconds { get; set; } = 2;
     public FanStage[] Stages { get; set; } = DefaultStages(1);
@@ -32,32 +34,38 @@ public sealed class FanCurveProfile
 
     public FanCurveProfile Copy() => new()
     {
+        CpuMaxRpm = CpuMaxRpm, GpuMaxRpm = GpuMaxRpm,
         ControlMode = ControlMode,
         RampUpSeconds = RampUpSeconds,
         Stages = Clone(Stages)
     };
 
-    public void Normalize()
-    {
-        RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
-        if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
-        Stages = NormalizeStages(Stages, 1);
-    }
+    public void Normalize() => Normalize(1);
 
     public void Normalize(byte mode)
     {
         RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
         if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
-        Stages = NormalizeStages(Stages, mode);
+        CpuMaxRpm = Math.Clamp(CpuMaxRpm, 1, ushort.MaxValue);
+        GpuMaxRpm = Math.Clamp(GpuMaxRpm, 1, ushort.MaxValue);
+        Stages = NormalizeStages(Stages, mode, CpuMaxRpm, GpuMaxRpm);
     }
 
-    private static FanStage[] NormalizeStages(FanStage[]? source, byte mode)
+    private static FanStage[] NormalizeStages(FanStage[]? source, byte mode, int cpuMaxRpm, int gpuMaxRpm)
     {
         var result = DefaultStages(mode);
+        foreach (var stage in result)
+        {
+            stage.CpuMaximumRpm = cpuMaxRpm;
+            stage.GpuMaximumRpm = gpuMaxRpm;
+            stage.Normalize();
+        }
         if (source is not { Length: > 0 }) return result;
         for (int i = 0; i < StageCount && i < source.Length; i++)
         {
             result[i] = source[i]?.Copy() ?? result[i];
+            result[i].CpuMaximumRpm = cpuMaxRpm;
+            result[i].GpuMaximumRpm = gpuMaxRpm;
             result[i].Normalize();
         }
         // Compact storage ends at a terminal plateau. Never restore factory trips
@@ -170,10 +178,12 @@ public static class FanCurveStorage
         {
             var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
             var fanMode = GetModeFanConfig(cfg, mode);
+            profile.CpuMaxRpm = cfg.Fans.CpuMaxRpm;
+            profile.GpuMaxRpm = cfg.Fans.GpuMaxRpm;
             profile.ControlMode = (FanControlMode)Math.Clamp(fanMode.ControlMode, 0, 2);
-            profile.RampUpSeconds = Math.Clamp(fanMode.RampUpSeconds, 0, 5);
+            profile.RampUpSeconds = cfg.Fans.ControlDelaySeconds;
             if (fanMode.Stages is { Length: > 0 } stages)
-                profile.Stages = stages.Select(stage => stage?.ToFanStage() ?? new FanStage
+                profile.Stages = stages.Select(stage => stage?.ToFanStage(profile.CpuMaxRpm, profile.GpuMaxRpm) ?? new FanStage
                 {
                     CpuRiseC = FanStage.DisabledTripCelsius,
                     GpuRiseC = FanStage.DisabledTripCelsius
@@ -211,7 +221,6 @@ public static class FanCurveStorage
         {
             var fanMode = GetModeFanConfig(cfg, mode);
             fanMode.ControlMode = (int)saved.ControlMode;
-            fanMode.RampUpSeconds = saved.RampUpSeconds;
             fanMode.Stages = saved.Stages.Select(stage =>
                 new PreySense.Core.Configuration.FanStageConfig(stage)).ToArray();
         });

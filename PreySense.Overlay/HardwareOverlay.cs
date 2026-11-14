@@ -502,7 +502,7 @@ namespace PreySense.Overlay
             // FPS
             if (showFps)
             {
-                string fpsStr = _currentFps >= 0 ? _currentFps.ToString() : "N/A";
+                string fpsStr = _currentFps >= 0 ? _currentFps.ToString() : "—";
                 float fpsX = padX + innerPadX - S(sc, 4);
                 float fpsW = g.MeasureString(fpsStr, fpsBold).Width;
                 g.DrawString(fpsStr, fpsBold, _gpuBrush, new PointF(fpsX + (fpsColW - fpsW) / 2f, topY));
@@ -701,7 +701,7 @@ namespace PreySense.Overlay
         private static void DrawFanSpeed(Graphics g, Font font, Font rpmFont, string fanNum, SolidBrush brush, float colX, float colW, int y, float sc)
         {
             var sf = StringFormat.GenericTypographic;
-            if (fanNum == "N/A")
+            if (fanNum == "—")
             {
                 DrawTextWithUnit(g, font, rpmFont, fanNum, brush, new PointF(colX + colW, y), alignRight: true);
                 return;

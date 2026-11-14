@@ -18,6 +18,14 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private string _selectedHexColor = "#00AEC7";
         private readonly string[] _zoneHexColors = { "#00AEC7", "#00AEC7", "#00E5FF", "#00E5FF" };
         private bool _isSyncingZoneColor;
+        private LightingLedEditor[]? _zoneColorChoices;
+        public IReadOnlyList<LightingLedEditor> ZoneColorChoices => _zoneColorChoices ??=
+            Enumerable.Range(0, 4).Select(i => new LightingLedEditor(new LightingLedInfo(i, $"Zone {i + 1}"), _zoneHexColors[i])).ToArray();
+        public int SelectedZoneColorIndex
+        {
+            get => SelectedRgbZone - 1;
+            set { if (value is >= 0 and < 4) SelectedRgbZone = value + 1; }
+        }
         public string Zone1HexColor => _zoneHexColors[0];
         public string Zone2HexColor => _zoneHexColors[1];
         public string Zone3HexColor => _zoneHexColors[2];
@@ -225,6 +233,7 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnSelectedRgbZoneChanged(int value)
         {
+            OnPropertyChanged(nameof(SelectedZoneColorIndex));
             if (_isSyncingZoneColor || _isLoadingLighting)
                 return;
 
@@ -294,8 +303,7 @@ namespace PreySense.Frontend.ViewModels
                     return;
                 }
 
-                int current = SelectedLightingDevice?.Kind == "Keyboard" && IsDeviceLightingEditorVisible
-                    ? DeviceLightingBrightness : RgbBrightness;
+                int current = KeyboardBrightnessForFn(lighting, keyboardDevice);
                 int next = StepFnBrightness(current, delta);
                 _isSyncingRgbBrightness = true;
                 RgbBrightness = next;
@@ -307,10 +315,22 @@ namespace PreySense.Frontend.ViewModels
                     _deviceLightingBrightness = next;
                     OnPropertyChanged(nameof(DeviceLightingBrightness));
                 }
-                _ = QueueLighting(LightingWork.Brightness | LightingWork.Save);
+                _fnKeyboardBrightnessSave = QueueLighting(LightingWork.Brightness | LightingWork.Save);
                 DiagnosticMessage = $"Keyboard Brightness: {next}%";
                 AppLogger.Log($"TurboKey: Fn brightness {next}% saved");
             });
+        }
+
+        private Task? _fnKeyboardBrightnessSave;
+
+        internal int KeyboardBrightnessForFn(LightingConfig lighting, LightingDeviceInfo? keyboardDevice)
+        {
+            if (SelectedLightingDevice?.Kind == "Keyboard" && IsDeviceLightingEditorVisible)
+                return DeviceLightingBrightness;
+            // The per-key profile remains authoritative while another device's editor is open.
+            if (keyboardDevice?.HasNamedKeys == true && lighting.Devices.TryGetValue(keyboardDevice.Id, out var profile))
+                return _fnKeyboardBrightnessSave is { IsCompleted: false } ? RgbBrightness : profile.Brightness;
+            return RgbBrightness;
         }
 
         private readonly FnBrightnessEventFilter _fnBrightnessEvents = new();
@@ -717,8 +737,6 @@ namespace PreySense.Frontend.ViewModels
             CoverLightingMode = CoverModeFromKeyboardEffect();
         }
 
-        private bool? _lastSyncedDynamicIdleOff;
-
         private void UpdateCoverSyncFrameHook()
         {
             if (_hw is not ProductionHardwareService prod)
@@ -730,14 +748,13 @@ namespace PreySense.Frontend.ViewModels
                 return;
 
             if (shouldHook)
-                prod.LightingEngine.FrameUpdated += OnLightingEngineFrameUpdated;
+                prod.LightingEngine.IdleStateChanged += OnLightingEngineIdleStateChanged;
             else
-                prod.LightingEngine.FrameUpdated -= OnLightingEngineFrameUpdated;
+                prod.LightingEngine.IdleStateChanged -= OnLightingEngineIdleStateChanged;
             _coverSyncFrameHooked = shouldHook;
-            _lastSyncedDynamicIdleOff = null;
         }
 
-        private void OnLightingEngineFrameUpdated(Color[] frame)
+        private void OnLightingEngineIdleStateChanged(Color[] frame, bool idleOff)
         {
             if (_disposed || frame is not { Length: >= 4 })
                 return;
@@ -745,11 +762,8 @@ namespace PreySense.Frontend.ViewModels
             bool modeKeySync = AnyModeKeySyncWithKeyboard();
             if (!coverSync && !modeKeySync)
                 return;
-            bool idleOff = _hw is ProductionHardwareService prod && prod.LightingEngine.IsIdleDimmed;
-            // Neon runs on the device; only propagate software idle off/on transitions.
-            // Rewriting every animation frame would continually restart its color cycle.
-            if (_lastSyncedDynamicIdleOff == idleOff) return;
-            _lastSyncedDynamicIdleOff = idleOff;
+            // Neon runs on the device. The engine sends initial/idle transitions only,
+            // so normal animation frames perform no accessory discovery or configuration cloning.
 
             string hex = AverageZoneHexColor(
                 $"#{frame[0].R:X2}{frame[0].G:X2}{frame[0].B:X2}",
@@ -914,6 +928,9 @@ namespace PreySense.Frontend.ViewModels
 
         private void NotifyZoneColorProperties(int? zoneIndex = null)
         {
+            if (_zoneColorChoices is { } choices)
+                for (int i = 0; i < choices.Length; i++)
+                    if (zoneIndex is null || zoneIndex == i) choices[i].ColorHex = _zoneHexColors[i];
             if (zoneIndex is null)
             {
                 OnPropertyChanged(nameof(Zone1HexColor));
@@ -974,8 +991,13 @@ namespace PreySense.Frontend.ViewModels
             try
             {
                 var c = ColorTranslator.FromHtml(hex);
-                double luminance = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
-                return luminance > 0.62 ? "#111111" : "#F5F5F5";
+                static double Linear(byte channel)
+                {
+                    double value = channel / 255.0;
+                    return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+                }
+                double luminance = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+                return luminance > 0.179 ? "#111111" : "#F5F5F5";
             }
             catch
             {

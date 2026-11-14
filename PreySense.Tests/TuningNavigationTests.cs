@@ -24,7 +24,7 @@ public class TuningNavigationTests
         var tuningSettings = settings.Descendants().Single(e => (string?)e.Attribute("Title") == "Tuning Settings");
         Assert.IsNull(tuningSettings.Attribute("Visibility"));
         var section = tuningSettings.Parent!.Parent!;
-        Assert.AreNotEqual("Separator", section.ElementsBeforeSelf().Last().Name.LocalName);
+        Assert.AreEqual("Separator", section.ElementsBeforeSelf().Last().Name.LocalName);
         Assert.IsFalse(section.Descendants().Any(e => (string?)e.Attribute("Text") == "Tuning"));
         Assert.AreEqual("Separator", section.ElementsAfterSelf().First().Name.LocalName);
         foreach (string id in new[] { "BtnNavGames", "BtnNavMode" })

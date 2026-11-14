@@ -140,12 +140,12 @@
                                 </Grid>
                                 <StackPanel x:Name="GpuOverclockingPanel" IsEnabled="False">
                                     <controls:SettingSliderRow x:Name="RowGpuCoreClock" Title="Core Clock Offset"
-                                        ValueText="N/A" Minimum="0" Maximum="500" Margin="0,4,0,8"
+                                        ValueText="—" Minimum="0" Maximum="500" Margin="0,4,0,8"
                                         SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True"
                                         AutomationProperties.AutomationId="GpuCoreClockOffset"
                                         ValueChanged="GpuClockOffset_ValueChanged"/>
                                     <controls:SettingSliderRow x:Name="RowGpuMemoryClock" Title="Memory Clock Offset"
-                                        ValueText="N/A" Minimum="0" Maximum="0" Margin="0,4,0,8"
+                                        ValueText="—" Minimum="0" Maximum="0" Margin="0,4,0,8"
                                         SmallChange="100" LargeChange="100" TickFrequency="100" IsSnapToTickEnabled="True"
                                         AutomationProperties.AutomationId="GpuMemoryClockOffset"
                                         ValueChanged="GpuClockOffset_ValueChanged"/>
@@ -175,7 +175,7 @@
 
                                 <StackPanel x:Name="GpuLimitsPanel">
                                     <controls:SettingValueRow x:Name="RowGpuPower"
-                                                              Title="Power Limit" UnavailableText="N/A"
+                                                              Title="Power Limit" UnavailableText="—"
                                                               IsEnabled="False"
                                                               AllowEmpty="True"
                                                               Unit="W"

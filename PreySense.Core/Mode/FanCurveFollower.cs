@@ -1,11 +1,14 @@
 namespace PreySense.Mode;
 
 /// <summary>
-/// EC-style stage machine: rise on CPU or GPU trip; retreat when both sensors drop
-/// below the previous stage's rise. Optional shared delay holds stage changes.
+/// EC-style curves with independent sensor stages when synchronization is off.
+/// The same configured delay holds transitions in either synchronization mode.
 /// </summary>
 public sealed class FanCurveFollower
 {
+    private readonly SensorStage _cpu = new();
+    private readonly SensorStage _gpu = new();
+    private bool? _lastSynchronized;
     private int? _stage;
     private int? _pendingStage;
     private long _pendingSince;
@@ -15,6 +18,19 @@ public sealed class FanCurveFollower
     {
         if (stages == null || stages.Length == 0)
             return (0, 0, 0);
+
+        if (_lastSynchronized != synchronizeFanSpeeds)
+        {
+            Reset();
+            _lastSynchronized = synchronizeFanSpeeds;
+        }
+        if (!synchronizeFanSpeeds)
+        {
+            int cpuStage = _cpu.Evaluate(cpuTemp, stages, false, delaySeconds, nowMs);
+            // If the GPU sensor is unavailable, retain conservative CPU-temperature fallback.
+            int gpuStage = _gpu.Evaluate(gpuTemp is > 0 and <= 125 ? gpuTemp : cpuTemp, stages, true, delaySeconds, nowMs);
+            return (stages[cpuStage].CpuDutyPercent, stages[gpuStage].GpuDutyPercent, Math.Max(cpuStage, gpuStage));
+        }
 
         int stage = Math.Clamp(_stage ?? 0, 0, stages.Length - 1);
         int desired = stage;
@@ -43,7 +59,7 @@ public sealed class FanCurveFollower
             }
         }
 
-        int applied = Math.Clamp(_stage ?? desired, 0, stages.Length - 1);
+        int applied = Math.Clamp(_stage ?? 0, 0, stages.Length - 1);
         var current = stages[applied];
         if (synchronizeFanSpeeds)
         {
@@ -76,8 +92,36 @@ public sealed class FanCurveFollower
 
     public void Reset()
     {
+        _cpu.Reset(); _gpu.Reset();
+        _lastSynchronized = null;
         _stage = null;
         _pendingStage = null;
         _pendingSince = 0;
     }
+    private sealed class SensorStage
+    {
+        private int _stage;
+        private int? _pending;
+        private long _since;
+        public void Reset() { _stage = 0; _pending = null; _since = 0; }
+        public int Evaluate(int temperature, FanStage[] stages, bool gpu, int delaySeconds, long nowMs)
+        {
+            int stage = Math.Clamp(_stage, 0, stages.Length - 1);
+            int desired = stage;
+            int Rise(int index) => gpu ? stages[index].GpuRiseC : stages[index].CpuRiseC;
+            while (desired < stages.Length - 1 && Rise(desired) < FanStage.DisabledTripCelsius && temperature >= Rise(desired)) desired++;
+            while (desired > 0 && (Rise(desired - 1) >= FanStage.DisabledTripCelsius || temperature < Rise(desired - 1))) desired--;
+            if (delaySeconds <= 0 || desired == stage)
+            {
+                _pending = null; _stage = desired;
+            }
+            else
+            {
+                if (_pending != desired) { _pending = desired; _since = nowMs; }
+                if (nowMs - _since >= Math.Clamp(delaySeconds, 0, 5) * 1000L) { _stage = desired; _pending = null; }
+            }
+            return _stage;
+        }
+    }
+
 }

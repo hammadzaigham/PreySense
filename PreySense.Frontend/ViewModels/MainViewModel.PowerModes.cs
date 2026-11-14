@@ -463,7 +463,7 @@ namespace PreySense.Frontend.ViewModels
         private void UpdateModeName(byte mode)
         {
             PowerModeName = GetModeTitle(mode);
-            ActiveModeWattageInfo = "N/A";
+            ActiveModeWattageInfo = "—";
         }
 
         [RelayCommand]

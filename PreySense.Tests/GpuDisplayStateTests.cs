@@ -45,7 +45,7 @@ public class GpuDisplayStateTests
         Assert.IsTrue(vm.IsGpuNvidiaOnlyActive);
         apply.Invoke(vm, [manual with { ActiveMux = DdsActiveMux.Unknown }]);
         Assert.AreEqual(-1, vm.ActiveGpuMuxMode);
-        Assert.AreEqual("N/A", vm.GpuMuxModeName);
+        Assert.AreEqual("—", vm.GpuMuxModeName);
     }
 
     [TestMethod]

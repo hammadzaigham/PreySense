@@ -6,6 +6,8 @@ namespace PreySense.Tests;
 public class LightingSyncEffectTests
 {
     [TestMethod]
+    [DataRow("MODE", 1, -2)]
+    [DataRow("HW:Mode", 1, -2)]
     [DataRow("HW:0", 1, 2)]
     [DataRow("HW:1", 2, 4)]
     [DataRow("HW:2", 3, 5)]

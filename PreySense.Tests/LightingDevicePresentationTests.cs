@@ -6,6 +6,22 @@ namespace PreySense.Tests;
 public class LightingDevicePresentationTests
 {
     [TestMethod]
+    public void DuplicateBarKeepsTheTransportWithAdvertisedAnimations()
+    {
+        var limited = new LightingDeviceInfo("acer-hid-front", "Front Lightbar", "Lightbar",
+            [new(0, "LED 1")], [new(-2, "Mode"), new(2, "Static")], "");
+        var animated = limited with { Id = "acer-service:front", Kind = "Lighting device",
+            Modes = [new(-2, "Mode"), new(20, "Static"), new(30, "Wave", true), new(40, "Breathing", true)] };
+        foreach (var devices in new[] { new[] { limited, animated }, new[] { animated, limited } })
+        {
+            var selected = LightingDeviceInfo.UniqueTargets(devices).Single();
+            Assert.AreEqual(animated.Id, selected.Id);
+            Assert.AreEqual("Dynamic Bar (Front)", selected.DisplayName);
+            Assert.IsTrue(selected.GetEditorModes().Any(mode => mode.Value == 30 && mode.Name == "Wave"));
+        }
+    }
+
+    [TestMethod]
     public void PerKeyKeyboard_UsesStaticEditorWithoutDuplicatingHardwareStatic()
     {
         var keys = Enumerable.Range('A', 26).Select((letter, i) => new LightingLedInfo(i, ((char)letter).ToString())).ToArray();

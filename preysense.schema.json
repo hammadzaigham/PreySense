@@ -255,6 +255,27 @@
           "default": true,
           "description": "Synchronize CPU and GPU fan speeds."
         },
+        "ControlDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 0,
+          "description": "Global custom fan curve transition delay in seconds, shared across all modes and both fans."
+        },
+        "CpuMaxRpm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 6400,
+          "description": "CPU fan RPM at 100% duty, used for fan curve RPM/percentage conversion."
+        },
+        "GpuMaxRpm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 6400,
+          "description": "GPU fan RPM at 100% duty, used for fan curve RPM/percentage conversion."
+        },
         "Quiet": {
           "$ref": "#/definitions/ModeFanCurve",
           "title": "Quiet"
@@ -676,7 +697,8 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 5,
-          "title": "Ramp Up Seconds"
+          "title": "Legacy Ramp Up Seconds",
+          "description": "Retained for compatibility; runtime uses Fans.ControlDelaySeconds instead."
         },
         "Stages": {
           "type": "array",

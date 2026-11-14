@@ -14,15 +14,18 @@ public sealed class FanStage
     public int CpuTargetRpm { get; set; }
     public int GpuTargetRpm { get; set; }
 
-    public int CpuDutyPercent => RpmToDuty(CpuTargetRpm, CpuMaxRpm);
-    public int GpuDutyPercent => RpmToDuty(GpuTargetRpm, GpuMaxRpm);
+    public int CpuMaximumRpm { get; set; } = CpuMaxRpm;
+    public int GpuMaximumRpm { get; set; } = GpuMaxRpm;
+
+    public int CpuDutyPercent => RpmToDuty(CpuTargetRpm, CpuMaximumRpm);
+    public int GpuDutyPercent => RpmToDuty(GpuTargetRpm, GpuMaximumRpm);
 
     public int DutyPercent(bool gpu) => gpu ? GpuDutyPercent : CpuDutyPercent;
 
     public void SetDuty(bool gpu, int dutyPercent)
     {
-        if (gpu) GpuTargetRpm = DutyToRpm(dutyPercent, GpuMaxRpm);
-        else CpuTargetRpm = DutyToRpm(dutyPercent, CpuMaxRpm);
+        if (gpu) GpuTargetRpm = DutyToRpm(dutyPercent, GpuMaximumRpm);
+        else CpuTargetRpm = DutyToRpm(dutyPercent, CpuMaximumRpm);
     }
 
     /// <summary>True when every trip is the EC disabled sentinel (filler plateau stages).</summary>
@@ -44,7 +47,8 @@ public sealed class FanStage
     {
         CpuRiseC = CpuRiseC, CpuFallC = CpuFallC,
         GpuRiseC = GpuRiseC, GpuFallC = GpuFallC,
-        CpuTargetRpm = CpuTargetRpm, GpuTargetRpm = GpuTargetRpm
+        CpuTargetRpm = CpuTargetRpm, GpuTargetRpm = GpuTargetRpm,
+        CpuMaximumRpm = CpuMaximumRpm, GpuMaximumRpm = GpuMaximumRpm
     };
 
     public void Normalize()
@@ -55,8 +59,10 @@ public sealed class FanStage
         // fields coherent: fall mirrors previous-rise semantics as rise - 1 when active.
         CpuFallC = DeriveFall(CpuRiseC, CpuFallC);
         GpuFallC = DeriveFall(GpuRiseC, GpuFallC);
-        CpuTargetRpm = Math.Clamp(CpuTargetRpm, 0, CpuMaxRpm);
-        GpuTargetRpm = Math.Clamp(GpuTargetRpm, 0, GpuMaxRpm);
+        CpuMaximumRpm = Math.Clamp(CpuMaximumRpm, 1, ushort.MaxValue);
+        GpuMaximumRpm = Math.Clamp(GpuMaximumRpm, 1, ushort.MaxValue);
+        CpuTargetRpm = Math.Clamp(CpuTargetRpm, 0, CpuMaximumRpm);
+        GpuTargetRpm = Math.Clamp(GpuTargetRpm, 0, GpuMaximumRpm);
     }
 
     /// <summary>

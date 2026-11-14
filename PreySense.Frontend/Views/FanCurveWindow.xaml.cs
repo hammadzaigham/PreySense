@@ -6,11 +6,15 @@ using System.Windows.Controls;
 using PreySense.Frontend.Controls;
 using PreySense.Frontend.ViewModels;
 using PreySense.Mode;
+using PreySense.Core.Services;
+using PreySense.Frontend.Services;
 
 namespace PreySense.Frontend.Views;
 
 public partial class FanCurveWindow : Window
 {
+    private readonly FanWindowTelemetry _fanTelemetry = new();
+    private int _fanTelemetryRevision;
     private static readonly byte[] Modes = [6, 0, 1, 4, 5];
     private readonly Dictionary<byte, FanCurveProfile> _drafts = new();
     private readonly List<int> _visibleStageIndices = new();
@@ -21,16 +25,26 @@ public partial class FanCurveWindow : Window
     private bool _gpu, _loading, _applying;
     private FanCurveProfile _profile = new();
     private MainViewModel? Vm => DataContext as MainViewModel;
-    private bool SynchronizeFanSpeeds => SyncFansRow.IsChecked ?? Vm?.SynchronizeFanSpeeds ?? true;
+    private bool SynchronizeFanSpeeds => Vm?.SynchronizeFanSpeeds ?? FanCurveStorage.LoadSynchronizeFanSpeeds();
 
     public FanCurveWindow()
     {
         InitializeComponent();
+        _fanTelemetry.SnapshotAvailable += OnFanWindowSnapshot;
+        IsVisibleChanged += (_, _) =>
+        {
+            _fanTelemetryRevision++;
+            ApplyFanReadings(TelemetrySnapshot.Empty);
+            _fanTelemetry.SetVisible(IsVisible);
+        };
+        Closed += (_, _) =>
+        {
+            _fanTelemetryRevision++;
+            _fanTelemetry.Dispose();
+            _fanTelemetry.SnapshotAvailable -= OnFanWindowSnapshot;
+        };
         Curve.Edited += (_, _) => OnCurveEdited();
         Curve.SelectionChanged += (_, _) => SyncSelectedStage();
-        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
-            SettingSwitchRow.IsCheckedProperty, typeof(SettingSwitchRow))
-            ?.AddValueChanged(SyncFansRow, (_, _) => OnSyncFansChanged());
         UpdateEditor();
         Loaded += (_, _) =>
         {
@@ -44,11 +58,29 @@ public partial class FanCurveWindow : Window
         ProfileRow.AddHandler(ComboBox.SelectionChangedEvent, new SelectionChangedEventHandler(Profile_Changed));
     }
 
+    private void OnFanWindowSnapshot(TelemetrySnapshot snapshot)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+        int revision = _fanTelemetryRevision;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (IsVisible && revision == _fanTelemetryRevision) ApplyFanReadings(snapshot);
+        });
+    }
+
+    private void ApplyFanReadings(TelemetrySnapshot snapshot)
+    {
+        var readings = FanWindowTelemetry.Format(snapshot);
+        CpuTemperatureReading.Text = readings.CpuTemperature;
+        CpuFanReading.Text = readings.CpuFan;
+        GpuTemperatureReading.Text = readings.GpuTemperature;
+        GpuFanReading.Text = readings.GpuFan;
+    }
+
     private void SaveDraft()
     {
         _profile.ControlMode = MaxOption.IsChecked == true ? FanControlMode.Max
             : CustomOption.IsChecked == true ? FanControlMode.Custom : FanControlMode.Auto;
-        _profile.RampUpSeconds = Math.Clamp((int)Math.Round(DelayRow.Value), 0, 5);
         _drafts[_mode] = _profile;
     }
 
@@ -59,52 +91,10 @@ public partial class FanCurveWindow : Window
         AutoOption.IsChecked = _profile.ControlMode == FanControlMode.Auto;
         MaxOption.IsChecked = _profile.ControlMode == FanControlMode.Max;
         CustomOption.IsChecked = _profile.ControlMode == FanControlMode.Custom;
-        DelayRow.Value = Math.Clamp(_profile.RampUpSeconds, 0, 5);
-        SyncFansRow.IsChecked = Vm?.SynchronizeFanSpeeds ?? FanCurveStorage.LoadSynchronizeFanSpeeds();
-        SyncDelayValueText();
         Curve.SelectedIndex = -1;
         _loading = false;
         UpdateEditor();
         SyncCurve();
-    }
-
-    private void OnSyncFansChanged()
-    {
-        if (_loading) return;
-        bool sync = SyncFansRow.IsChecked == true;
-        if (Vm != null)
-            Vm.SynchronizeFanSpeeds = sync;
-        else
-            FanCurveStorage.SaveSynchronizeFanSpeeds(sync);
-
-        if (sync)
-        {
-            for (int i = 0; i < _profile.Stages.Length; i++)
-            {
-                _profile.Stages[i].SetDuty(!_gpu, _profile.Stages[i].DutyPercent(_gpu));
-                _profile.Stages[i].Normalize();
-            }
-            if (_visibleStageIndices.Count > 0 && _visibleStageIndices.Count == _temperatureLabels.Length)
-            {
-                FanStage.ApplyEntryTemperatures(_profile.Stages, _visibleStageIndices, _temperatureLabels, !_gpu);
-            }
-            SyncCurve();
-            SaveDraft();
-        }
-    }
-
-    private void DelayRow_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_loading || DelayRow == null) return;
-        SyncDelayValueText();
-        if (CustomOption.IsChecked == true)
-            SaveDraft();
-    }
-
-    private void SyncDelayValueText()
-    {
-        int seconds = Math.Clamp((int)Math.Round(DelayRow.Value), 0, 5);
-        DelayRow.ValueText = $"{seconds} s";
     }
 
     internal static (int[] StageIndices, int[] Temperatures, int[] Duties, int LeadInDuty)
@@ -164,6 +154,7 @@ public partial class FanCurveWindow : Window
         int previousStage = SelectedStageIndex;
         RebuildVisibleStages();
         Curve.Temperatures = _temperatureLabels;
+        Curve.MaximumRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
         Curve.Values = _dutyValues;
         Curve.LeadInDuty = _leadInDuty;
         int visible = previousStage < 0 ? -1 : _visibleStageIndices.IndexOf(previousStage);
@@ -255,8 +246,9 @@ public partial class FanCurveWindow : Window
         RowTemp.Maximum = maxTemp;
         RowTemp.Value = celsius;
         int duty = stage.DutyPercent(_gpu);
-        int maxRpm = _gpu ? FanStage.GpuMaxRpm : FanStage.CpuMaxRpm;
+        int maxRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
         RowDuty.Value = duty;
+        RowRpm.Maximum = maxRpm;
         RowRpm.Value = FanStage.DutyToRpm(duty, maxRpm);
         _loading = false;
         UpdateEditor();
@@ -289,7 +281,7 @@ public partial class FanCurveWindow : Window
         }
         else if (ReferenceEquals(sender, RowRpm))
         {
-            int maxRpm = _gpu ? FanStage.GpuMaxRpm : FanStage.CpuMaxRpm;
+            int maxRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
             int duty = FanStage.RpmToDuty((int)Math.Round(RowRpm.Value), maxRpm);
             WpfFanCurveControl.SetDuty(_dutyValues, visible, duty);
             stage.SetDuty(_gpu, _dutyValues[visible]);
@@ -404,7 +396,6 @@ public partial class FanCurveWindow : Window
     {
         if (Vm is not { } vm) return;
         SaveDraft();
-        vm.SynchronizeFanSpeeds = SynchronizeFanSpeeds;
         var snapshots = _drafts.Select(entry => (entry.Key, Profile: entry.Value.Copy())).ToArray();
         await System.Threading.Tasks.Task.Run(() =>
         {

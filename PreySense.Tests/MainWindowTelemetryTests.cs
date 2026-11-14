@@ -23,7 +23,7 @@ public class MainWindowTelemetryTests
             vm.SetMainWindowTelemetryVisible(false);
             Assert.AreEqual(TelemetryMetrics.None, TelemetryCoordinator.RequestedMetrics);
             Assert.IsFalse(TelemetryCoordinator.HasActiveDemand);
-            Assert.AreEqual("N/A", vm.CpuTemperatureText);
+            Assert.AreEqual("—", vm.CpuTemperatureText);
         }
         finally { vm.SetMainWindowTelemetryVisible(false); TelemetryCoordinator.Reset(); }
     }
@@ -42,15 +42,15 @@ public class MainWindowTelemetryTests
             });
             Assert.AreEqual("67°C", vm.CpuTemperatureText);
             Assert.AreEqual("Intel Graphics", vm.ActiveGpuDisplayMode);
-            Assert.AreEqual("N/A", vm.GpuTemperatureText);
+            Assert.AreEqual("—", vm.GpuTemperatureText);
             Assert.AreEqual("0 RPM", vm.CpuFanText);
             Assert.AreEqual("3500 RPM", vm.GpuFanText);
             vm.SetMainWindowTelemetryVisible(false);
             vm.ApplyMainWindowTelemetry(TelemetrySnapshot.Empty with { IsValid = true, CpuTemp = 99 });
-            Assert.AreEqual("N/A", vm.CpuTemperatureText);
+            Assert.AreEqual("—", vm.CpuTemperatureText);
             vm.SetMainWindowTelemetryVisible(true);
-            Assert.AreEqual("N/A", vm.GpuFanText);
-            Assert.AreEqual("N/A", vm.ActiveGpuDisplayMode);
+            Assert.AreEqual("—", vm.GpuFanText);
+            Assert.AreEqual("—", vm.ActiveGpuDisplayMode);
         }
         finally { vm.SetMainWindowTelemetryVisible(false); TelemetryCoordinator.Reset(); }
     }

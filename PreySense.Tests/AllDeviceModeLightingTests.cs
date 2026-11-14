@@ -194,6 +194,38 @@ public class AllDeviceModeLightingTests
     }
 
     [TestMethod]
+    public void KeyboardModeSyncUsesSharedPaletteAndBrightnessEvenWithLegacyStaticProfile()
+    {
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var hardware = new LightingHardware();
+        try
+        {
+            store.Update(cfg =>
+            {
+                cfg.Lighting.Keyboard.EffectTag = "MODE";
+                cfg.Lighting.Keyboard.Brightness = 90;
+                cfg.Lighting.ModeBrightness = 35;
+                cfg.Lighting.PowerModeColors = new() { ["05"] = "#123456" };
+                foreach (var device in hardware.Devices)
+                    cfg.Lighting.Devices[device.Id] = new() { Mode = 0 };
+                cfg.Lighting.Devices["Hotkey"] = new() { Mode = 2, SyncWithKeyboard = true, Brightness = 80 };
+            });
+            var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+            typeof(MainViewModel).GetField("_hw", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, hardware);
+            vm.ActivePowerMode = 5;
+            vm.ReapplyExtendedModeLighting(includeOtherHotkeyProfiles: false);
+            var write = hardware.Writes.Single();
+            Assert.AreEqual("Hotkey", write.DeviceId);
+            Assert.AreEqual(ModeKeyLighting.FollowOperatingMode, write.Settings.Mode);
+            Assert.AreEqual("#123456", write.Settings.ColorHex);
+            Assert.AreEqual(35, write.Settings.Brightness);
+            Assert.AreEqual(2, store.GetCurrent().Lighting.Devices["Hotkey"].Mode);
+        }
+        finally { store.Save(original); }
+    }
+
+    [TestMethod]
     public async Task SharedBrightnessPersistsReappliesOnlyModeAndUsesFnRungs()
     {
         var store = ConfigurationService.Instance;

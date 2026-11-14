@@ -37,7 +37,7 @@ public partial class MainViewModel
         {
             string label = ResolveTjMaxCelsius() is int tjMaxCelsius && TuningEditorProchotOffset is int offsetCelsius
                 ? $"PROCHOT {tjMaxCelsius - offsetCelsius}°C"
-                : "PROCHOT N/A";
+                : "PROCHOT —";
             return IsProchotOffsetLocked ? $"{label} - {Services.LocalizationService.Translate("Locked")}" : label;
         }
     }

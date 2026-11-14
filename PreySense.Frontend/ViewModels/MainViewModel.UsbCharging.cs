@@ -28,8 +28,8 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            SetUsbChargingStatus("USB charging: N/A.");
-            DiagnosticMessage = "USB power-off charging: N/A. " + ex.Message;
+            SetUsbChargingStatus("USB charging: —.");
+            DiagnosticMessage = "USB power-off charging: —. " + ex.Message;
         }
         finally
         {
@@ -50,7 +50,7 @@ public partial class MainViewModel
         }
         catch
         {
-            SetUsbChargingStatus("USB charging: N/A.");
+            SetUsbChargingStatus("USB charging: —.");
             throw;
         }
     }

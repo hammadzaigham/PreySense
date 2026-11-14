@@ -35,11 +35,7 @@ public partial class NvidiaGpuControl
         if (coreRange.MinimumMhz > coreRange.MaximumMhz || memoryRange.MinimumMhz > memoryRange.MaximumMhz
             || coreDelta.DeltaRange.Minimum >= coreDelta.DeltaRange.Maximum
             || memoryDelta.DeltaRange.Minimum >= memoryDelta.DeltaRange.Maximum) return false;
-        state = new(coreRange, memoryRange, new(coreDelta.DeltaValue / 1000, memoryDelta.DeltaValue / 1000))
-        {
-            CurrentCoreKilohertz = coreDelta.DeltaValue,
-            CurrentMemoryKilohertz = memoryDelta.DeltaValue
-        };
+        state = new(coreRange, memoryRange);
         status = string.Empty;
         return true;
     }
@@ -62,17 +58,7 @@ public partial class NvidiaGpuControl
             PerformanceStates20InfoV1.PerformanceState20[] pStates = [
                 new(PerformanceStateId.P0_3DPerformance, clocks, Array.Empty<PerformanceStates20BaseVoltageEntryV1>())];
             GPUApi.SetPerformanceStates20(_internalGpu!.Handle, new PerformanceStates20InfoV1(pStates, 2, 0));
-            if (!ReadClockTuning(out var actual, out status))
-            {
-                status = "GPU clock write completed, but readback failed. Earlier tuning changes may already be applied.";
-                return false;
-            }
-            if (actual!.CurrentCoreKilohertz != offsets.CoreMhz * 1000 || actual.CurrentMemoryKilohertz != offsets.MemoryMhz * 1000)
-            {
-                status = $"GPU clock verification failed: requested {offsets.CoreMhz}/{offsets.MemoryMhz} MHz; read back {actual.Current.CoreMhz}/{actual.Current.MemoryMhz} MHz. Earlier tuning changes may already be applied.";
-                return false;
-            }
-            status = "Applied and read back successfully.";
+            status = "GPU clock offsets applied.";
             return true;
         }
         catch (Exception ex)

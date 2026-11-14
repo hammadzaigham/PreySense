@@ -5,11 +5,11 @@ namespace PreySense.Frontend.ViewModels;
 
 public partial class MainViewModel
 {
-    [ObservableProperty] private string _cpuTemperatureText = "N/A";
-    [ObservableProperty] private string _gpuTemperatureText = "N/A";
-    [ObservableProperty] private string _cpuFanText = "N/A";
-    [ObservableProperty] private string _gpuFanText = "N/A";
-    [ObservableProperty] private string _activeGpuDisplayMode = "N/A";
+    [ObservableProperty] private string _cpuTemperatureText = "—";
+    [ObservableProperty] private string _gpuTemperatureText = "—";
+    [ObservableProperty] private string _cpuFanText = "—";
+    [ObservableProperty] private string _gpuFanText = "—";
+    [ObservableProperty] private string _activeGpuDisplayMode = "—";
     private volatile bool _mainWindowTelemetryVisible;
     private int _mainWindowTelemetryRevision;
 
@@ -23,7 +23,7 @@ public partial class MainViewModel
         else TelemetryCoordinator.SnapshotAvailable -= OnMainWindowTelemetrySnapshot;
         TelemetryCoordinator.SetDemand(TelemetryDemand.MainWindow, visible);
         // Reopening waits for a new shared sample rather than displaying stale readings.
-        CpuTemperatureText = GpuTemperatureText = CpuFanText = GpuFanText = ActiveGpuDisplayMode = "N/A";
+        CpuTemperatureText = GpuTemperatureText = CpuFanText = GpuFanText = ActiveGpuDisplayMode = "—";
     }
 
     private void OnMainWindowTelemetrySnapshot(TelemetrySnapshot snapshot)
@@ -39,12 +39,12 @@ public partial class MainViewModel
     internal void ApplyMainWindowTelemetry(TelemetrySnapshot snapshot)
     {
         if (!_mainWindowTelemetryVisible || _disposed) return;
-        static string Format(int? value, string unit) => value is >= 0 ? $"{value}{unit}" : "N/A";
+        static string Format(int? value, string unit) => value is >= 0 ? $"{value}{unit}" : "—";
         CpuTemperatureText = Format(snapshot.IsValid ? snapshot.CpuTemp : null, "°C");
         GpuTemperatureText = Format(snapshot.IsValid ? snapshot.GpuTemp : null, "°C");
         CpuFanText = Format(snapshot.IsValid ? snapshot.CpuRpm : null, " RPM");
         GpuFanText = Format(snapshot.IsValid ? snapshot.GpuRpm : null, " RPM");
         ActiveGpuDisplayMode = snapshot.IsValid && !string.IsNullOrWhiteSpace(snapshot.DisplayGpuName)
-            ? snapshot.DisplayGpuName : "N/A";
+            ? snapshot.DisplayGpuName : "—";
     }
 }

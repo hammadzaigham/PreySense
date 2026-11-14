@@ -39,6 +39,8 @@ public sealed record LightingDeviceInfo(string Id, string Name, string Kind,
     public static IReadOnlyList<LightingDeviceInfo> UniqueTargets(IEnumerable<LightingDeviceInfo> devices) => devices
         .GroupBy(PhysicalTarget, StringComparer.OrdinalIgnoreCase)
         .Select(group => group.OrderByDescending(device => device.HasNamedKeys)
+            .ThenByDescending(device => device.IsLightBar
+                ? device.Modes.Count(mode => mode.Value >= 0 && !mode.Name.Equals("Static", StringComparison.OrdinalIgnoreCase)) : 0)
             .ThenBy(device => device.Id.StartsWith("usb:", StringComparison.Ordinal) ? 0
                 : device.Id.StartsWith("acer-hid-", StringComparison.Ordinal) ? 1
                 : device.Id.StartsWith("acer-ec-", StringComparison.Ordinal) ? 2 : 3)
@@ -63,7 +65,9 @@ public sealed record LightingDeviceInfo(string Id, string Name, string Kind,
     }
     public bool HasNamedKeys => Kind.Equals("Keyboard", StringComparison.OrdinalIgnoreCase)
         && Leds.Count(led => led.Name.Length == 1 && char.IsLetter(led.Name[0])) >= 20;
-    public bool IsLightBar => Kind.Replace(" ", "").Equals("Lightbar", StringComparison.OrdinalIgnoreCase);
+    public bool IsLightBar => Kind.Replace(" ", "").Equals("Lightbar", StringComparison.OrdinalIgnoreCase)
+        || Name.Replace(" ", "").Replace("-", "").Contains("lightbar", StringComparison.OrdinalIgnoreCase)
+        || Name.Replace(" ", "").Replace("-", "").Contains("dynamicbar", StringComparison.OrdinalIgnoreCase);
     public string DisplayName => Kind.Equals("Keyboard", StringComparison.OrdinalIgnoreCase)
         ? HasNamedKeys ? "Per-Key Keyboard" : "Zone Keyboard"
         : IsLightBar ? DynamicBarName()

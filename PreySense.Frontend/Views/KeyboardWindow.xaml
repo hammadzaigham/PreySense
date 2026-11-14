@@ -16,45 +16,6 @@
 
     <Window.Resources>
         <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter"/>
-        <Style x:Key="ZoneColorButtonStyle" TargetType="{x:Type Button}">
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
-            <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="4,0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type Button}">
-                        <Border Name="border"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5">
-                            <Grid>
-                                <Border Name="hover" Background="Transparent" CornerRadius="4"/>
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                  Margin="{TemplateBinding Padding}"/>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="hover" Property="Background" Value="#33FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="hover" Property="Background" Value="#44000000"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Compact Hex TextBox Style -->
         <Style x:Key="HexTextBoxStyle" TargetType="{x:Type TextBox}">
             <Setter Property="Background" Value="{DynamicResource ButtonMainBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -140,11 +101,6 @@
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="{StaticResource WindowContentMargin}">
-
-                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
-                    <controls:SettingActionRow Title="Lighting Mode Settings" ActionText="Open" Click="LightingSettings_Click"/>
-                </Border>
-                <Separator HorizontalAlignment="Stretch" Margin="0,2,0,12"/>
 
                 <!-- Detected devices replace Keyboard/Logo when OEM lighting targets are present. -->
                 <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
@@ -328,29 +284,8 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="4"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="4"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="4"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" x:Name="ButtonZone1" Content="Zone 1" Height="32" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                            Background="{Binding Zone1HexColor}" Foreground="{Binding Zone1Foreground}"
-                                            Click="Zone1_Click" Style="{StaticResource ZoneColorButtonStyle}"/>
-                                    <Button Grid.Column="2" x:Name="ButtonZone2" Content="Zone 2" Height="32" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                            Background="{Binding Zone2HexColor}" Foreground="{Binding Zone2Foreground}"
-                                            Click="Zone2_Click" Style="{StaticResource ZoneColorButtonStyle}"/>
-                                    <Button Grid.Column="4" x:Name="ButtonZone3" Content="Zone 3" Height="32" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                            Background="{Binding Zone3HexColor}" Foreground="{Binding Zone3Foreground}"
-                                            Click="Zone3_Click" Style="{StaticResource ZoneColorButtonStyle}"/>
-                                    <Button Grid.Column="6" x:Name="ButtonZone4" Content="Zone 4" Height="32" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                            Background="{Binding Zone4HexColor}" Foreground="{Binding Zone4Foreground}"
-                                            Click="Zone4_Click" Style="{StaticResource ZoneColorButtonStyle}"/>
-                                </Grid>
+                                <controls:ColorSwatchPicker ItemsSource="{Binding ZoneColorChoices}"
+                                    SelectedIndex="{Binding SelectedZoneColorIndex, Mode=TwoWay}" Margin="0,0,0,8"/>
                             </StackPanel>
 
                             <!-- Centered Color Wheel & Editable Hex Color Textbox -->
@@ -758,42 +693,9 @@
 
                             </StackPanel>
 
-                            <ListBox x:Name="IndividualLedGrid" ItemsSource="{Binding LightingLedEditors}"
-                                     SelectedItem="{Binding SelectedLightingKey, Mode=TwoWay}"
-                                     Visibility="{Binding ShowIndividualLedGrid, Converter={StaticResource BoolToVis}}"
-                                     Background="Transparent" BorderThickness="0" Padding="0" Margin="-2,4,-2,0"
-                                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <ListBox.ItemsPanel>
-                                    <ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate>
-                                </ListBox.ItemsPanel>
-                                <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                        <Setter Property="Margin" Value="2"/>
-                                        <Setter Property="Padding" Value="0"/>
-                                        <Setter Property="Template">
-                                            <Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value>
-                                        </Setter>
-                                    </Style>
-                                </ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Content="{Binding Name}" Background="{Binding ColorHex}" Foreground="{Binding ForegroundHex}"
-                                                Tag="{Binding}" Click="DeviceLed_Click" HorizontalAlignment="Stretch">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ZoneColorButtonStyle}">
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                                                            <Setter Property="BorderThickness" Value="2"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                            <controls:ColorSwatchPicker x:Name="IndividualLedGrid" ItemsSource="{Binding LightingLedEditors}"
+                                SelectedItem="{Binding SelectedLightingKey, Mode=TwoWay}"
+                                Visibility="{Binding ShowIndividualLedGrid, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0"/>
                             <StackPanel Visibility="{Binding ShowIndividualLightingEditors, Converter={StaticResource BoolToVis}}">
                                 <controls:ColorWheelControl x:Name="IndividualLightingColorWheel" Width="160" Height="160" HorizontalAlignment="Center" Margin="0,16,0,10"
                                     ColorPicked="DeviceKeyColor_Picked"

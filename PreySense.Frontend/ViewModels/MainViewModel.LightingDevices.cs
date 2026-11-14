@@ -608,6 +608,7 @@ public partial class MainViewModel
     /// <summary>Acer HID: Static=2, Breathing=4, Neon=5. Other dynamic effects sync as Neon.</summary>
     internal static int SyncedModeKeyModeFromKeyboardEffect(string effectTag) => effectTag switch
     {
+        "MODE" or "HW:Mode" => ModeKeyLighting.FollowOperatingMode,
         "HW:1" => 4,
         "HW:2" => 5,
         _ when IsDynamicNeonSyncEffect(effectTag) => 5,
@@ -647,7 +648,8 @@ public partial class MainViewModel
         if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
         lock (ExtendedLightingWriteGate)
         {
-            var profiles = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
+            var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
+            var profiles = lighting.Devices;
             // Discover() is a cached snapshot after the one-time startup probe (no HID re-scan).
             foreach (var device in hardware.DiscoverLightingDevices())
             {
@@ -661,8 +663,7 @@ public partial class MainViewModel
                 {
                     OemLightingController.Validate(settings);
                     hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode,
-                        ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors,
-                        ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness));
+                        lighting.PowerModeColors, lighting.ModeBrightness));
                 }
                 catch (Exception ex)
                 {
@@ -865,6 +866,8 @@ public partial class MainViewModel
                 if (useLegacyEditors && IsLogoLightingKind(device) && _hw.IsCoverLightingAvailable) continue;
                 var settings = lighting.Devices.TryGetValue(device.Id, out var saved) ? saved : new DeviceLightingConfig();
                 bool shouldRestore = ModeKeyLighting.IsFollowMode(settings.Mode)
+                    || (settings.SyncWithKeyboard && (lighting.Keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
+                        || lighting.Keyboard.EffectTag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase)))
                     || (includeOtherHotkeyProfiles && (device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) || settings.SyncWithKeyboard));
                 if (!shouldRestore) continue;
                 try

@@ -8,6 +8,36 @@ public class FanCurveFollowerTests
     private static FanStage[] Balanced() => FanCurveProfile.DefaultStages(1);
 
     [TestMethod]
+    public void UnsynchronizedFansUseTheirOwnTemperatureAndDelay()
+    {
+        var stages = new[]
+        {
+            new FanStage { CpuRiseC = 75, GpuRiseC = 90, CpuTargetRpm = 1920, GpuTargetRpm = 1920 },
+            new FanStage { CpuRiseC = 127, GpuRiseC = 127, CpuTargetRpm = 6400, GpuTargetRpm = 6400 }
+        };
+        var follower = new FanCurveFollower();
+        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 0, 0, false));
+        Assert.AreEqual((30, 100, 1), follower.Evaluate(45, 95, stages, 0, 1, false));
+        follower.Reset();
+        Assert.AreEqual((30, 30, 0), follower.Evaluate(90, 45, stages, 2, 0, false));
+        Assert.AreEqual((30, 30, 0), follower.Evaluate(90, 95, stages, 2, 1000, false));
+        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 95, stages, 2, 2000, false));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 3000, false));
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void InitialHotSampleHonorsConfiguredDelay(bool synchronized)
+    {
+        var follower = new FanCurveFollower();
+        var stages = Balanced();
+        Assert.AreEqual(0, follower.Evaluate(56, 40, stages, 2, 0, synchronized).Stage);
+        Assert.AreEqual(0, follower.Evaluate(56, 40, stages, 2, 1999, synchronized).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 2000, synchronized).Stage);
+    }
+
+    [TestMethod]
     public void StageZeroStaysStoppedUntilRiseTrip()
     {
         var follower = new FanCurveFollower();
@@ -43,7 +73,7 @@ public class FanCurveFollowerTests
         // When synchronized is false: fans run at their respective independent duties
         var (indCpu, indGpu, _) = follower.Evaluate(56, 40, stages, 0, 2000, synchronizeFanSpeeds: false);
         Assert.AreEqual(cpuDuty, indCpu);
-        Assert.AreEqual(gpuDuty, indGpu);
+        Assert.AreEqual(stages[0].GpuDutyPercent, indGpu, "A cool GPU must stay on its own stage.");
     }
 
     [TestMethod]

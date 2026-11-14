@@ -109,7 +109,7 @@ public partial class MainViewModel
         if (_disposed) return;
         lock (_fanControlGate)
         {
-            if (_disposed || _fanWriteFailed) return;
+            if (_disposed || _fanWriteFailed || _fanRpmCalibrationActive) return;
             // Mode changes already invalidate this profile through the mode event/apply paths.
             // Avoid another ACPI query on every telemetry sample.
             byte mode = _runningFanProfileMode;

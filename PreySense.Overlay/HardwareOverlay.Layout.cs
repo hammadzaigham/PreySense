@@ -59,7 +59,7 @@ public partial class HardwareOverlay
 
     private static string FormatFan(int? fan)
     {
-        if (fan is null || fan < 0) return "N/A";
+        if (fan is null || fan < 0) return "—";
         return fan.Value.ToString();
     }
 }

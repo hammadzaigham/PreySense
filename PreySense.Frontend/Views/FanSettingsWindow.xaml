@@ -1,0 +1,60 @@
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.Views.FanSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        Title="PreySense • Fan Settings" Width="500" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize"
+        Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}">
+    <Border Style="{DynamicResource AppWindowShellStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <controls:WindowTitleBar Grid.Row="0" Title="Fan Settings"/>
+            <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="{StaticResource WindowContentMargin}">
+                    <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                        <StackPanel>
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFanRpmCalibrationRunning}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <controls:SettingSwitchRow x:Name="SyncFansRow" Title="Synchronize Fan Speed"
+                                    IsChecked="{Binding SynchronizeFanSpeeds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                <controls:SettingSliderRow x:Name="DelayRow" Title="Fan Control Delay"
+                                    Minimum="0" Maximum="5" SmallChange="1" LargeChange="1" TickFrequency="1"
+                                    IsSnapToTickEnabled="True" Margin="0,8,0,0"
+                                    Value="{Binding FanControlDelaySeconds, Mode=TwoWay, Delay=150}"
+                                    ValueText="{Binding FanControlDelaySeconds, StringFormat='{}{0} s'}"/>
+                                <Separator Margin="0,10,0,10"/>
+                                <controls:SettingActionRow x:Name="RowCalibrateFanRpms" Title="Fan RPM Calibration"
+                                    ActionText="Calibrate" Click="CalibrateFanRpms_Click"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding FanRpmCalibrationStatus}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding FanRpmCalibrationStatus}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="CalibrationError" Visibility="Collapsed" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource WarningTextBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Window>

@@ -70,6 +70,35 @@ namespace PreySense.Rgb
         /// </summary>
         public event Action<Color[]>? FrameUpdated;
 
+        private Action<Color[], bool>? _idleStateChanged;
+        private bool? _lastPublishedIdleState;
+        /// <summary>Fired on the next frame after subscribing or starting, then only when software idle changes.</summary>
+        public event Action<Color[], bool>? IdleStateChanged
+        {
+            add
+            {
+                lock (_lock)
+                {
+                    _idleStateChanged += value;
+                    _lastPublishedIdleState = null;
+                }
+            }
+            remove { lock (_lock) _idleStateChanged -= value; }
+        }
+
+        internal void PublishIdleStateFrame(Color[] frame, bool idleOff)
+        {
+            Action<Color[], bool>? changed;
+            lock (_lock)
+            {
+                if (_lastPublishedIdleState == idleOff) return;
+                _lastPublishedIdleState = idleOff;
+                changed = _idleStateChanged;
+            }
+            // A subscriber can schedule another lighting write; never invoke it while holding the engine lock.
+            changed?.Invoke(frame, idleOff);
+        }
+
         public CustomEffectMode CurrentMode => _currentMode;
         public bool IsRunning => _currentMode != CustomEffectMode.None && _cts != null && !_cts.IsCancellationRequested;
         /// <summary>True while the software idle timeout has forced the keyboard backlight off.</summary>
@@ -133,6 +162,7 @@ namespace PreySense.Rgb
                 _brightness = Math.Clamp(brightness, (byte)0, (byte)100);
                 _speed = Math.Clamp(speed, 0, 100);
                 _idleDimmed = false;
+                _lastPublishedIdleState = null;
                 _forceHwDispatch = true;
                 _hasLastFrame = false;
                 _cts = new CancellationTokenSource();
@@ -379,6 +409,7 @@ namespace PreySense.Rgb
 
                             _wmi.SetZoneColors(IdleOffFrame, 0);
                             FrameUpdated?.Invoke(IdleOffFrame);
+                            PublishIdleStateFrame(IdleOffFrame, idleOff: true);
                             AppLogger.Log($"CustomLightingEffectsEngine: backlight off after {timeoutSeconds}s idle. Animation stopped.");
 
                             KeyboardActivity.KeyDown += WakeIdle;
@@ -410,6 +441,7 @@ namespace PreySense.Rgb
 
                     // 1. UI / cover-sync preview only when someone is listening
                     FrameUpdated?.Invoke(frame);
+                    PublishIdleStateFrame(frame, idleOff: false);
 
                     byte brightness;
                     bool forceHw;

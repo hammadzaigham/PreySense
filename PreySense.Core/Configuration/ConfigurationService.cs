@@ -191,6 +191,15 @@ namespace PreySense.Core.Configuration
             if (config.Tuning.ApplyProchotOffset && config.Tuning.ProchotOffsetCelsius is null)
                 throw new ArgumentException("Enter a PROCHOT offset, or turn its switch off.");
 
+            if (config.Fans.ControlDelaySeconds is < 0 or > 5)
+                throw new ArgumentOutOfRangeException("Fans.ControlDelaySeconds", "Fan control delay must be between 0 and 5 seconds.");
+
+            // Fan duty/RPM conversion uses the laptop-specific speed at 100% duty.
+            if (config.Fans.CpuMaxRpm is < 1 or > 65535)
+                throw new ArgumentOutOfRangeException("Fans.CpuMaxRpm", "CPU maximum fan RPM must be between 1 and 65535.");
+            if (config.Fans.GpuMaxRpm is < 1 or > 65535)
+                throw new ArgumentOutOfRangeException("Fans.GpuMaxRpm", "GPU maximum fan RPM must be between 1 and 65535.");
+
             // Tuning validation
             ValidateModeTuning("Quiet", config.Tuning.Quiet);
             ValidateModeTuning("Eco", config.Tuning.Eco);

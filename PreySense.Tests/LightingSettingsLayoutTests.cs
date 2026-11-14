@@ -58,8 +58,9 @@ public class LightingSettingsLayoutTests
         var folder = Path.Combine(root.FullName, "PreySense.Frontend", "Views");
         var lighting = XDocument.Load(Path.Combine(folder, "KeyboardWindow.xaml"));
         var settings = XDocument.Load(Path.Combine(folder, "LightingSettingsWindow.xaml"));
-        Assert.IsTrue(lighting.Descendants().Any(e => (string?)e.Attribute("Title") == "Lighting Mode Settings"
-            && (string?)e.Attribute("Click") == "LightingSettings_Click"));
+        var appSettings = XDocument.Load(Path.Combine(folder, "SettingsWindow.xaml"));
+        Assert.IsTrue(appSettings.Descendants().Any(e => (string?)e.Attribute("Title") == "Lighting Settings"
+            && (string?)e.Attribute("Click") == "BtnOpenLightingModeSettings_Click"));
         foreach (var attribute in lighting.Descendants().Attributes())
         {
             Assert.DoesNotContain("KeyboardModeColorEditors", attribute.Value);

@@ -113,7 +113,7 @@ public partial class MainViewModel
             {
                 // Resolve on every apply; stale static colors cannot replace Mode.
                 var (z1, z2, z3, z4) = ModeKeyLighting.GetZoneColors(ActivePowerMode,
-                    new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors });
+                    new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors });
                 _hw.SetRgbAllZones(
                     ColorTranslator.FromHtml(z1), ColorTranslator.FromHtml(z2),
                     ColorTranslator.FromHtml(z3), ColorTranslator.FromHtml(z4), brightness);
@@ -155,9 +155,9 @@ public partial class MainViewModel
                 ? SyncedCoverModeFromKeyboardEffect(keyboard.EffectTag)
                 : cover.Mode == 4 ? 1 : cover.Mode;
             var coverColor = syncKeyboardMode
-                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors }, ActivePowerMode))
+                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
                 : cover.Mode == 4
-                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors }, ActivePowerMode))
+                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
                 : ColorTranslator.FromHtml(cover.ColorHex);
             _hw.SetCoverLogoLighting(mode, coverColor,
                 (byte)Math.Clamp(syncKeyboardMode || cover.Mode == 4 ? sharedLighting.ModeBrightness

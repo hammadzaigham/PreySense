@@ -7,9 +7,14 @@ using PreySense.Mode;
 
 namespace PreySense.Frontend.Controls;
 
-/// <summary>Editable duty graph for active EC fan stages (X = °C legend, Y = duty %).</summary>
+/// <summary>Editable duty graph for active EC fan stages (X = °C legend, Y = fan RPM).</summary>
 public sealed class WpfFanCurveControl : FrameworkElement
 {
+    public static readonly DependencyProperty MaximumRpmProperty = DependencyProperty.Register(
+        nameof(MaximumRpm), typeof(int), typeof(WpfFanCurveControl),
+        new FrameworkPropertyMetadata(6400, FrameworkPropertyMetadataOptions.AffectsRender), value => (int)value > 0);
+    public int MaximumRpm { get => (int)GetValue(MaximumRpmProperty); set => SetValue(MaximumRpmProperty, value); }
+
     public static readonly DependencyProperty ValuesProperty = DependencyProperty.Register(
         nameof(Values), typeof(int[]), typeof(WpfFanCurveControl), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty TemperaturesProperty = DependencyProperty.Register(
@@ -71,7 +76,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
     public const int MinCelsius = 40;
     public const int MaxCelsius = 100;
 
-    private Rect Plot => new(42, 14, Math.Max(1, ActualWidth - 58), Math.Max(1, ActualHeight - 42));
+    private Rect Plot => new(76, 14, Math.Max(1, ActualWidth - 92), Math.Max(1, ActualHeight - 42));
     private int PointCount => Values.Length;
 
     private double CelsiusToX(int celsius)
@@ -97,7 +102,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
         {
             double y = plot.Bottom - plot.Height * percent / 100;
             dc.DrawLine(thin, new(plot.Left, y), new(plot.Right, y));
-            Label(dc, percent + "%", 2, y - 7);
+            Label(dc, FanStage.DutyToRpm(percent, MaximumRpm) + " RPM", 2, y - 7);
         }
         // X legend uses each visible stage's °C, not a fixed 5/10°C grid.
         for (int i = 0; i < Temperatures.Length; i++)

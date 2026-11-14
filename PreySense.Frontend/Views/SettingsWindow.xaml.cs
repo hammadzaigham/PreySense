@@ -27,6 +27,18 @@ namespace PreySense.Frontend.Views
             new TuningSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
         }
 
+        private void BtnOpenFanSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not ViewModels.MainViewModel vm) return;
+            new FanSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
+        }
+
+        private void BtnOpenLightingModeSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not ViewModels.MainViewModel vm) return;
+            new LightingSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
+        }
+
         private void UsbCharging_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             UpdateUsbChargingLabel();

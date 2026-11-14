@@ -199,11 +199,11 @@ namespace PreySense.Frontend.Views
                 RowGpuCoreClock.Maximum = Math.Min(PreySense.Gpu.GpuClockTuningState.MaximumCoreOffsetMhz, core.MaximumMhz);
                 RowGpuMemoryClock.Minimum = memory.MinimumMhz;
                 RowGpuMemoryClock.Maximum = memory.MaximumMhz;
-                RowGpuCoreClock.Value = state.Core.Snap(Draft.GpuCoreClockOffsetMhz ?? state.Current.CoreMhz, PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
-                RowGpuMemoryClock.Value = state.Memory.Snap(Draft.GpuMemoryClockOffsetMhz ?? state.Current.MemoryMhz, PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+                RowGpuCoreClock.Value = state.Core.Snap(Draft.GpuCoreClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+                RowGpuMemoryClock.Value = state.Memory.Snap(Draft.GpuMemoryClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
             }
-            RowGpuCoreClock.ValueText = available ? $"{RowGpuCoreClock.Value:+0;-0;0} MHz" : "N/A";
-            RowGpuMemoryClock.ValueText = available ? $"{RowGpuMemoryClock.Value:+0;-0;0} MHz" : "N/A";
+            RowGpuCoreClock.ValueText = available ? $"{RowGpuCoreClock.Value:+0;-0;0} MHz" : "—";
+            RowGpuMemoryClock.ValueText = available ? $"{RowGpuMemoryClock.Value:+0;-0;0} MHz" : "—";
             GpuOverclockingPanel.IsEnabled = available && Draft.ApplyGpuClockOffsets;
         }
 

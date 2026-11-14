@@ -23,13 +23,11 @@ public readonly record struct GpuClockRange(int MinimumMhz, int MaximumMhz)
             Math.Min((int)Math.Floor(maximum / 1000.0), maximumMhz ?? int.MaxValue));
 }
 
-public sealed record GpuClockTuningState(GpuClockRange Core, GpuClockRange Memory, GpuClockOffsets Current)
+public sealed record GpuClockTuningState(GpuClockRange Core, GpuClockRange Memory)
 {
     public const int MaximumCoreOffsetMhz = 500;
     public const int CoreStepMhz = 5;
     public const int MemoryStepMhz = 100;
-    public int CurrentCoreKilohertz { get; init; }
-    public int CurrentMemoryKilohertz { get; init; }
     public bool Allows(GpuClockOffsets offsets) => offsets.CoreMhz >= 0 && offsets.MemoryMhz >= 0
         && Core.Contains(offsets.CoreMhz)
         && Memory.Contains(offsets.MemoryMhz) && offsets.CoreMhz <= MaximumCoreOffsetMhz;

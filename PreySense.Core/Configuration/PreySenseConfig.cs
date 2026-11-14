@@ -311,6 +311,18 @@ namespace PreySense.Core.Configuration
         [JsonPropertyOrder(1)]
         public bool SynchronizeFanSpeeds { get; set; } = true;
 
+        /// <summary>Delay before accepting custom curve stage changes, shared by all modes and both fans.</summary>
+        [JsonPropertyOrder(9)]
+        public int ControlDelaySeconds { get; set; } = 0;
+
+        /// <summary>CPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
+        [JsonPropertyOrder(7)]
+        public int CpuMaxRpm { get; set; } = 6400;
+
+        /// <summary>GPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
+        [JsonPropertyOrder(8)]
+        public int GpuMaxRpm { get; set; } = 6400;
+
         [JsonPropertyOrder(2)]
         public ModeFanCurveConfig Quiet { get; set; } = ModeFanCurveConfig.CreateDefaultQuiet();
         [JsonPropertyOrder(3)]
@@ -357,18 +369,24 @@ namespace PreySense.Core.Configuration
             GpuDutyPercent = stage.GpuDutyPercent;
         }
 
-        public Mode.FanStage ToFanStage()
+        public Mode.FanStage ToFanStage(int cpuMaxRpm = Mode.FanStage.CpuMaxRpm, int gpuMaxRpm = Mode.FanStage.GpuMaxRpm)
         {
+            cpuMaxRpm = Math.Clamp(cpuMaxRpm, 1, ushort.MaxValue);
+            gpuMaxRpm = Math.Clamp(gpuMaxRpm, 1, ushort.MaxValue);
             int cpuTemp = CpuTempC ?? (CpuRiseC != 0 ? CpuRiseC : Mode.FanStage.DisabledTripCelsius);
             int gpuTemp = GpuTempC ?? (GpuRiseC != 0 ? GpuRiseC : Mode.FanStage.DisabledTripCelsius);
             int cpuDuty = CpuDutyPercent
                 ?? DutyPercent
-                ?? Mode.FanStage.RpmToDuty(CpuTargetRpm, Mode.FanStage.CpuMaxRpm);
+                ?? Mode.FanStage.RpmToDuty(CpuTargetRpm, cpuMaxRpm);
             int gpuDuty = GpuDutyPercent
                 ?? DutyPercent
-                ?? Mode.FanStage.RpmToDuty(GpuTargetRpm, Mode.FanStage.GpuMaxRpm);
+                ?? Mode.FanStage.RpmToDuty(GpuTargetRpm, gpuMaxRpm);
 
-            var stage = new Mode.FanStage { CpuRiseC = cpuTemp, GpuRiseC = gpuTemp };
+            var stage = new Mode.FanStage
+            {
+                CpuRiseC = cpuTemp, GpuRiseC = gpuTemp,
+                CpuMaximumRpm = cpuMaxRpm, GpuMaximumRpm = gpuMaxRpm
+            };
             stage.SetDuty(gpu: false, cpuDuty);
             stage.SetDuty(gpu: true, gpuDuty);
             stage.Normalize();
@@ -381,7 +399,7 @@ namespace PreySense.Core.Configuration
         /// <summary>Fan control mode: 0 = Auto, 1 = Max, 2 = Custom.</summary>
         public int ControlMode { get; set; } = 0;
 
-        /// <summary>Shared delay before accepting a stage change (0-5s).</summary>
+        /// <summary>Legacy per-mode value retained for file compatibility; runtime uses Fans.ControlDelaySeconds.</summary>
         public int RampUpSeconds { get; set; } = 2;
 
         private FanStageConfig[]? _stages;

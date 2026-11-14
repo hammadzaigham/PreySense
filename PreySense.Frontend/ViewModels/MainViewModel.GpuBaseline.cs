@@ -30,7 +30,7 @@ public partial class MainViewModel
             {
                 GpuBasePowerWatts = baseline.Value;
             }
-            else AppLogger.Log("GPU baseline unavailable; no detected baseline was saved. Nominal GPU wattage remains N/A.");
+            else AppLogger.Log("GPU baseline unavailable; no detected baseline was saved. Nominal GPU wattage remains —.");
         }
         catch (Exception ex) { AppLogger.Log($"GPU baseline capture failed: {ex.Message}"); }
     }

@@ -202,7 +202,7 @@ namespace PreySense.Frontend.ViewModels
                 Is120HzSupported = supportedRates.Contains(120);
                 Is240HzSupported = supportedRates.Contains(240);
 
-                SelectedRefreshRateOption = CurrentRefreshRate > 0 ? $"{CurrentRefreshRate} Hz" : "N/A";
+                SelectedRefreshRateOption = CurrentRefreshRate > 0 ? $"{CurrentRefreshRate} Hz" : "—";
 
                 NotifyRefreshRateChanged();
             }

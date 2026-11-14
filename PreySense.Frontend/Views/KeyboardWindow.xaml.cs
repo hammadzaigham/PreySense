@@ -100,21 +100,6 @@ namespace PreySense.Frontend.Views
                 vm.SetSelectedLightingKeysColor($"#{color.R:X2}{color.G:X2}{color.B:X2}");
         }
 
-        private void DeviceLed_Click(object sender, RoutedEventArgs e)
-        {
-            if (DataContext is MainViewModel vm && sender is FrameworkElement { Tag: LightingLedEditor led })
-            {
-                vm.SelectedLightingKeys.Clear();
-                vm.SelectedLightingKey = led;
-            }
-        }
-
-        private void LightingSettings_Click(object sender, RoutedEventArgs e)
-        {
-            if (DataContext is not MainViewModel vm) return;
-            new LightingSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
-        }
-
         private void UpdateLightingWindowWidth(MainViewModel vm)
         {
             Width = vm.ShowKeyboardLayout ? Math.Min(1040, Math.Max(500, SystemParameters.WorkArea.Width - 48)) : 500;
@@ -365,6 +350,8 @@ namespace PreySense.Frontend.Views
 
         private void OnLightingVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName == nameof(MainViewModel.SelectedHexColor) && DataContext is MainViewModel colorVm)
+                SyncKeyboardColorInputs(colorVm);
             if (e.PropertyName == nameof(MainViewModel.ShowKeyboardLayout) && DataContext is MainViewModel lightingVm)
                 UpdateLightingWindowWidth(lightingVm);
             if ((e.PropertyName == nameof(MainViewModel.IsCoverSyncWithKeyboard) ||
@@ -396,35 +383,6 @@ namespace PreySense.Frontend.Views
                 PanelCoverSpeed.Visibility = (!isStatic && !sync && !isMode)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
-            }
-        }
-
-        private void Zone1_Click(object sender, RoutedEventArgs e)
-        {
-            SelectZone(1);
-        }
-
-        private void Zone2_Click(object sender, RoutedEventArgs e)
-        {
-            SelectZone(2);
-        }
-
-        private void Zone3_Click(object sender, RoutedEventArgs e)
-        {
-            SelectZone(3);
-        }
-
-        private void Zone4_Click(object sender, RoutedEventArgs e)
-        {
-            SelectZone(4);
-        }
-
-        private void SelectZone(int zone)
-        {
-            if (DataContext is MainViewModel vm)
-            {
-                vm.SelectedRgbZone = zone;
-                SyncKeyboardColorInputs(vm);
             }
         }
 
