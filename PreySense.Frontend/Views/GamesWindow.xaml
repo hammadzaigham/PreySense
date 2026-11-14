@@ -46,8 +46,43 @@
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Height" Value="32"/>
+                                        <Setter Property="Margin" Value="2,1"/>
+                                        <Setter Property="Padding" Value="8,0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
                                         <Setter Property="VerticalContentAlignment" Value="Center"/>
-                                        <Setter Property="CornerRadius" Value="4"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="GameItemBorder"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="6"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter ContentSource="Content"
+                                                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="GameItemBorder" Property="BorderBrush"
+                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                            <Setter TargetName="GameItemBorder" Property="BorderThickness" Value="1"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="GameItemBorder" Property="Background"
+                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                            <Setter Property="Foreground"
+                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter Property="Opacity" Value="0.55"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
                                     </Style>
                                 </ListBox.ItemContainerStyle>
                             </ListBox>
