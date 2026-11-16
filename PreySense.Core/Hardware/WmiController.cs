@@ -771,9 +771,11 @@ namespace PreySense.Helpers
 
         public bool SetLcdOverdrive(bool enable)
         {
-            var (success, _) = SendCommand(AcerWmi.GamingMethods.SetProfile, enable ? 0x1000000000010ul : 0x10ul);
-            return success;
+            return new LcdOverdriveControl(SendCommand).Set(enable);
         }
+
+        public bool TryGetLcdOverdrive(out bool enabled) =>
+            new LcdOverdriveControl(SendCommand).TryGet(out enabled);
 
         #region Direct Hardware & WMI First Control
 

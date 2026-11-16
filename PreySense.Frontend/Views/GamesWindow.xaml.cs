@@ -10,6 +10,16 @@ public partial class GamesWindow : Window
     private bool _updatingEditor;
     private MainViewModel? _viewModel;
 
+    private void GameEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Primitives.ToggleButton { DataContext: PreySense.Mode.GameProfile game } toggle
+            && _viewModel is { } vm)
+        {
+            game.Enabled = toggle.IsChecked == true;
+            if (ReferenceEquals(vm.SelectedGameProfile, game)) vm.SelectedGameEnabled = game.Enabled;
+        }
+    }
+
     public GamesWindow()
     {
         InitializeComponent();

@@ -246,6 +246,25 @@ public class PreySenseDriverBackendTests
     }
 
     [TestMethod]
+    [DataRow(0x7D1C8086u)]
+    [DataRow(0x7D2D8086u)]
+    [DataRow(0x7D2F8086u)]
+    public void MchbarDiscovery_ArrowLakeHxUsesDocumentedAddressBits(uint id)
+    {
+        var ops = new MockDriverDeviceOps();
+        ops.PciRegisters[0] = id;
+        // Keep the enabled bit, discard reserved low bits and reserved high bits;
+        // retain valid address bits above 4 GiB instead of hardcoding FEDxxxxx.
+        ops.PciRegisters[0x48UL << 32] = 0xFEDC8001;
+        ops.PciRegisters[0x4CUL << 32] = 0x80000002;
+        using var backend = new PreySenseDriverBackend("PreySenseDriver", ops);
+        Assert.IsTrue(backend.Initialize(out var error), error);
+        Assert.IsTrue(backend.TryReadMchbar(out ulong address));
+        Assert.AreEqual(0x2FEDC0000UL, address);
+        Assert.IsFalse(ops.RecordedIoctls.Any(call => call.Code == PreySenseDriverBackend.IOCTL_PHYS_WRITE));
+    }
+
+    [TestMethod]
     public void Constructor_NormalizesDeviceAndServiceNames()
     {
         using var backend1 = new PreySenseDriverBackend("PreySenseDriver", new MockDriverDeviceOps());

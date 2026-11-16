@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
@@ -7,7 +7,7 @@ using PreySense.Mode;
 
 namespace PreySense.Frontend.Controls;
 
-/// <summary>Editable duty graph for active EC fan stages (X = °C legend, Y = fan RPM).</summary>
+/// <summary>Editable software cooling-request graph (X = °C, Y = requested percentage).</summary>
 public sealed class WpfFanCurveControl : FrameworkElement
 {
     public static readonly DependencyProperty MaximumRpmProperty = DependencyProperty.Register(
@@ -59,6 +59,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
     private Point _dragOrigin;
     private int _dragStartDuty;
     private int _dragStartCelsius;
+    private int[] _dragStartValues = Array.Empty<int>();
 
     public WpfFanCurveControl()
     {
@@ -76,7 +77,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
     public const int MinCelsius = 40;
     public const int MaxCelsius = 100;
 
-    private Rect Plot => new(76, 14, Math.Max(1, ActualWidth - 92), Math.Max(1, ActualHeight - 42));
+    private Rect Plot => new(32, 14, Math.Max(1, ActualWidth - 48), Math.Max(1, ActualHeight - 42));
     private int PointCount => Values.Length;
 
     private double CelsiusToX(int celsius)
@@ -102,7 +103,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
         {
             double y = plot.Bottom - plot.Height * percent / 100;
             dc.DrawLine(thin, new(plot.Left, y), new(plot.Right, y));
-            Label(dc, FanStage.DutyToRpm(percent, MaximumRpm) + " RPM", 2, y - 7);
+            Label(dc, percent + "%", 0, y - 7);
         }
         // X legend uses each visible stage's °C, not a fixed 5/10°C grid.
         for (int i = 0; i < Temperatures.Length; i++)
@@ -159,10 +160,11 @@ public sealed class WpfFanCurveControl : FrameworkElement
     public static void SetDuty(int[] values, int index, int duty)
     {
         if (values is null || index < 0 || index >= values.Length) return;
-        int min = index == 0 ? 0 : values[index - 1];
-        int max = index == values.Length - 1 ? 100 : values[index + 1];
-        if (min > max) (min, max) = (max, min);
-        values[index] = Math.Clamp(duty, min, max);
+        values[index] = Math.Clamp(duty, 0, 100);
+        for (int i = index - 1; i >= 0; i--)
+            values[i] = Math.Min(values[i], values[index]);
+        for (int i = index + 1; i < values.Length; i++)
+            values[i] = Math.Max(values[i], values[index]);
     }
 
     public static (int Min, int Max) DutyBounds(int[] values, int index)
@@ -219,6 +221,7 @@ public sealed class WpfFanCurveControl : FrameworkElement
         SelectedIndex = hit;
         _dragOrigin = p;
         _dragStartDuty = Values[hit];
+        _dragStartValues = (int[])Values.Clone();
         _dragStartCelsius = hit < Temperatures.Length ? Temperatures[hit] : MinCelsius;
         _editingPoint = true;
         _dragging = false;
@@ -251,13 +254,15 @@ public sealed class WpfFanCurveControl : FrameworkElement
     {
         if (cancel && _editingPoint && _dragging && PointCount > 0 && SelectedIndex >= 0)
         {
-            SetDuty(Values, SelectedIndex, _dragStartDuty);
+            if (_dragStartValues.Length == Values.Length)
+                Array.Copy(_dragStartValues, Values, Values.Length);
             if (SelectedIndex < Temperatures.Length)
                 SetTemperature(Temperatures, SelectedIndex, _dragStartCelsius);
             InvalidateVisual();
             Edited?.Invoke(this, EventArgs.Empty);
         }
         _editingPoint = _dragging = false;
+        _dragStartValues = Array.Empty<int>();
         if (IsMouseCaptured) ReleaseMouseCapture();
     }
 

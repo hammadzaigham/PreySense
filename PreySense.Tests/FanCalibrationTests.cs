@@ -23,7 +23,7 @@ public class FanCalibrationTests
         var before = store.GetCurrent();
         try
         {
-            store.Update(cfg => { cfg.Fans.Balanced.ControlMode = 0; cfg.Fans.CpuMaxRpm = 6400; cfg.Fans.GpuMaxRpm = 6400; });
+            store.Update(cfg => { cfg.Fans.ControlDelaySeconds = 5; cfg.Fans.Balanced.ControlMode = 0; cfg.Fans.CpuMaxRpm = 6400; cfg.Fans.GpuMaxRpm = 6400; });
             var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
             void Set(string field, object value) => typeof(MainViewModel).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, value);
             var fans = new Fans();
@@ -36,15 +36,15 @@ public class FanCalibrationTests
             vm.FanCalibrationWait = (duration, token) =>
             {
                 Assert.AreEqual(TimeSpan.FromSeconds(20), duration);
-                Assert.AreEqual("custom:100/100", fans.Calls.Single());
+                Assert.AreEqual("mode:1", fans.Calls.Single());
                 spunUp = true;
                 return Task.CompletedTask;
             };
             vm.FanCalibrationSampler = token =>
             {
-                Assert.AreEqual("Calibrating Fan RPM...", vm.FanRpmCalibrationStatus);
+                Assert.AreEqual("Calibrating...", vm.FanRpmCalibrationStatus);
                 Assert.IsTrue(spunUp, "Measurement must wait for the full spin-up period.");
-                Assert.AreEqual("custom:100/100", fans.Calls.Single());
+                Assert.AreEqual("mode:1", fans.Calls.Single());
                 if (outcome == "shutdown") { shutdown = vm.PrepareFanCalibrationShutdownAsync(); token.ThrowIfCancellationRequested(); }
                 if (outcome == "cancel") { cancellation.Cancel(); token.ThrowIfCancellationRequested(); }
                 if (outcome == "failure") throw new InvalidOperationException("sensor failed");
@@ -53,12 +53,13 @@ public class FanCalibrationTests
             bool saved = await vm.CalibrateFanRpmsAsync(cancellation.Token);
             if (shutdown is not null) await shutdown.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.AreEqual(outcome == "success", saved);
-            if (saved) Assert.AreEqual("Fan RPM Calibrated. CPU: 6800 RPM. GPU: 7100 RPM.", vm.FanRpmCalibrationStatus);
+            if (saved) Assert.AreEqual("Calibrated. CPU: 6800 RPM. GPU: 7100 RPM.", vm.FanRpmCalibrationStatus);
             Assert.AreEqual("mode:0", fans.Calls.Last());
             Assert.IsFalse(vm.IsFanRpmCalibrationRunning);
             var config = store.GetCurrent();
             Assert.AreEqual(saved ? 6800 : 6400, config.Fans.CpuMaxRpm);
             Assert.AreEqual(saved ? 7100 : 6400, config.Fans.GpuMaxRpm);
+            if (saved) Assert.IsTrue(config.Fans.HasMeasuredFanMaximums);
             Assert.AreEqual(0, config.Fans.Balanced.ControlMode);
         }
         finally { store.Save(before); TelemetryCoordinator.SetDemand(TelemetryDemand.FanController, false); }

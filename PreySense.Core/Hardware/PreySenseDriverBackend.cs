@@ -818,11 +818,14 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
             address = 0;
             if (_disposed || !IsInitialized) return false;
             bool ReadConfig(byte offset, out uint value) => TryReadHostBridgeConfig(offset, out value);
-            // Raptor Lake host bridges share MCHBAR at config 0x48/0x4C; no hardcoded physical base.
+            // Supported Intel bridges expose MCHBAR at config 0x48/0x4C.
+            // Arrow Lake HX uses a 128 KiB window, address bits 41:17 (Intel 835538).
             if (!ReadConfig(0, out uint id) || !IsSupportedHostBridge(id) ||
                 !ReadConfig(0x48, out uint low) || !ReadConfig(0x4C, out uint high) || (low & 1) == 0)
                 return false;
-            address = ((ulong)high << 32 | low) & ~0x7FFFUL;
+            ushort device = (ushort)(id >> 16);
+            ulong mask = device is 0x7D1C or 0x7D2D or 0x7D2F ? 0x3FFFFFE0000UL : ~0x7FFFUL;
+            address = ((ulong)high << 32 | low) & mask;
             return address != 0;
         }
     }
@@ -914,12 +917,13 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
         }
     }
 
-    /// <summary>Intel vendor + known Alder Lake / Raptor Lake host-bridge device IDs that expose MCHBAR at 0x48/0x4C.</summary>
+    /// <summary>Known Intel host bridges with the supported MCHBAR power-limit layout.</summary>
     public static bool IsSupportedHostBridge(uint configId)
     {
         if ((configId & 0xFFFF) != 0x8086) return false;
         ushort device = (ushort)(configId >> 16);
-        return device is 0x7D1C or 0x4637 or 0x463B or 0x4647 or 0x4649
+        // Intel 832586, Host Device IDs: 200HX 8P+16E / 8P+12E / 6P+8E.
+        return device is 0x7D1C or 0x7D2D or 0x7D2F or 0x4637 or 0x463B or 0x4647 or 0x4649
             or 0x4641 or 0x4621 or 0x4601 or 0x4660 or 0x4668
             or 0xA702 or 0xA729 or 0xA728 or 0xA72A or 0xA719
             or 0xA700 or 0xA701 or 0xA703 or 0xA704 or 0xA705;

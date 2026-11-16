@@ -294,13 +294,13 @@ namespace PreySense.Frontend.Services
         }
 
         // WMI / platform system controls
-        private bool _lcdOverdrive;
-        public bool GetLcdOverdrive() => _lcdOverdrive;
+        public bool TryGetLcdOverdrive(out bool enabled) => _wmi.TryGetLcdOverdrive(out enabled);
+        public bool GetLcdOverdrive() => TryGetLcdOverdrive(out bool enabled)
+            ? enabled
+            : throw new NotSupportedException("LCD overdrive state is unavailable for this internal panel.");
         public bool SetLcdOverdrive(bool enable)
         {
-            bool ok = _wmi.SetLcdOverdrive(enable);
-            if (ok) _lcdOverdrive = enable;
-            return ok;
+            return _wmi.SetLcdOverdrive(enable);
         }
 
         public bool GetBootSound() => _wmi.GetBootSound();

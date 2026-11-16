@@ -68,6 +68,10 @@
                                                       OffText="100%"
                                                       SwitchWidth="92"
                                                       Command="{Binding ToggleBatteryLimitCommand}"/>
+                            <controls:SettingSwitchRow Title="LCD Overdrive"
+                                                      IsChecked="{Binding IsLcdOverdriveEnabled, Mode=OneWay}"
+                                                      IsEnabled="{Binding CanChangeLcdOverdrive}"
+                                                      Command="{Binding ToggleLcdOverdriveCommand}"/>
                             <controls:SettingSliderRow x:Name="UsbChargingSlider" Title="USB Power-Off Charging"
                                                        Minimum="0" Maximum="30" SmallChange="10" LargeChange="10"
                                                        TickFrequency="10" IsSnapToTickEnabled="True"

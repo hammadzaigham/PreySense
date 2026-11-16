@@ -78,8 +78,9 @@ public static partial class OemUsbLightingProtocol
     private static Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>> LoadModes()
     {
         using var stream = typeof(OemUsbLightingProtocol).Assembly.GetManifestResourceStream(
-            "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json")!;
-        using var document = JsonDocument.Parse(stream);
+            "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json.gz")!;
+        using var decoded = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
+        using var document = JsonDocument.Parse(decoded);
         var modes = new Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>>();
         foreach (var family in document.RootElement.GetProperty("Modes").EnumerateObject())
         {

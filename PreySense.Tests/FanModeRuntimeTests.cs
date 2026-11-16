@@ -53,6 +53,50 @@ public class FanModeRuntimeTests
             Stages = FixedDutyStages(40, 50)
         });
     }
+
+    [TestMethod]
+    public void DiagnosticsDistinguishRequestsFromUnavailableTemperatureAndFailure()
+    {
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        Select(vm, FanControlMode.Custom);
+        var sample = hardware.GetCurrentTelemetry();
+        Run(vm, "ProcessFanCurves", sample);
+        var following = vm.GetFanControlDiagnostics();
+        Assert.AreEqual(FanControllerState.Following, following.State);
+        Assert.AreEqual(50, following.CpuRequestPercent);
+        Assert.AreEqual(0, following.CpuStage);
+
+        Run(vm, "ProcessFanCurves", sample with { CpuTemp = -1 });
+        var waiting = vm.GetFanControlDiagnostics();
+        Assert.AreEqual(FanControllerState.WaitingForCpuTemperature, waiting.State);
+        Assert.AreEqual(50, waiting.CpuRequestPercent, "Missing telemetry must retain the last request, not claim a new measurement.");
+        Assert.HasCount(1, hardware.Calls);
+
+        hardware.FailWrites = true;
+        Select(vm, FanControlMode.Custom);
+        Run(vm, "ProcessFanCurves", sample);
+        var failed = vm.GetFanControlDiagnostics();
+        Assert.AreEqual(FanControllerState.WriteFailed, failed.State);
+        Assert.IsNull(failed.CpuRequestPercent);
+    }
+
+    [TestMethod]
+    public void DiagnosticsAreCachedAndReportAutoWithoutSoftwareStages()
+    {
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        Select(vm, FanControlMode.Auto);
+        Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
+        var first = vm.GetFanControlDiagnostics();
+        var second = vm.GetFanControlDiagnostics();
+        Assert.AreEqual(FanControllerState.FirmwareAuto, first.State);
+        Assert.IsNull(first.CpuRequestPercent);
+        Assert.IsNull(first.CpuStage);
+        Assert.AreEqual(first, second);
+        CollectionAssert.AreEqual(new[] { "mode:0" }, hardware.Calls);
+        Assert.AreEqual(0, hardware.PowerModeReads);
+    }
     [TestMethod]
     public void MaxOperatesIndependentlyAndReturnsToAutoWithoutRepeatedWrites()
     {

@@ -115,6 +115,7 @@ namespace PreySense.Core.Services
         private int _mockUsbCharging = 0;
 
         public bool GetLcdOverdrive() => _mockLcdOverdrive;
+        public bool TryGetLcdOverdrive(out bool enabled) { enabled = _mockLcdOverdrive; return true; }
         public bool SetLcdOverdrive(bool enable)
         {
             _mockLcdOverdrive = enable;

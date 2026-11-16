@@ -4,7 +4,18 @@ internal static partial class UiText
 {
     static UiText()
     {
+        Chinese["Game Profiles"] = "游戏配置";
+        Hindi["Game Profiles"] = "गेम प्रोफ़ाइल";
+        Spanish["Game Profiles"] = "Perfiles de juego";
+        French["Game Profiles"] = "Profils de jeu";
+        Turkish["Game Profiles"] = "Oyun Profilleri";
         AddLightingDirections();
+        AddFanDiagnostics();
+        Chinese["LCD Overdrive"] = "LCD 响应加速";
+        Hindi["LCD Overdrive"] = "LCD ओवरड्राइव";
+        Spanish["LCD Overdrive"] = "Sobremarcha LCD";
+        French["LCD Overdrive"] = "Overdrive LCD";
+        Turkish["LCD Overdrive"] = "LCD Overdrive";
         AddLightingSettings();
         Add(Chinese, "游戏", "游戏模式", "添加游戏", "移除", "电源配置", "选择游戏可执行文件",
             "为每款游戏选择已保存的电源配置。游戏获得焦点时应用，退出时恢复。");

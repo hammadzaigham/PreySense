@@ -11,7 +11,8 @@ namespace PreySense.Frontend.Views
             InitializeComponent();
             Loaded += async (_, _) =>
             {
-                if (DataContext is ViewModels.MainViewModel vm) await vm.RefreshStartupPreferenceAsync();
+                if (DataContext is ViewModels.MainViewModel vm)
+                    await System.Threading.Tasks.Task.WhenAll(vm.RefreshStartupPreferenceAsync(), vm.RefreshLcdOverdriveAsync());
             };
             UpdateUsbChargingLabel();
             LanguageSelector.SelectedIndex = Services.LocalizationService.LanguageIndex;

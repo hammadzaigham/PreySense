@@ -7,6 +7,7 @@
         ResizeMode="NoResize" ShowInTaskbar="False"
         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{DynamicResource AppFontFamily}">
     <Border Style="{DynamicResource AppWindowShellStyle}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
             <controls:WindowTitleBar Title="Fans"/>
             <StackPanel Margin="{StaticResource WindowContentMargin}">
@@ -24,16 +25,14 @@
                     SelectionChanged="FanTab_Changed"/>
                 <StackPanel>
                     <UniformGrid Columns="2" Margin="0,0,0,8">
-                        <StackPanel Margin="0,0,8,0">
-                            <TextBlock Text="CPU" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <StackPanel HorizontalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                 <TextBlock x:Name="CpuTemperatureReading" Text="—" FontWeight="SemiBold"/>
                                 <TextBlock Text="  •  " Foreground="{DynamicResource TextMutedBrush}"/>
                                 <TextBlock x:Name="CpuFanReading" Text="—" FontWeight="SemiBold"/>
                             </StackPanel>
                         </StackPanel>
-                        <StackPanel Margin="8,0,0,0" HorizontalAlignment="Right">
-                            <TextBlock Text="GPU" TextAlignment="Right" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <StackPanel HorizontalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                 <TextBlock x:Name="GpuTemperatureReading" Text="—" FontWeight="SemiBold"/>
                                 <TextBlock Text="  •  " Foreground="{DynamicResource TextMutedBrush}"/>
@@ -42,19 +41,29 @@
                         </StackPanel>
                     </UniformGrid>
                     <StackPanel x:Name="CurveEditor">
-                    <controls:WpfFanCurveControl x:Name="Curve" Height="260"/>
+                    <controls:WpfFanCurveControl x:Name="Curve" Height="230"/>
                     <controls:SettingValueRow x:Name="RowTemp" Title="Temp" Minimum="40" Maximum="100" Unit="&#xB0;C" ValueCommitted="StageField_Committed" Margin="0,8,0,0"/>
-                    <controls:SettingValueRow x:Name="RowDuty" Title="Duty" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
-                    <controls:SettingValueRow x:Name="RowRpm" Title="RPM" Minimum="0" Maximum="6400" Unit="RPM" ValueCommitted="StageField_Committed"/>
+                    <controls:SettingValueRow x:Name="RowDuty" Title="CPU Cooling Boost" Minimum="0" Maximum="100" Unit="%" ValueCommitted="StageField_Committed"/>
+                    <Grid x:Name="EstimatedRpmRow" Margin="{DynamicResource StandardRowMargin}"
+                          IsEnabled="{Binding IsEnabled, ElementName=RowDuty}">
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Estimated RPM" Style="{DynamicResource SettingLabelStyle}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBox x:Name="EstimatedRpmReading" Text="—" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                     Focusable="False" IsTabStop="False" MinWidth="72"
+                                     Style="{DynamicResource CompactValueTextBoxStyle}"/>
+                            <TextBlock Text="RPM" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
                 </StackPanel>
                 <TextBlock x:Name="OperationError" Visibility="Collapsed" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>
-            <UniformGrid x:Name="FooterPanel" Columns="3" Style="{StaticResource WindowFooterPanelStyle}">
+            <UniformGrid x:Name="FooterPanel" Columns="2" Style="{StaticResource WindowFooterPanelStyle}">
                 <Button Content="Reset" Click="Reset_Click" Style="{StaticResource WindowFooterButtonStyle}"/>
-                <Button Content="Apply" Click="Apply_Click" Style="{StaticResource WindowFooterButtonStyle}"/>
                 <Button Content="Save" Click="Save_Click" Style="{StaticResource WindowFooterButtonStyle}"/>
             </UniformGrid>
         </StackPanel>
+        </ScrollViewer>
     </Border>
 </Window>

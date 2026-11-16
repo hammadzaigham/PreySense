@@ -24,12 +24,14 @@ public partial class FanCurveWindow : Window
     private byte _mode = 1;
     private bool _gpu, _loading, _applying;
     private FanCurveProfile _profile = new();
+    private readonly FanReferenceResolution _fanReference = FanReferenceResolver.BundledFallback;
     private MainViewModel? Vm => DataContext as MainViewModel;
     private bool SynchronizeFanSpeeds => Vm?.SynchronizeFanSpeeds ?? FanCurveStorage.LoadSynchronizeFanSpeeds();
 
     public FanCurveWindow()
     {
         InitializeComponent();
+        MaxHeight = SystemParameters.WorkArea.Height - 40;
         _fanTelemetry.SnapshotAvailable += OnFanWindowSnapshot;
         IsVisibleChanged += (_, _) =>
         {
@@ -50,10 +52,13 @@ public partial class FanCurveWindow : Window
         {
             if (Vm == null) return;
             _loading = true;
-            _mode = Vm.ActivePowerMode;
+            // Unknown hardware mode still opens an explicitly labelled Balanced editor.
+            // Selecting an editor profile never changes the hardware operating mode.
+            _mode = Modes.Contains(Vm.ActivePowerMode) ? Vm.ActivePowerMode : (byte)1;
             ProfileRow.SelectedItem = ProfileManager.ModeToProfileName(_mode);
             _loading = false;
             LoadProfile();
+            if (!Dispatcher.HasShutdownStarted) { UpdateRpmEstimate(); }
         };
         ProfileRow.AddHandler(ComboBox.SelectionChangedEvent, new SelectionChangedEventHandler(Profile_Changed));
     }
@@ -154,7 +159,6 @@ public partial class FanCurveWindow : Window
         int previousStage = SelectedStageIndex;
         RebuildVisibleStages();
         Curve.Temperatures = _temperatureLabels;
-        Curve.MaximumRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
         Curve.Values = _dutyValues;
         Curve.LeadInDuty = _leadInDuty;
         int visible = previousStage < 0 ? -1 : _visibleStageIndices.IndexOf(previousStage);
@@ -191,14 +195,7 @@ public partial class FanCurveWindow : Window
             }
         }
 
-        int duty = Math.Clamp(_dutyValues[visible], 0, 100);
-        _profile.Stages[stageIndex].SetDuty(_gpu, duty);
-        if (SynchronizeFanSpeeds)
-        {
-            _profile.Stages[stageIndex].SetDuty(!_gpu, duty);
-        }
-        _profile.Stages[stageIndex].Normalize();
-        _dutyValues[visible] = _profile.Stages[stageIndex].DutyPercent(_gpu);
+        ApplyGraphDuties(_profile.Stages, _visibleStageIndices, _dutyValues, _gpu, SynchronizeFanSpeeds);
         SyncSelectedStage();
         SaveDraft();
     }
@@ -218,10 +215,9 @@ public partial class FanCurveWindow : Window
         {
             RowTemp.IsEnabled = false;
             RowDuty.IsEnabled = false;
-            RowRpm.IsEnabled = false;
             RowTemp.Title = "Temp";
-            RowDuty.Title = "Duty";
-            RowRpm.Title = "RPM";
+            RowDuty.Title = LocalizationService.Format("{0} Cooling Boost", _gpu ? "GPU" : "CPU");
+            UpdateRpmEstimate();
             return;
         }
 
@@ -229,29 +225,54 @@ public partial class FanCurveWindow : Window
         _loading = true;
         RowTemp.IsEnabled = isCustom;
         RowDuty.IsEnabled = isCustom;
-        RowRpm.IsEnabled = isCustom;
         string fan = _gpu ? "GPU" : "CPU";
         int visible = Curve.SelectedIndex;
         int celsius = visible >= 0 && visible < _temperatureLabels.Length
             ? _temperatureLabels[visible]
             : WpfFanCurveControl.MinCelsius;
         RowTemp.Title = $"{fan} Temp";
-        RowDuty.Title = $"{fan} Duty";
-        RowRpm.Title = $"{fan} RPM";
-        var (minDuty, maxDuty) = WpfFanCurveControl.DutyBounds(_dutyValues, visible);
-        RowDuty.Minimum = minDuty;
-        RowDuty.Maximum = maxDuty;
+        RowDuty.Title = LocalizationService.Format("{0} Cooling Boost", _gpu ? "GPU" : "CPU");
+        RowDuty.Minimum = 0;
+        RowDuty.Maximum = 100;
         var (minTemp, maxTemp) = WpfFanCurveControl.TemperatureBounds(_temperatureLabels, visible);
         RowTemp.Minimum = minTemp;
         RowTemp.Maximum = maxTemp;
         RowTemp.Value = celsius;
         int duty = stage.DutyPercent(_gpu);
-        int maxRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
         RowDuty.Value = duty;
-        RowRpm.Maximum = maxRpm;
-        RowRpm.Value = FanStage.DutyToRpm(duty, maxRpm);
+        UpdateRpmEstimate();
         _loading = false;
         UpdateEditor();
+    }
+
+    private void UpdateRpmEstimate()
+    {
+        if (!Modes.Contains(_mode) || SelectedStage is not FanStage stage)
+        {
+            EstimatedRpmReading.Text = "—";
+            return;
+        }
+        int visible = Curve.SelectedIndex;
+        int temperature = _temperatureLabels[visible];
+        var settings = PreySense.Core.Configuration.ConfigurationService.Instance.GetFanEstimateSettings();
+        int? measuredMax = settings.Measured ? (_gpu ? settings.GpuMaxRpm : settings.CpuMaxRpm) : null;
+        var estimate = _fanReference.EstimateAtTemperature(_mode, temperature, stage.DutyPercent(_gpu), _gpu,
+            measuredMaximumRpm: measuredMax);
+        // Selected-temperature reference only; do not display unrelated hotter stages.
+        int roundedRpm = (int)Math.Round(estimate.MinimumRpm / 100.0,
+            MidpointRounding.AwayFromZero) * 100;
+        EstimatedRpmReading.Text = $"{roundedRpm:N0}";
+    }
+
+    internal static void ApplyGraphDuties(FanStage[] stages, IReadOnlyList<int> stageIndices, int[] values, bool gpu, bool synchronized)
+    {
+        for (int i = 0; i < stageIndices.Count && i < values.Length; i++)
+        {
+            var stage = stages[stageIndices[i]];
+            stage.SetDuty(gpu, values[i]);
+            if (synchronized) stage.SetDuty(!gpu, values[i]);
+            stage.Normalize();
+        }
     }
 
     private void StageField_Committed(object? sender, EventArgs e)
@@ -273,24 +294,8 @@ public partial class FanCurveWindow : Window
         else if (ReferenceEquals(sender, RowDuty))
         {
             WpfFanCurveControl.SetDuty(_dutyValues, visible, (int)Math.Round(RowDuty.Value));
-            stage.SetDuty(_gpu, _dutyValues[visible]);
-            if (SynchronizeFanSpeeds)
-            {
-                stage.SetDuty(!_gpu, _dutyValues[visible]);
-            }
+            ApplyGraphDuties(_profile.Stages, _visibleStageIndices, _dutyValues, _gpu, SynchronizeFanSpeeds);
         }
-        else if (ReferenceEquals(sender, RowRpm))
-        {
-            int maxRpm = _gpu ? _profile.GpuMaxRpm : _profile.CpuMaxRpm;
-            int duty = FanStage.RpmToDuty((int)Math.Round(RowRpm.Value), maxRpm);
-            WpfFanCurveControl.SetDuty(_dutyValues, visible, duty);
-            stage.SetDuty(_gpu, _dutyValues[visible]);
-            if (SynchronizeFanSpeeds)
-            {
-                stage.SetDuty(!_gpu, _dutyValues[visible]);
-            }
-        }
-
         stage.Normalize();
         SyncCurve();
         SaveDraft();
@@ -302,18 +307,19 @@ public partial class FanCurveWindow : Window
         SaveDraft();
         UpdateEditor();
         SyncSelectedStage();
-        if (Vm != null && !_applying)
+        if (_profile.ControlMode == FanControlMode.Custom || Vm is not { } vm) return;
+
+        byte mode = _mode;
+        var snapshot = _profile.Copy();
+        SetApplying(true);
+        try
         {
-            SetApplying(true);
-            try
-            {
-                await SaveProfileAsync(Vm, _mode, _profile);
-                if (await EnsureModeActiveAsync(Vm))
-                    await Vm.ApplyFanProfileAsync();
-            }
-            catch (Exception ex) { ReportFailure(ex); }
-            finally { SetApplying(false); }
+            await System.Threading.Tasks.Task.Run(() => vm.SaveFanProfile(mode, snapshot));
+            _drafts.Remove(mode);
+            if (mode == vm.ActivePowerMode) await vm.ApplyFanProfileAsync();
         }
+        catch (Exception ex) { ReportFailure(ex); }
+        finally { SetApplying(false); }
     }
 
     private void UpdateEditor()
@@ -326,7 +332,7 @@ public partial class FanCurveWindow : Window
             FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void Profile_Changed(object sender, SelectionChangedEventArgs e)
+    private void Profile_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_loading || _applying || !IsLoaded || Vm == null) return;
         int index = Array.IndexOf(Vm.FanCurveModeNames, ProfileRow.SelectedItem as string);
@@ -334,7 +340,6 @@ public partial class FanCurveWindow : Window
         SaveDraft();
         _mode = Modes[index];
         LoadProfile();
-        await Vm.SetModeAsync(_mode);
     }
 
     private void FanTab_Changed(object sender, RoutedEventArgs e)
@@ -345,26 +350,22 @@ public partial class FanCurveWindow : Window
         SyncCurve();
     }
 
-    private async System.Threading.Tasks.Task<bool> EnsureModeActiveAsync(MainViewModel vm)
-    {
-        if (await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(_mode))) return true;
-        await vm.ApplyModeSwitchAsync(_mode);
-        return await System.Threading.Tasks.Task.Run(() => vm.IsGpuHardwareModeActive(_mode));
-    }
-
     private async void Reset_Click(object sender, RoutedEventArgs e)
     {
-        if (Vm == null || _applying) return;
+        if (_applying) return;
+        var defaultProfile = FanCurveProfile.CreateDefault(_mode);
+        defaultProfile.ControlMode = _profile.ControlMode;
+        _drafts[_mode] = defaultProfile;
+        LoadProfile();
         SetApplying(true);
         try
         {
-            var defaultProfile = FanCurveProfile.CreateDefault(_mode);
-            defaultProfile.ControlMode = FanControlMode.Custom;
-            _drafts[_mode] = defaultProfile;
-            await SaveProfileAsync(Vm, _mode, defaultProfile);
-            LoadProfile();
-            if (!await EnsureModeActiveAsync(Vm)) return;
-            await Vm.ApplyFanProfileAsync();
+            var snapshot = defaultProfile.Copy();
+            if (Vm is { } vm)
+            {
+                await System.Threading.Tasks.Task.Run(() => vm.SaveFanProfile(_mode, snapshot));
+                if (_mode == vm.ActivePowerMode) await vm.ApplyFanProfileAsync();
+            }
         }
         catch (Exception ex) { ReportFailure(ex); }
         finally { SetApplying(false); }
@@ -386,12 +387,6 @@ public partial class FanCurveWindow : Window
         UpdateEditor();
     }
 
-    private static System.Threading.Tasks.Task SaveProfileAsync(MainViewModel vm, byte mode, FanCurveProfile profile)
-    {
-        var snapshot = profile.Copy();
-        return System.Threading.Tasks.Task.Run(() => vm.SaveFanProfile(mode, snapshot));
-    }
-
     private async System.Threading.Tasks.Task SaveAllAsync()
     {
         if (Vm is not { } vm) return;
@@ -402,6 +397,8 @@ public partial class FanCurveWindow : Window
             foreach (var (mode, profile) in snapshots) vm.SaveFanProfile(mode, profile);
         });
         _drafts.Clear();
+        if (snapshots.Any(entry => entry.Key == vm.ActivePowerMode))
+            await vm.ApplyFanProfileAsync();
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
@@ -413,17 +410,4 @@ public partial class FanCurveWindow : Window
         finally { SetApplying(false); }
     }
 
-    private async void Apply_Click(object sender, RoutedEventArgs e)
-    {
-        if (Vm == null || _applying) return;
-        SetApplying(true);
-        try
-        {
-            await SaveAllAsync();
-            if (!await EnsureModeActiveAsync(Vm)) return;
-            await Vm.ApplyFanProfileAsync();
-        }
-        catch (Exception ex) { ReportFailure(ex); }
-        finally { SetApplying(false); }
-    }
 }

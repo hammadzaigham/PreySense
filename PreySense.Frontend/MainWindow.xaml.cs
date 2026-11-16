@@ -151,7 +151,15 @@ namespace PreySense.Frontend
                     }
                 }
                 catch (Exception ex) { PreySense.AppLogger.Error($"Game tuning shutdown restore failed: {ex}"); }
-                finally { Close(); Application.Current.Shutdown(); }
+                finally
+                {
+                    // Also drain if either preceding restore failed. Keep the dispatcher
+                    // available until all in-flight mode/tuning work has released its gate.
+                    if (DataContext is MainViewModel closingVm)
+                        await closingVm.PrepareModeSwitchShutdownAsync();
+                    Close();
+                    Application.Current.Shutdown();
+                }
             });
         }
 

@@ -5,10 +5,27 @@ namespace PreySense.Tests;
 [TestClass]
 public class FanCurveFollowerTests
 {
+    [TestMethod]
+    public void ProgressReportsImmediateIndependentStagesAndNoPendingState()
+    {
+        var follower = new FanCurveFollower();
+        var stages = FanCurveProfile.DefaultStages(1);
+        follower.Evaluate(65, 40, stages, 2, 1000, synchronizeFanSpeeds: false);
+        Assert.AreEqual(2, follower.CpuStage);
+        Assert.IsNull(follower.CpuPendingStage);
+        Assert.AreEqual(0, follower.GpuStage);
+        Assert.IsNull(follower.GpuPendingStage);
+        follower.Evaluate(65, 40, stages, 2, 3000, synchronizeFanSpeeds: false);
+        Assert.AreEqual(2, follower.CpuStage);
+        Assert.IsNull(follower.CpuPendingStage);
+        follower.Reset();
+        Assert.AreEqual(0, follower.CpuStage);
+        Assert.IsNull(follower.CpuPendingStage);
+    }
     private static FanStage[] Balanced() => FanCurveProfile.DefaultStages(1);
 
     [TestMethod]
-    public void UnsynchronizedFansUseTheirOwnTemperatureAndDelay()
+    public void UnsynchronizedFansUseTheirOwnTemperatureRegardlessOfLegacyDelay()
     {
         var stages = new[]
         {
@@ -19,21 +36,21 @@ public class FanCurveFollowerTests
         Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 0, 0, false));
         Assert.AreEqual((30, 100, 1), follower.Evaluate(45, 95, stages, 0, 1, false));
         follower.Reset();
-        Assert.AreEqual((30, 30, 0), follower.Evaluate(90, 45, stages, 2, 0, false));
-        Assert.AreEqual((30, 30, 0), follower.Evaluate(90, 95, stages, 2, 1000, false));
-        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 95, stages, 2, 2000, false));
+        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 2, 0, false));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 1000, false));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 2000, false));
         Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 3000, false));
     }
 
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public void InitialHotSampleHonorsConfiguredDelay(bool synchronized)
+    public void InitialHotSampleIsImmediateDespiteLegacyDelay(bool synchronized)
     {
         var follower = new FanCurveFollower();
         var stages = Balanced();
-        Assert.AreEqual(0, follower.Evaluate(56, 40, stages, 2, 0, synchronized).Stage);
-        Assert.AreEqual(0, follower.Evaluate(56, 40, stages, 2, 1999, synchronized).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 0, synchronized).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 1999, synchronized).Stage);
         Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 2000, synchronized).Stage);
     }
 
@@ -116,15 +133,15 @@ public class FanCurveFollowerTests
     }
 
     [TestMethod]
-    public void SharedDelayHoldsStageChangeUntilElapsed()
+    public void LegacyDelayAndTimestampDoNotHoldStageChanges()
     {
         var follower = new FanCurveFollower();
         var stages = Balanced();
         follower.Evaluate(40, 40, stages, delaySeconds: 2, nowMs: 0);
         var (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 500);
-        Assert.AreEqual(0, stage, "Stage must wait for the shared delay.");
+        Assert.AreEqual(1, stage);
         (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 2499);
-        Assert.AreEqual(0, stage);
+        Assert.AreEqual(1, stage);
         (_, _, stage) = follower.Evaluate(56, 40, stages, delaySeconds: 2, nowMs: 2500);
         Assert.AreEqual(1, stage);
     }
@@ -143,14 +160,14 @@ public class FanCurveFollowerTests
     }
 
     [TestMethod]
-    public void FactoryPresetsMatchEcRpmTargets()
+    public void NewProfilesKeepReferenceTemperaturesWithZeroCoolingRequests()
     {
         var balanced = FanCurveProfile.CreateDefault(1);
         Assert.HasCount(12, balanced.Stages);
         Assert.AreEqual(0, balanced.Stages[0].CpuTargetRpm);
-        Assert.AreEqual(1800, balanced.Stages[1].CpuTargetRpm);
-        Assert.AreEqual(2350, balanced.Stages[3].CpuTargetRpm);
-        Assert.AreEqual(6400, balanced.Stages[11].CpuTargetRpm);
+        Assert.AreEqual(0, balanced.Stages[1].CpuDutyPercent);
+        Assert.AreEqual(0, balanced.Stages[3].CpuDutyPercent);
+        Assert.AreEqual(0, balanced.Stages[11].CpuDutyPercent);
         CollectionAssert.AreEqual(
             FanCurveProfile.DefaultStages(0).Select(s => s.CpuTargetRpm).ToArray(),
             FanCurveProfile.DefaultStages(6).Select(s => s.CpuTargetRpm).ToArray());

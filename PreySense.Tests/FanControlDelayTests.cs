@@ -12,6 +12,36 @@ namespace PreySense.Tests;
 public class FanControlDelayTests
 {
     [TestMethod]
+    public async Task FanEditDoesNotWaitForHardwareGateOnCallingThread()
+    {
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        var gate = new object();
+        typeof(MainViewModel).GetField("_fanControlGate", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(vm, gate);
+        using var held = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var blocker = Task.Run(() => { lock (gate) { held.Set(); release.Wait(); } });
+        try
+        {
+            Assert.IsTrue(held.Wait(TimeSpan.FromSeconds(2)));
+            var edit = Task.Run(() => { vm.FanControlDelaySeconds = 2; vm.FanControlDelaySeconds = 4; });
+            await edit.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.AreEqual(4, vm.FanControlDelaySeconds);
+            release.Set();
+            await vm.WaitForFanSettingsSaveAsync();
+            Assert.AreEqual(4, store.GetCurrent().Fans.ControlDelaySeconds);
+        }
+        finally
+        {
+            release.Set();
+            await blocker;
+            await vm.WaitForFanSettingsSaveAsync();
+            store.Save(original);
+        }
+    }
+
+    [TestMethod]
     public void MissingGlobalDelayDefaultsToZero()
     {
         Assert.AreEqual(0, JsonSerializer.Deserialize<FanConfig>("{}")!.ControlDelaySeconds);
@@ -56,7 +86,7 @@ public class FanControlDelayTests
     }
 
     [TestMethod]
-    public void SettingsEditUpdatesRunningCustomCurveAndResetsPendingTransitionWithoutHardwareWrites()
+    public async Task LegacyDelayEditDoesNotDelayNextHotSampleOrWriteHardware()
     {
         var store = ConfigurationService.Instance;
         var original = store.GetCurrent();
@@ -75,9 +105,12 @@ public class FanControlDelayTests
             vm.InitializeFanSettings();
             Assert.AreEqual(1, vm.FanControlDelaySeconds);
             vm.FanControlDelaySeconds = 3;
+            await vm.WaitForFanSettingsSaveAsync();
             Assert.AreEqual(3, store.GetCurrent().Fans.ControlDelaySeconds);
             Assert.AreEqual(3, profile.RampUpSeconds);
-            Assert.AreEqual(0, follower.Evaluate(100, 100, profile.Stages, 3, 1000).Stage);
+            Assert.IsGreaterThan(0, follower.Evaluate(100, 100, profile.Stages, 3, 1000).Stage);
+            Assert.IsNull(follower.CpuPendingStage);
+            Assert.IsNull(follower.GpuPendingStage);
             // No hardware service is installed on this isolated VM: saving never invokes one.
         }
         finally { store.Save(original); }

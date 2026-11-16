@@ -335,6 +335,8 @@ namespace PreySense.Frontend.ViewModels
         {
             if (_disposed) return;
             _fanCalibrationCancellation?.Cancel();
+            // Drain the last queued fan edit before session persistence and hardware teardown.
+            _fanSettingsWorker?.StopAsync(drainPending: true).GetAwaiter().GetResult();
             // Save before the disposed guard suppresses persistence; lighting is drained below.
             StopGameMode();
             PersistSessionSettings(includeLighting: false);

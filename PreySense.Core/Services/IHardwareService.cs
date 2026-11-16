@@ -80,6 +80,7 @@ namespace PreySense.Core.Services
 
         // Native WMI / platform system controls
         bool GetLcdOverdrive();
+        bool TryGetLcdOverdrive(out bool enabled) { enabled = false; return false; }
         bool SetLcdOverdrive(bool enable);
         bool GetBootSound();
         void SetBootSound(bool enable);

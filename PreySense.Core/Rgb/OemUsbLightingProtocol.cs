@@ -98,9 +98,10 @@ public static partial class OemUsbLightingProtocol
     private static Dictionary<string, OemUsbKey[]> LoadLayouts()
     {
         using var stream = typeof(OemUsbLightingProtocol).Assembly.GetManifestResourceStream(
-            "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json")
+            "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json.gz")
             ?? throw new InvalidOperationException("Embedded OEM USB keyboard layouts are missing.");
-        using var document = JsonDocument.Parse(stream);
+        using var decoded = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
+        using var document = JsonDocument.Parse(decoded);
         var result = new Dictionary<string, OemUsbKey[]>(StringComparer.Ordinal);
         static OemUsbKey[] ReadKeys(JsonElement array) => array.EnumerateArray().Select(k => new OemUsbKey(
             k.GetProperty("index").GetInt32(), k.GetProperty("name").GetString()!, k.GetProperty("slot").GetInt32())).ToArray();

@@ -2,6 +2,20 @@
 
 PreySense applies per-mode CPU and GPU power limits through the bundled **PreySenseDriver**. There is no bootloader, ACPI overlay, or alternate WMI injection path.
 
+## Core Ultra 200HX register discovery
+
+The host-bridge allowlist includes Intel's documented 200HX IDs `7D1C`, `7D2D`
+and `7D2F`. Earlier code omitted the last two and could report "Could not find
+CPU power registers" before attempting a power-limit transaction. For these
+bridges, discovery reads the enabled MCHBAR at PCI configuration offset `48h`
+using address bits `41:17`; package power limits remain at MCHBAR offset `59A0h`.
+No physical base address is assumed, and unknown bridges remain rejected.
+
+Sources: [Intel device IDs, document 832586](https://cdrdv2-public.intel.com/832586/832586_006.pdf)
+and [Intel MCHBAR definition, document 835538](https://edc.intel.com/content/www/jp/ja/design/publications/core-ultra-p200s-series-processors-cfg-mem-registers/001/mchbar-base-address-register-mchbar-0-0-0-pci-offset-48/).
+This fixes a documented discovery gap; it does not establish that every failure
+with the same message has this cause or that firmware permits writes.
+
 ## Driver service
 
 PreySense extracts `PreySenseDriver.sys` to `%ProgramData%\PreySense\Drivers` and registers the demand-start kernel service `PreySenseDriver`. If Windows returns **ERROR_FILE_NOT_FOUND (2)** on start, the SCM `ImagePath` is usually stale (upgrade, cleaned ProgramData, or a leftover service with a missing `.sys`). PreySense re-extracts the binary, recreates the service, and retries once. Run as Administrator if recreation is denied.

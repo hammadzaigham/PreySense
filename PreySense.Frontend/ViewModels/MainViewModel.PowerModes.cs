@@ -17,6 +17,8 @@ namespace PreySense.Frontend.ViewModels
             new(PowerLimitController.SetEnergySaverOnBattery, (_, latest) => latest);
         private readonly object _modeSwitchLock = new();
         private readonly SemaphoreSlim _modeSwitchGate = new(1, 1);
+        private volatile bool _modeSwitchStopping;
+        private bool _modeSwitchShutdownPrepared;
         private CancellationTokenSource? _modeSwitchTrailingCts;
         private byte _pendingHardwareMode = 0xFF;
         private byte _lastAppliedHardwareMode = 0xFF;
@@ -264,7 +266,7 @@ namespace PreySense.Frontend.ViewModels
         /// </summary>
         private async Task<bool> TryEnterModeSwitchGateAsync()
         {
-            if (_disposed) return false;
+            if (_disposed || _modeSwitchStopping) return false;
             try
             {
                 await _modeSwitchGate.WaitAsync().ConfigureAwait(true);
@@ -274,13 +276,24 @@ namespace PreySense.Frontend.ViewModels
                 return false;
             }
 
-            if (_disposed)
+            if (_disposed || _modeSwitchStopping)
             {
                 ExitModeSwitchGate();
                 return false;
             }
 
             return true;
+        }
+
+        internal async Task PrepareModeSwitchShutdownAsync()
+        {
+            _modeSwitchStopping = true;
+            CancelPendingModeSwitch();
+            // Yield the dispatcher so a current apply can finish its UI continuation
+            // and release the gate before hardware is disposed.
+            await _modeSwitchGate.WaitAsync();
+            try { _modeSwitchShutdownPrepared = true; }
+            finally { _modeSwitchGate.Release(); }
         }
 
         private void ExitModeSwitchGate()
@@ -296,10 +309,11 @@ namespace PreySense.Frontend.ViewModels
         /// </summary>
         private void DrainAndDisposeModeSwitchGate()
         {
+            _modeSwitchStopping = true;
             CancelPendingModeSwitch();
             try
             {
-                if (_modeSwitchGate.Wait(TimeSpan.FromSeconds(3)))
+                if (!_modeSwitchShutdownPrepared && _modeSwitchGate.Wait(TimeSpan.FromSeconds(3)))
                     _modeSwitchGate.Release();
             }
             catch (ObjectDisposedException) { }

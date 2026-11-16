@@ -770,12 +770,12 @@ namespace PreySense.Overlay
             Location = new Point(screen.Bounds.X + MarginFromEdge, screen.Bounds.Y + MarginFromEdge);
         }
 
-        public void SetConfiguredPosition(string horizontal, string vertical)
+        public void SetConfiguredPosition(string horizontal, string vertical, bool persist = true)
         {
             if (string.IsNullOrWhiteSpace(horizontal)) horizontal = "Left";
             if (string.IsNullOrWhiteSpace(vertical)) vertical = "Top";
             PlaceConfiguredPosition(horizontal, vertical);
-            SavePosition(horizontal: horizontal, vertical: vertical);
+            if (persist) SavePosition(horizontal: horizontal, vertical: vertical);
         }
 
         private void PlaceConfiguredPosition(string horizontal, string vertical)

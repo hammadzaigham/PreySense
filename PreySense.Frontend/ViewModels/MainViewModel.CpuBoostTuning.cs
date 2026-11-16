@@ -15,12 +15,13 @@ public partial class MainViewModel
         {
             // A draft for an inactive mode is saved without changing the current Windows policy.
             // Mode switches restore it later when this independent section is enabled.
-            bool active = _hw.CurrentPowerMode == mode;
+            bool active = await Task.Run(() => _hw.CurrentPowerMode == mode);
             if (active && !await WriteCpuBoostAsync(mode)) return false;
             if (persist)
             {
                 int boost = CpuBoostModeForMode(mode);
-                TuningStore.Update(config =>
+                var store = TuningStore;
+                await Task.Run(() => store.Update(config =>
                 {
                     var profile = ProfileForMode(config.Tuning, mode);
                     profile.ApplyCpuBoost = persistApplySwitches;
@@ -29,7 +30,7 @@ public partial class MainViewModel
                     profile.ApplyCpuLimits = profile.ApplyGpuLimits = profile.ApplyGpuClockOffsets = false;
                     profile.GpuRuntimeLimitWatts = null;
                     config.Tuning.ApplyProchotOffset = false;
-                });
+                }));
             }
             DiagnosticMessage = persist ? "CPU boost saved." : active ? "CPU boost applied." : "Select this power mode before applying CPU boost.";
             return persist || active;

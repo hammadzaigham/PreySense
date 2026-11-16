@@ -1,5 +1,10 @@
 # Detected lighting devices
 
+Keyboard layout source remains in `PreySense.Core/Resources/Rgb/OemUsbKeyboardLayouts.json`.
+The app embeds its gzip-compressed companion to reduce download size. After editing
+the JSON, run `./tools/Compress-LightingLayouts.ps1`; the resource integrity test
+checks that the compressed copy decompresses to exactly the editable source.
+
 The Lighting window discovers controllers automatically when opened and when Windows reports HID connection or removal. There is no Refresh or Apply button. Edits are coalesced for 80 ms, sent on a background worker, and saved only after the transport accepts them. Different devices retain separate pending updates. Loading an editor or discovering a device never applies default colors.
 
 ## Editing

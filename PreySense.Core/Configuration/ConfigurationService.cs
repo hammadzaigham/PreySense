@@ -67,6 +67,13 @@ namespace PreySense.Core.Configuration
             }
         }
 
+        /// <summary>Small immutable read for the fan editor hot path; avoids cloning all profiles and lighting data.</summary>
+        public (bool Measured, int CpuMaxRpm, int GpuMaxRpm) GetFanEstimateSettings()
+        {
+            lock (_gate)
+                return (_currentConfig.Fans.HasMeasuredFanMaximums, _currentConfig.Fans.CpuMaxRpm, _currentConfig.Fans.GpuMaxRpm);
+        }
+
         /// <summary>
         /// Reloads configuration strictly from disk. If the file does not exist,
         /// returns default configuration. Malformed JSON throws an InvalidOperationException with details.

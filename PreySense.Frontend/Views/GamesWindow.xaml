@@ -17,7 +17,7 @@
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Game Mode" Style="{DynamicResource SettingLabelStyle}"/>
+                            <TextBlock Text="Game Profiles" Style="{DynamicResource SettingLabelStyle}"/>
                             <Button Grid.Column="1" Height="28" VerticalAlignment="Center" Content="Add" Command="{Binding AddGameProfileCommand}"
                                     Style="{StaticResource WindowFooterButtonStyle}"/>
                             <Button Grid.Column="2" Height="28" VerticalAlignment="Center" Content="Remove" Command="{Binding RemoveSelectedGameProfileCommand}"
@@ -28,8 +28,8 @@
                     </Border>
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
                         <StackPanel>
-                            <ListBox Background="{DynamicResource ControlTrackBrush}" ItemsSource="{Binding GameProfiles}" SelectedItem="{Binding SelectedGameProfile, Mode=TwoWay}"
-                                     Height="{Binding GameListHeight}" MaxHeight="162" Padding="0" BorderThickness="1" DisplayMemberPath="DisplayName"
+                            <ListBox Background="Transparent" ItemsSource="{Binding GameProfiles}" SelectedItem="{Binding SelectedGameProfile, Mode=TwoWay}"
+                                     Height="{Binding GameListHeight}" MaxHeight="162" Padding="0" BorderThickness="1" BorderBrush="{DynamicResource SeparatorBrush}"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      ScrollViewer.CanContentScroll="False">
                                 <ListBox.Template>
@@ -43,11 +43,21 @@
                                         </Border>
                                     </ControlTemplate>
                                 </ListBox.Template>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                            <controls:RectangularSwitch Grid.Column="1" Width="56" Height="28" HorizontalAlignment="Right" AutomationProperties.Name="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Checked="GameEnabled_Changed" Unchecked="GameEnabled_Changed"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Height" Value="32"/>
                                         <Setter Property="Margin" Value="2,1"/>
-                                        <Setter Property="Padding" Value="8,0"/>
+                                        <Setter Property="Padding" Value="8,0,2,0"/>
                                         <Setter Property="Background" Value="Transparent"/>
                                         <Setter Property="VerticalContentAlignment" Value="Center"/>
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -67,14 +77,15 @@
                                                     <ControlTemplate.Triggers>
                                                         <Trigger Property="IsMouseOver" Value="True">
                                                             <Setter TargetName="GameItemBorder" Property="BorderBrush"
-                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                                    Value="{DynamicResource AccentBrush}"/>
                                                             <Setter TargetName="GameItemBorder" Property="BorderThickness" Value="1"/>
                                                         </Trigger>
                                                         <Trigger Property="IsSelected" Value="True">
-                                                            <Setter TargetName="GameItemBorder" Property="Background"
-                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                            <Setter TargetName="GameItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                            <Setter TargetName="GameItemBorder" Property="BorderThickness" Value="1"/>
+                                                            <Setter TargetName="GameItemBorder" Property="Background" Value="Transparent"/>
                                                             <Setter Property="Foreground"
-                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                                                    Value="{DynamicResource TextPrimaryBrush}"/>
                                                         </Trigger>
                                                         <Trigger Property="IsEnabled" Value="False">
                                                             <Setter Property="Opacity" Value="0.55"/>
@@ -91,7 +102,6 @@
                     <StackPanel IsEnabled="{Binding HasSelectedGameProfile}">
                         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
                             <StackPanel>
-                                <controls:SettingSwitchRow Title="Enabled" IsChecked="{Binding SelectedGameEnabled, Mode=TwoWay}"/>
                                 <controls:SettingDropdownRow Title="Performance Mode" DropdownWidth="160"
                                     ItemsSource="{Binding GameModeNames}" SelectedItem="{Binding SelectedGameModeName, Mode=TwoWay}"/>
                             </StackPanel>
@@ -113,7 +123,7 @@
                                     <controls:SettingValueRow x:Name="GamePl2" Title="Burst Peak Power [PL2]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
                                         Value="{Binding SelectedGameProfile.CpuPl2Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
-                                        <Grid>
+                                        <Grid Margin="0,4,0,0">
                                             <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
                                             <TextBlock x:Name="GameTauLabel" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>

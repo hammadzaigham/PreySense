@@ -57,15 +57,15 @@ After a successful set, PreySense applies a Windows overlay scheme:
 | Max | `0x820009` |
 | Custom | `0xC30009` |
 
-Custom duty: `SetGamingFanSpeed` with
+Custom cooling request: `SetGamingFanSpeed` with
 
 ```text
 gmInput = ((percent * 25600 / 100) & 0xFF00) + fanId
 ```
 
-`fanId` 1 = CPU, 4 = GPU. Get speed: same method, result / 256.
+`fanId` 1 = CPU, 4 = GPU. The percentage is a firmware request, not raw PWM or a linear percentage of maximum RPM. The verified PHN16S-71 EC 1.08 image adds a fraction of remaining RPM headroom above its current factory target; this is not established for every Acer model. A 0% request does not guarantee stopped fans.
 
-Identical custom PWM is not rewritten on a timer. Repeating the same duty made the EC restart the cycle and hiss.
+The editor separates last sent requests from measured RPM and software-controller status. Neither cached commands nor firmware behavior readback establish actual EC ownership or enforcement. Identical requests are not rewritten on a timer; behavior is sent only when the cached control mode changes. There is no automatic reclaim loop. See [fan behavior and the offline factory reference](fan_control.md).
 
 ---
 

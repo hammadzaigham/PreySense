@@ -66,17 +66,36 @@ namespace PreySense.Frontend.Views
 	private static readonly string[] VerticalPositions = new string[3] { "Top", "Center", "Bottom" };
 
 	private bool _isInitializing = true;
+    private List<OverlaySlotConfig>? _slots;
+    private readonly LatestBackgroundWorker<Dictionary<string, Action>> _settingsWorker;
+
+    private Task QueueSetting(string key, Action save) =>
+        _settingsWorker.Submit(new() { [key] = save });
+
+    private void QueueSlots(List<OverlaySlotConfig> slots)
+    {
+        var snapshot = slots.Select(slot => new OverlaySlotConfig
+        { CpuMetric = slot.CpuMetric, GpuMetric = slot.GpuMetric, ShowGraph = slot.ShowGraph }).ToList();
+        _ = QueueSetting("slots", () => AppConfig.SaveOverlaySlots(snapshot));
+    }
 
 	public MetricsWindow()
 	{
+        _settingsWorker = new(requests =>
+        {
+            foreach (var save in requests.Values) save();
+            if (!Dispatcher.HasShutdownStarted)
+                Dispatcher.BeginInvoke(new Action(HardwareOverlayManager.RefreshDisplayFlags));
+        }, (pending, latest) => { foreach (var entry in latest) pending[entry.Key] = entry.Value; return pending; });
 		InitializeComponent();
 		LoadSettings();
 		BuildColumnSlots();
 		_isInitializing = false;
 		OverlayBridge.EnabledChanged += OnOverlayEnabledChanged;
-		Closed += (object? _, EventArgs _) =>
+		Closed += async (object? sender, EventArgs args) =>
 		{
 			OverlayBridge.EnabledChanged -= OnOverlayEnabledChanged;
+            await _settingsWorker.StopAsync(drainPending: true);
 		};
 	}
 
@@ -125,16 +144,18 @@ namespace PreySense.Frontend.Views
         DropdownVerticalPos.SelectedItem = AppConfig.GetString("overlay_pos_vertical", "Top");
     }
 
-    private void OverlayTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void OverlayTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isInitializing || DropdownOverlayTheme.SelectedIndex < 0) return;
         var theme = (OverlayTheme)DropdownOverlayTheme.SelectedIndex;
         // Re-selecting the same theme must not wipe hand-edited colors/opacity.
         if (theme == ConfigurationService.Instance.GetCurrent().Overlay.Theme) return;
         _isInitializing = true;
+        IsEnabled = false;
         try
         {
-            ConfigurationService.Instance.Update(config => config.Overlay.ApplyTheme(theme));
+            await _settingsWorker.WhenIdleAsync();
+            await Task.Run(() => ConfigurationService.Instance.Update(config => config.Overlay.ApplyTheme(theme)));
             LoadSettings();
             HardwareOverlayManager.RefreshDisplayFlags();
         }
@@ -146,7 +167,7 @@ namespace PreySense.Frontend.Views
                 new CustomModalDialog { Owner = this, HeaderSubtitle = LocalizationService.Translate("Overlay"),
                     Message = ex.Message, ConfirmText = LocalizationService.Translate("OK"), ShowCancelButton = false }.ShowDialog();
         }
-        finally { _isInitializing = false; }
+        finally { _isInitializing = false; IsEnabled = true; }
     }
 
     // Older preferences store opacity as an alpha byte; current preferences use percent.
@@ -162,9 +183,16 @@ namespace PreySense.Frontend.Views
         if (DropdownHorizontalPos.SelectedItem is not string horizontalPosition ||
             DropdownVerticalPos.SelectedItem is not string verticalPosition) return;
 
-        AppConfig.Set("overlay_pos_horizontal", horizontalPosition);
-        AppConfig.Set("overlay_pos_vertical", verticalPosition);
-        HardwareOverlayManager.Reposition(horizontalPosition, verticalPosition);
+        _ = QueueSetting("position", () =>
+        {
+            ConfigurationService.Instance.Update(config =>
+            {
+                config.Overlay.PositionHorizontal = horizontalPosition;
+                config.Overlay.PositionVertical = verticalPosition;
+            });
+            if (!Dispatcher.HasShutdownStarted)
+                Dispatcher.BeginInvoke(new Action(() => HardwareOverlayManager.Reposition(horizontalPosition, verticalPosition, persist: false)));
+        });
     }
 
 	private void BuildColumnSlots()
@@ -172,7 +200,7 @@ namespace PreySense.Frontend.Views
 		PanelColumnsContainer.Children.Clear();
 		double fontSize = (TryFindResource("FontSizeBody") as double?) ?? 12.0;
 		double controlFontSize = (TryFindResource("FontSizeControl") as double?) ?? 10.0;
-		List<OverlaySlotConfig> slots = AppConfig.LoadOverlaySlots();
+		List<OverlaySlotConfig> slots = _slots ??= AppConfig.LoadOverlaySlots();
 		if (slots.Count == 0)
 		{
 			TextBlock textBlock = new TextBlock();
@@ -247,8 +275,7 @@ namespace PreySense.Frontend.Views
             {
                 if (_isInitializing) return;
                 slot.ShowGraph = graphSwitch.IsChecked == true;
-                AppConfig.SaveOverlaySlots(slots);
-                HardwareOverlayManager.RefreshDisplayFlags();
+                QueueSlots(slots);
             }
 
 			Button removeButton = new Button
@@ -266,9 +293,8 @@ namespace PreySense.Frontend.Views
 			removeButton.Click += (_, _) =>
 			{
 				slots.RemoveAt(index);
-				AppConfig.SaveOverlaySlots(slots);
+				QueueSlots(slots);
 				BuildColumnSlots();
-				HardwareOverlayManager.RefreshDisplayFlags();
 			};
 
 			Grid.SetColumn(label, 0);
@@ -288,24 +314,22 @@ namespace PreySense.Frontend.Views
 				if (_isInitializing) return;
 				slot.CpuMetric = (cpuCombo.SelectedItem as MetricChoice)?.Id ?? "None";
 				slot.GpuMetric = (gpuCombo.SelectedItem as MetricChoice)?.Id ?? "None";
-				AppConfig.SaveOverlaySlots(slots);
-				HardwareOverlayManager.RefreshDisplayFlags();
+				QueueSlots(slots);
 			}
 		}
 	}
 
 	private void ButtonAddSlot_Click(object sender, RoutedEventArgs e)
 	{
-		List<OverlaySlotConfig> list = AppConfig.LoadOverlaySlots();
+		List<OverlaySlotConfig> list = _slots ??= AppConfig.LoadOverlaySlots();
 		list.Add(new OverlaySlotConfig
 		{
 			CpuMetric = "None",
 			GpuMetric = "None",
 			ShowGraph = false
 		});
-		AppConfig.SaveOverlaySlots(list);
+		QueueSlots(list);
 		BuildColumnSlots();
-		HardwareOverlayManager.RefreshDisplayFlags();
 	}
 
 	private void OverlayToggle_Changed(object sender, RoutedEventArgs e)
@@ -314,11 +338,11 @@ namespace PreySense.Frontend.Views
 		{
 			if (CheckEnableOverlay.IsChecked == true)
 			{
-				HardwareOverlayManager.Start();
+				_ = QueueSetting("enabled", () => AppConfig.Set("overlay", 1));
 			}
 			else
 			{
-				HardwareOverlayManager.Stop();
+				_ = QueueSetting("enabled", () => AppConfig.Set("overlay", 0));
 			}
 		}
 	}
@@ -328,9 +352,8 @@ namespace PreySense.Frontend.Views
 		if (!_isInitializing)
 		{
 			bool showFps = CheckShowFps.IsChecked == true;
-			AppConfig.Set("overlay_show_fps", showFps ? 1 : 0);
-			HardwareOverlayManager.RefreshDisplayFlags();
-		}
+			_ = QueueSetting("fps", () => AppConfig.Set("overlay_show_fps", showFps ? 1 : 0));
+			}
 	}
 
 	private void SliderHudScale_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -375,8 +398,7 @@ namespace PreySense.Frontend.Views
 
 	private void SaveHudScale(int value)
 	{
-		AppConfig.Set("overlay_scale_percent", value);
-		HardwareOverlayManager.RefreshDisplayFlags();
+		_ = QueueSetting("scale", () => AppConfig.Set("overlay_scale_percent", value));
 	}
 
 	private void SliderTextOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -401,14 +423,12 @@ namespace PreySense.Frontend.Views
 
 	private void SaveTextOpacity(int value)
 	{
-		AppConfig.Set("overlay_text_alpha", value);
-		HardwareOverlayManager.RefreshDisplayFlags();
+		_ = QueueSetting("textOpacity", () => AppConfig.Set("overlay_text_alpha", value));
 	}
 
 	private void SaveOpacity(int value)
 	{
-		AppConfig.Set("overlay_alpha", value);
-		HardwareOverlayManager.RefreshDisplayFlags();
+		_ = QueueSetting("opacity", () => AppConfig.Set("overlay_alpha", value));
 	}
 }
 }

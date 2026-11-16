@@ -322,6 +322,7 @@ namespace PreySense.Core.Configuration
         /// <summary>GPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
         [JsonPropertyOrder(8)]
         public int GpuMaxRpm { get; set; } = 6400;
+        public bool HasMeasuredFanMaximums { get; set; }
 
         [JsonPropertyOrder(2)]
         public ModeFanCurveConfig Quiet { get; set; } = ModeFanCurveConfig.CreateDefaultQuiet();

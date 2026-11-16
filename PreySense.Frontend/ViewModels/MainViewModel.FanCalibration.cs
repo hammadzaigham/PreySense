@@ -1,3 +1,4 @@
+using PreySense.Frontend.Services;
 using PreySense.Core.Configuration;
 using PreySense.Core.Services;
 using PreySense.Mode;
@@ -35,13 +36,13 @@ public partial class MainViewModel
         FanCurveProfile? previous = null;
         int? cpuBefore = null, gpuBefore = null;
         bool restored = true;
-        string finalStatus = "Calibration did not start.";
+        string finalStatus = LocalizationService.Translate("RPM measurement did not start.");
         try
         {
             entered = await TryEnterModeSwitchGateAsync();
             if (!entered) return false;
             cancellation.Token.ThrowIfCancellationRequested();
-            FanRpmCalibrationStatus = "Calibrating Fan RPM...";
+            FanRpmCalibrationStatus = LocalizationService.Translate("Calibrating...");
             await Task.Run(() =>
             {
                 lock (_fanControlGate)
@@ -51,7 +52,8 @@ public partial class MainViewModel
                     _fanRpmCalibrationActive = true;
                     overridden = true;
                     _hw.InvalidateFanTargets();
-                    if (!_hw.SetFanSpeeds(100, 100)) throw new InvalidOperationException("Could not set both fans to custom 100% duty.");
+                    // Hardware Max is immediate and independent of the software curve delay.
+                    if (!_hw.SetFanMode(1, 1)) throw new InvalidOperationException("Could not select Max mode for both fans.");
                 }
             });
             await (FanCalibrationWait?.Invoke(FanCalibrationSpinUp, cancellation.Token)
@@ -61,12 +63,17 @@ public partial class MainViewModel
             if (measured.Cpu is <= 0 or > 65500 || measured.Gpu is <= 0 or > 65500)
                 throw new InvalidOperationException("Both fans must provide valid RPM readings. Existing maximums were kept.");
             measured = (RoundFanMaximumRpm(measured.Cpu), RoundFanMaximumRpm(measured.Gpu));
-            ConfigurationService.Instance.Update(config => { config.Fans.CpuMaxRpm = measured.Cpu; config.Fans.GpuMaxRpm = measured.Gpu; });
-            finalStatus = $"Fan RPM Calibrated. CPU: {measured.Cpu} RPM. GPU: {measured.Gpu} RPM.";
+            await Task.Run(() => ConfigurationService.Instance.Update(config =>
+            {
+                config.Fans.CpuMaxRpm = measured.Cpu;
+                config.Fans.GpuMaxRpm = measured.Gpu;
+                config.Fans.HasMeasuredFanMaximums = true;
+            }));
+            finalStatus = LocalizationService.Format("Calibrated. CPU: {0} RPM. GPU: {1} RPM.", measured.Cpu, measured.Gpu);
             return true;
         }
-        catch (OperationCanceledException) { finalStatus = "Calibration cancelled. Saved maximum RPM values were not changed."; return false; }
-        catch (Exception ex) { finalStatus = $"Calibration failed. Saved maximum RPM values were not changed. {ex.Message}"; return false; }
+        catch (OperationCanceledException) { finalStatus = LocalizationService.Translate("RPM measurement cancelled. Saved maximum RPM values were not changed."); return false; }
+        catch (Exception ex) { finalStatus = LocalizationService.Format("RPM measurement failed. Saved maximum RPM values were not changed. {0}", ex.Message); return false; }
         finally
         {
             if (overridden)

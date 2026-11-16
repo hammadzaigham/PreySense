@@ -129,6 +129,8 @@ public class GpuClockTuningTests
         {
             var clocks = new Clocks();
             var vm = Create(new(), clocks);
+            typeof(MainViewModel).GetField("_modeSwitchGate", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(vm, new SemaphoreSlim(1, 1));
             typeof(MainViewModel).GetField("_isHardwareTuningEnabled", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(vm, true);
             vm.TuningConfigurationStore = new ConfigurationService(Path.Combine(directory, "preysense.json"));

@@ -14,7 +14,7 @@ public sealed class FanCurveProfile
     public int GpuMaxRpm { get; set; } = FanStage.GpuMaxRpm;
     public FanControlMode ControlMode { get; set; } = FanControlMode.Auto;
     public int RampUpSeconds { get; set; } = 2;
-    public FanStage[] Stages { get; set; } = DefaultStages(1);
+    public FanStage[] Stages { get; set; } = DefaultRequestStages(1);
 
     /// <summary>Factory ZBJ-KQ EC 1.08 variant-0 stage tables (RPM targets, rise/fall °C).</summary>
     public static FanStage[] DefaultStages(byte mode) => mode switch
@@ -25,11 +25,23 @@ public sealed class FanCurveProfile
         _ => Clone(Balanced)
     };
 
+    /// <summary>
+    /// New software curves retain the reference temperature ladder but request no
+    /// additional cooling. The separate factory reference keeps original RPM targets.
+    /// </summary>
+    public static FanStage[] DefaultRequestStages(byte mode)
+    {
+        var stages = DefaultStages(mode);
+        foreach (var stage in stages)
+            stage.CpuTargetRpm = stage.GpuTargetRpm = 0;
+        return stages;
+    }
+
     public static FanCurveProfile CreateDefault(byte mode) => new()
     {
         ControlMode = FanControlMode.Auto,
         RampUpSeconds = 0,
-        Stages = DefaultStages(mode)
+        Stages = DefaultRequestStages(mode)
     };
 
     public FanCurveProfile Copy() => new()
@@ -53,7 +65,7 @@ public sealed class FanCurveProfile
 
     private static FanStage[] NormalizeStages(FanStage[]? source, byte mode, int cpuMaxRpm, int gpuMaxRpm)
     {
-        var result = DefaultStages(mode);
+        var result = DefaultRequestStages(mode);
         foreach (var stage in result)
         {
             stage.CpuMaximumRpm = cpuMaxRpm;

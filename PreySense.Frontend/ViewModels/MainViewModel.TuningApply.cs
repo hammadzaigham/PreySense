@@ -291,9 +291,12 @@ public partial class MainViewModel
         if (!applyCpuLimits && !gpuRuntimeLimitWatts.HasValue && gpuOffsets is null && !applyProchotOffset && !applyGpuClockOffsets)
         {
             if (!persist) { DiagnosticMessage = "Turn on CPU limits, GPU limits, GPU overclocking, or PROCHOT first."; return false; }
+            if (!await TryEnterModeSwitchGateAsync()) return false;
+            IsBusy = true;
             try
             {
-                TuningStore.Update(cfg =>
+                var store = TuningStore;
+                await Task.Run(() => store.Update(cfg =>
                 {
                     var profile = mode switch { 0 => cfg.Tuning.Quiet, 1 => cfg.Tuning.Balanced,
                         4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
@@ -302,11 +305,12 @@ public partial class MainViewModel
                     profile.GpuRuntimeLimitWatts = null;
                     profile.ApplyGpuLimits = false;
                     cfg.Tuning.ApplyProchotOffset = false;
-                });
+                }));
                 DiagnosticMessage = "Saved. Disabled tuning sections were skipped.";
                 return true;
             }
             catch (Exception ex) { DiagnosticMessage = $"Could not save tuning: {ex.Message}"; return false; }
+            finally { IsBusy = false; ExitModeSwitchGate(); }
         }
         CancelPendingModeSwitch();
         if (!await TryEnterModeSwitchGateAsync())
@@ -325,13 +329,14 @@ public partial class MainViewModel
             ActivePowerMode = await Task.Run(() => _hw.CurrentPowerMode);
             UpdateModeName(ActivePowerMode);
             NotifyModeSelectionsChanged();
-            bool boostOk = !applyCpuBoost || _hw.CurrentPowerMode != mode || await WriteCpuBoostAsync(mode);
+            bool boostOk = !applyCpuBoost || ActivePowerMode != mode || await WriteCpuBoostAsync(mode);
             if (persist)
             {
                 int boost = CpuBoostModeForMode(mode);
                 bool saveCpu = persistApplySwitches && applyCpuLimits;
                 bool saveProchot = persistApplySwitches && applyProchotOffset;
-                TuningStore.Update(cfg =>
+                var store = TuningStore;
+                await Task.Run(() => store.Update(cfg =>
                 {
                     var profile = mode switch { 0 => cfg.Tuning.Quiet, 1 => cfg.Tuning.Balanced,
                         4 => cfg.Tuning.Performance, 5 => cfg.Tuning.Turbo, 6 => cfg.Tuning.Eco,
@@ -361,7 +366,7 @@ public partial class MainViewModel
                         profile.CpuBoost = boost > 0;
                     }
                     profile.GpuWatts = gpuRuntimeLimitWatts ?? profile.GpuWatts;
-                });
+                }));
                 if (!persistApplySwitches)
                     IsProchotOffsetEnabled = false;
             }

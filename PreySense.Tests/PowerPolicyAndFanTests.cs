@@ -146,14 +146,16 @@ namespace PreySense.Tests
 
             // Reset creates default EC stages, updates draft, persists and applies
             Assert.Contains("var defaultProfile = FanCurveProfile.CreateDefault(_mode);", fanWindowCs);
-            Assert.Contains("await SaveProfileAsync(Vm, _mode, defaultProfile);", fanWindowCs);
-            Assert.Contains("await Vm.ApplyFanProfileAsync();", fanWindowCs);
+            Assert.DoesNotContain("EnsureModeActiveAsync", fanWindowCs);
+            Assert.DoesNotContain("SetModeAsync(", fanWindowCs);
+            Assert.DoesNotContain("Apply_Click", fanWindowCs);
+            Assert.Contains("if (_mode == vm.ActivePowerMode) await vm.ApplyFanProfileAsync();", fanWindowCs);
 
             var def = FanCurveProfile.CreateDefault(1);
             Assert.AreEqual(FanControlMode.Auto, def.ControlMode);
             Assert.AreEqual(0, def.RampUpSeconds);
             Assert.HasCount(FanCurveProfile.StageCount, def.Stages);
-            Assert.AreEqual(1800, def.Stages[1].CpuTargetRpm);
+            Assert.AreEqual(0, def.Stages[1].CpuDutyPercent);
         }
 
         [TestMethod]
@@ -173,25 +175,23 @@ namespace PreySense.Tests
             Assert.Contains("SaveDraft();\n        UpdateEditor();", fanWindowCs.Replace("\r\n", "\n"));
 
             // Fan window Apply and Reset switch hardware mode immediately when not active
-            Assert.Contains("await vm.ApplyModeSwitchAsync(_mode);", fanWindowCs);
+            Assert.DoesNotContain("ApplyModeSwitchAsync", fanWindowCs);
 
             // Mode settings window applies tuning profile via driver transaction backend
             Assert.Contains("await vm.ApplyTuningProfileAsync", modeSettingsCs);
         }
 
         [TestMethod]
-        public void FanSettingsWindow_ContainsSynchronizedFanSpeedSwitchAboveDelay()
+        public void FanSettingsWindow_ContainsSynchronizationAndNoRetiredDelayControl()
         {
             string root = GetSolutionRoot();
             string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
             Assert.Contains("x:Name=\"SyncFansRow\"", fanWindowXaml);
-            Assert.Contains("Title=\"Synchronize Fan Speed\"", fanWindowXaml);
-            Assert.Contains("x:Name=\"DelayRow\"", fanWindowXaml);
-            int syncIndex = fanWindowXaml.IndexOf("x:Name=\"SyncFansRow\"", StringComparison.Ordinal);
-            int delayIndex = fanWindowXaml.IndexOf("x:Name=\"DelayRow\"", StringComparison.Ordinal);
-            Assert.IsLessThan(delayIndex, syncIndex, "Synchronized switch must be above DelayRow");
+            Assert.Contains("Title=\"Synchronize Fans\"", fanWindowXaml);
+            Assert.DoesNotContain("x:Name=\"DelayRow\"", fanWindowXaml);
+            Assert.DoesNotContain("Measures RPM in Max mode.", fanWindowXaml);
 
             Assert.Contains("SynchronizeFanSpeeds", fanWindowCs);
         }

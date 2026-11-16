@@ -56,11 +56,11 @@ namespace PreySense.Overlay
 
         public static void RefreshDisplayFlags() => SyncRunningState();
 
-        public static void Reposition(string horizontal, string vertical)
+        public static void Reposition(string horizontal, string vertical, bool persist = true)
         {
             if (_overlay is { IsActive: true } overlay)
-                overlay.SetConfiguredPosition(horizontal, vertical);
-            else
+                overlay.SetConfiguredPosition(horizontal, vertical, persist);
+            else if (persist)
                 PreySense.Core.Configuration.ConfigurationService.Instance.Update(config =>
                 {
                     config.Overlay.PositionHorizontal = horizontal;
