@@ -108,14 +108,20 @@
                         </Border>
                         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <controls:SettingDropdownRow Title="CPU Boost" DropdownMinWidth="220"
-                                    ItemsSource="{Binding GameCpuBoostNames}"
-                                    SelectedIndex="{Binding SelectedGameProfile.CpuBoostMode, TargetNullValue=1, Mode=TwoWay}"/>
+                                <controls:SettingSwitchRow x:Name="GameCpuBoost" Title="CPU Boost Tuning"
+                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-automation-32.png"
+                                    IsChecked="{Binding SelectedGameProfile.ApplyCpuBoost, Mode=TwoWay}"/>
+                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuBoost}">
+                                    <controls:SettingDropdownRow Title="CPU Boost" DropdownMinWidth="220"
+                                        ItemsSource="{Binding GameCpuBoostNames}"
+                                        SelectedIndex="{Binding SelectedGameProfile.CpuBoostMode, TargetNullValue=1, Mode=TwoWay}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <controls:SettingSwitchRow x:Name="GameCpuLimits" Title="CPU Power Limits"
+                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-processor-32.png"
                                     IsChecked="{Binding SelectedGameProfile.ApplyCpuLimits, Mode=TwoWay}"/>
                                 <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuLimits}">
                                     <controls:SettingValueRow x:Name="GamePl1" Title="Sustained Long Power [PL1]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
@@ -136,6 +142,7 @@
                         <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableGpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <controls:SettingSwitchRow x:Name="GameGpuLimits" Title="GPU Power Limits"
+                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
                                     IsChecked="{Binding SelectedGameProfile.ApplyGpuLimits, Mode=TwoWay}"/>
                                 <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameGpuLimits}">
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">

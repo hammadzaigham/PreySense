@@ -250,11 +250,6 @@
     "Fans": {
       "type": "object",
       "properties": {
-        "SynchronizeFanSpeeds": {
-          "type": "boolean",
-          "default": true,
-          "description": "Synchronize CPU and GPU fan speeds."
-        },
         "ControlDelaySeconds": {
           "type": "integer",
           "minimum": 0,

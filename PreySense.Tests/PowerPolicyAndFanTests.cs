@@ -182,35 +182,23 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void FanSettingsWindow_ContainsSynchronizationAndNoRetiredDelayControl()
+        public void FanSettingsWindow_IsRemovedAndFansOperateIndependently()
         {
             string root = GetSolutionRoot();
-            string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml"));
+            string settingsXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "SettingsWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
-            Assert.Contains("x:Name=\"SyncFansRow\"", fanWindowXaml);
-            Assert.Contains("Title=\"Synchronize Fans\"", fanWindowXaml);
-            Assert.DoesNotContain("x:Name=\"DelayRow\"", fanWindowXaml);
-            Assert.DoesNotContain("Measures RPM in Max mode.", fanWindowXaml);
-
-            Assert.Contains("SynchronizeFanSpeeds", fanWindowCs);
+            Assert.DoesNotContain("RowFanSettings", settingsXaml);
+            Assert.IsFalse(File.Exists(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml")));
+            Assert.DoesNotContain("SynchronizeFanSpeeds", fanWindowCs);
         }
 
         [TestMethod]
-        public void SynchronizeFanSpeeds_PersistsGloballyUnderFans()
+        public void SynchronizeFanSpeeds_IsRemovedFromConfig()
         {
-            var cfg = new PreySense.Core.Configuration.PreySenseConfig();
-            Assert.IsTrue(cfg.Fans.SynchronizeFanSpeeds);
-            Assert.IsTrue(cfg.SynchronizeFanSpeeds);
-
-            cfg.SynchronizeFanSpeeds = false;
-            Assert.IsFalse(cfg.Fans.SynchronizeFanSpeeds);
-
-            string json = System.Text.Json.JsonSerializer.Serialize(cfg);
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<PreySense.Core.Configuration.PreySenseConfig>(json);
-            Assert.IsNotNull(parsed);
-            Assert.IsFalse(parsed.Fans.SynchronizeFanSpeeds);
-            Assert.IsFalse(parsed.SynchronizeFanSpeeds);
+            Assert.IsNull(typeof(PreySense.Core.Configuration.PreySenseConfig).GetProperty("SynchronizeFanSpeeds"));
+            Assert.IsNull(typeof(PreySense.Core.Configuration.FanConfig).GetProperty("SynchronizeFanSpeeds"));
+            Assert.IsNull(typeof(PreySense.Core.Configuration.FanConfig).GetProperty("HasMeasuredFanMaximums"));
         }
 
         private static string GetSolutionRoot()

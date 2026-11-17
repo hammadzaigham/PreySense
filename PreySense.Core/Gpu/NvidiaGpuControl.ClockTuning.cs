@@ -20,8 +20,9 @@ public partial class NvidiaGpuControl
     {
         state = null;
         status = "GPU overclocking is unavailable while the GPU is asleep or unsupported.";
-        if (!IsValid || GetGpuState() != GpuState.Active) return false;
-        var states = GPUApi.GetPerformanceStates20(_internalGpu!.Handle);
+        var gpu = Volatile.Read(ref _internalGpu);
+        if (gpu is null || GetGpuState() != GpuState.Active) return false;
+        var states = GPUApi.GetPerformanceStates20(gpu.Handle);
         if (!states.IsEditable || !states.Clocks.TryGetValue(PerformanceStateId.P0_3DPerformance, out var clocks))
             return false;
         var core = clocks.FirstOrDefault(c => c.DomainId == PublicClockDomain.Graphics);
@@ -46,7 +47,10 @@ public partial class NvidiaGpuControl
         if (lease is null) { status = "GPU is busy switching display modes."; return false; }
         try
         {
-            if (!ReadClockTuning(out var state, out status)) return false;
+            status = "GPU overclocking is unavailable while the GPU is asleep or unsupported.";
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null || !ReadClockTuning(out var state, out status))
+                return false;
             if (!state!.Allows(offsets))
             {
                 status = $"GPU clock offsets are out of range: core {state.Core.MinimumMhz} to {state.Core.MaximumMhz} MHz; memory {state.Memory.MinimumMhz} to {state.Memory.MaximumMhz} MHz.";
@@ -57,7 +61,7 @@ public partial class NvidiaGpuControl
                 new(PublicClockDomain.Memory, new PerformanceStates20ParameterDelta(checked(offsets.MemoryMhz * 1000)))];
             PerformanceStates20InfoV1.PerformanceState20[] pStates = [
                 new(PerformanceStateId.P0_3DPerformance, clocks, Array.Empty<PerformanceStates20BaseVoltageEntryV1>())];
-            GPUApi.SetPerformanceStates20(_internalGpu!.Handle, new PerformanceStates20InfoV1(pStates, 2, 0));
+            GPUApi.SetPerformanceStates20(gpu.Handle, new PerformanceStates20InfoV1(pStates, 2, 0));
             status = "GPU clock offsets applied.";
             return true;
         }

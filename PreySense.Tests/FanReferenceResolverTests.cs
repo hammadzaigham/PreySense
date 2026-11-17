@@ -6,14 +6,10 @@ namespace PreySense.Tests;
 public class FanReferenceResolverTests
 {
     [TestMethod]
-    public void MeasuredMaximumChangesEstimateWithoutReplacingBaselineCurve()
+    public void TemperatureEstimateUsesBundledReferenceCurve()
     {
         var source = FanReferenceResolver.BundledFallback;
-        Assert.AreEqual(1970, source.EstimateAtTemperature(1, 65, 0, measuredMaximumRpm: 7200).MinimumRpm);
-        Assert.AreEqual(4062, source.EstimateAtTemperature(1, 65, 40, measuredMaximumRpm: 7200).MinimumRpm);
-        Assert.AreEqual(7200, source.EstimateAtTemperature(1, 65, 100, measuredMaximumRpm: 7200).MinimumRpm);
         Assert.AreEqual(3902, source.EstimateAtTemperature(1, 65, 40).MinimumRpm);
-        Assert.AreEqual(3000, source.EstimateAtTemperature(1, 95, 0, measuredMaximumRpm: 3000).MinimumRpm);
     }
     [TestMethod]
     public void TemperatureEstimateUsesFactoryRisesAndAllowsUnknownCoupledSensor()

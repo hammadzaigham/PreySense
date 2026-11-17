@@ -12,6 +12,8 @@ namespace PreySense.Overlay
         protected Size _size = new Size(350, 50);
         protected Point _location = new Point(50, 50);
         private readonly object _paintLock = new();
+        private Bitmap? _cachedBitmap;
+        private Graphics? _cachedGraphics;
 
         protected virtual void PerformPaint(PaintEventArgs e)
         {
@@ -29,36 +31,45 @@ namespace PreySense.Overlay
             {
                 if (Handle == IntPtr.Zero || Size.Width <= 0 || Size.Height <= 0) return;
                 // Layered windows require premultiplied alpha; background and glyph alpha remain independent.
-                using Bitmap bitmap1 = new Bitmap(Size.Width, Size.Height, PixelFormat.Format32bppPArgb);
-                using (Graphics graphics1 = Graphics.FromImage(bitmap1))
+                if (_cachedBitmap == null || _cachedGraphics == null || _cachedBitmap.Width != Size.Width || _cachedBitmap.Height != Size.Height)
                 {
-                    Rectangle rectangle1 = new Rectangle(0, 0, Size.Width, Size.Height);
-                    PerformPaint(new PaintEventArgs(graphics1, rectangle1));
-
-                    IntPtr ptr1 = NativeMethods.GetDC(IntPtr.Zero);
-                    IntPtr ptr2 = NativeMethods.CreateCompatibleDC(ptr1);
-                    IntPtr ptr3 = bitmap1.GetHbitmap(Color.FromArgb(0));
-                    IntPtr ptr4 = NativeMethods.SelectObject(ptr2, ptr3);
-
-                    var size1 = new NativeMethods.SIZE { cx = Size.Width, cy = Size.Height };
-                    var point1 = new NativeMethods.POINT { x = Location.X, y = Location.Y };
-                    var point2 = new NativeMethods.POINT { x = 0, y = 0 };
-
-                    var blendfunction1 = new NativeMethods.BLENDFUNCTION
-                    {
-                        BlendOp = 0,
-                        BlendFlags = 0,
-                        SourceConstantAlpha = _alpha,
-                        AlphaFormat = 1
-                    };
-
-                    NativeMethods.UpdateLayeredWindow(Handle, ptr1, ref point1, ref size1, ptr2, ref point2, 0, ref blendfunction1, 2); // 2 = ULW_ALPHA
-
-                    NativeMethods.SelectObject(ptr2, ptr4);
-                    NativeMethods.ReleaseDC(IntPtr.Zero, ptr1);
-                    NativeMethods.DeleteObject(ptr3);
-                    NativeMethods.DeleteDC(ptr2);
+                    _cachedGraphics?.Dispose();
+                    _cachedBitmap?.Dispose();
+                    _cachedBitmap = new Bitmap(Size.Width, Size.Height, PixelFormat.Format32bppPArgb);
+                    _cachedGraphics = Graphics.FromImage(_cachedBitmap);
                 }
+                else
+                {
+                    _cachedGraphics.ResetClip();
+                    _cachedGraphics.Clear(Color.Transparent);
+                }
+
+                Rectangle rectangle1 = new Rectangle(0, 0, Size.Width, Size.Height);
+                PerformPaint(new PaintEventArgs(_cachedGraphics, rectangle1));
+
+                IntPtr ptr1 = NativeMethods.GetDC(IntPtr.Zero);
+                IntPtr ptr2 = NativeMethods.CreateCompatibleDC(ptr1);
+                IntPtr ptr3 = _cachedBitmap.GetHbitmap(Color.FromArgb(0));
+                IntPtr ptr4 = NativeMethods.SelectObject(ptr2, ptr3);
+
+                var size1 = new NativeMethods.SIZE { cx = Size.Width, cy = Size.Height };
+                var point1 = new NativeMethods.POINT { x = Location.X, y = Location.Y };
+                var point2 = new NativeMethods.POINT { x = 0, y = 0 };
+
+                var blendfunction1 = new NativeMethods.BLENDFUNCTION
+                {
+                    BlendOp = 0,
+                    BlendFlags = 0,
+                    SourceConstantAlpha = _alpha,
+                    AlphaFormat = 1
+                };
+
+                NativeMethods.UpdateLayeredWindow(Handle, ptr1, ref point1, ref size1, ptr2, ref point2, 0, ref blendfunction1, 2); // 2 = ULW_ALPHA
+
+                NativeMethods.SelectObject(ptr2, ptr4);
+                NativeMethods.ReleaseDC(IntPtr.Zero, ptr1);
+                NativeMethods.DeleteObject(ptr3);
+                NativeMethods.DeleteDC(ptr2);
             }
         }
 
@@ -159,7 +170,6 @@ namespace PreySense.Overlay
                 if (Handle != IntPtr.Zero)
                 {
                     SetBoundsCore(value.X, value.Y, _size.Width, _size.Height);
-                    UpdateLayeredWindow();
                 }
                 else
                 {
@@ -254,6 +264,16 @@ namespace PreySense.Overlay
         {
             if (!_disposed)
             {
+                if (disposing)
+                {
+                    lock (_paintLock)
+                    {
+                        _cachedGraphics?.Dispose();
+                        _cachedGraphics = null;
+                        _cachedBitmap?.Dispose();
+                        _cachedBitmap = null;
+                    }
+                }
                 DestroyHandle();
                 _disposed = true;
             }

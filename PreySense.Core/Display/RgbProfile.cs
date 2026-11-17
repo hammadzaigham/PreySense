@@ -11,7 +11,8 @@ namespace PreySense.Helpers
             "Static (4-Zone Custom)", "Breathing", "Neon", "Wave", "Ripple", "Zoom", "Snake", "Disco",
             "Rainbow Cycle", "CPU Thermal Heatmap", "Battery Fuel Gauge",
             "Police Strobe", "Fire Ember", "Matrix Cascade", "Cylon Scanner", "Aurora Drift",
-            "Ocean Tide", "Heartbeat", "Lightning Storm", "Starlight", "Ice Crystal"
+            "Ocean Tide", "Heartbeat", "Lightning Storm", "Starlight", "Ice Crystal",
+            "Neon Pulse", "Plasma Orb", "Glitch Storm", "BioHazard", "Solar Flare"
         };
     }
 }

@@ -308,7 +308,7 @@ public sealed class OemLightingController : IDisposable
         static void CheckColor(string value)
         {
             if (value is null || value.Length != 7 || value[0] != '#'
-                || !uint.TryParse(value.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out _))
+                || !uint.TryParse(value.AsSpan(1), System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out _))
                 throw new ArgumentException("Lighting colors must be #RRGGBB.");
         }
         CheckColor(settings.ColorHex);

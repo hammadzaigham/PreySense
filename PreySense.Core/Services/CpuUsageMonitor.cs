@@ -36,11 +36,20 @@ public static class CpuUsageMonitor
     private static readonly int ProcessorCount = Math.Max(1, Environment.ProcessorCount);
     private static readonly int PerfInfoStructSize = Marshal.SizeOf<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION>();
     private static readonly int PerfInfoBufferSize = PerfInfoStructSize * ProcessorCount;
-    private static readonly IntPtr PerfInfoBuffer = Marshal.AllocHGlobal(PerfInfoBufferSize);
+    private static IntPtr _perfInfoBuffer;
 
-    private static readonly SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[] _lastCoreTimes = new SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[ProcessorCount];
-    private static readonly SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[] _currentCoreTimes = new SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[ProcessorCount];
-    private static readonly bool[] _detectedECoreMap = BuildECoreMap(ProcessorCount);
+    private static SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[]? _lastCoreTimes;
+    private static SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[]? _currentCoreTimes;
+    private static bool[]? _detectedECoreMap;
+
+    private static void EnsurePerCoreBuffers()
+    {
+        _lastCoreTimes ??= new SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[ProcessorCount];
+        _currentCoreTimes ??= new SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[ProcessorCount];
+        _detectedECoreMap ??= BuildECoreMap(ProcessorCount);
+        if (_perfInfoBuffer == IntPtr.Zero)
+            _perfInfoBuffer = Marshal.AllocHGlobal(PerfInfoBufferSize);
+    }
 
     private static long _lastIdleTime;
     private static long _lastKernelTime;
@@ -108,7 +117,8 @@ public static class CpuUsageMonitor
             {
                 if (_customProcessorPerformanceImpl != null)
                 {
-                    if (_customProcessorPerformanceImpl(_lastCoreTimes))
+                    EnsurePerCoreBuffers();
+                    if (_customProcessorPerformanceImpl(_lastCoreTimes!))
                     {
                         _lastSampleTimestamp = CurrentTimestamp();
                         _hasBaseline = true;
@@ -127,20 +137,24 @@ public static class CpuUsageMonitor
                         _perCoreSource = false;
                     }
                 }
-                else if (TrySampleNativeCores(_lastCoreTimes))
+                else
                 {
-                    _lastSampleTimestamp = CurrentTimestamp();
-                    _hasBaseline = true;
+                    EnsurePerCoreBuffers();
+                    if (TrySampleNativeCores(_lastCoreTimes!))
+                    {
+                        _lastSampleTimestamp = CurrentTimestamp();
+                        _hasBaseline = true;
                         _perCoreSource = true;
-                }
-                else if (TrySampleSystemTimes(out long idle, out long kernel, out long user))
-                {
-                    _lastIdleTime = idle;
-                    _lastKernelTime = kernel;
-                    _lastUserTime = user;
-                    _lastSampleTimestamp = CurrentTimestamp();
-                    _hasBaseline = true;
+                    }
+                    else if (TrySampleSystemTimes(out long idle, out long kernel, out long user))
+                    {
+                        _lastIdleTime = idle;
+                        _lastKernelTime = kernel;
+                        _lastUserTime = user;
+                        _lastSampleTimestamp = CurrentTimestamp();
+                        _hasBaseline = true;
                         _perCoreSource = false;
+                    }
                 }
             }
         }
@@ -172,8 +186,20 @@ public static class CpuUsageMonitor
             int effectiveCount = EffectiveProcessorCount;
 
             // Check if native per-core performance is available
-            bool hasPerCore = !aggregateOnly && (_customProcessorPerformanceImpl != null ||
-                              (_customSystemTimesImpl == null && TrySampleNativeCores(_currentCoreTimes)));
+            bool hasPerCore = false;
+            if (!aggregateOnly)
+            {
+                if (_customProcessorPerformanceImpl != null)
+                {
+                    EnsurePerCoreBuffers();
+                    hasPerCore = true;
+                }
+                else if (_customSystemTimesImpl == null)
+                {
+                    EnsurePerCoreBuffers();
+                    hasPerCore = TrySampleNativeCores(_currentCoreTimes!);
+                }
+            }
 
             if (_perCoreSource != hasPerCore)
             {
@@ -183,14 +209,16 @@ public static class CpuUsageMonitor
 
             if (hasPerCore)
             {
-                if (_customProcessorPerformanceImpl != null && !_customProcessorPerformanceImpl(_currentCoreTimes))
+                var currentCoreTimes = _currentCoreTimes!;
+                var lastCoreTimes = _lastCoreTimes!;
+                if (_customProcessorPerformanceImpl != null && !_customProcessorPerformanceImpl(currentCoreTimes))
                 {
                     return InvalidateSample();
                 }
 
                 if (!_hasBaseline)
                 {
-                    Array.Copy(_currentCoreTimes, _lastCoreTimes, effectiveCount);
+                    Array.Copy(currentCoreTimes, lastCoreTimes, effectiveCount);
                     _lastSampleTimestamp = now;
                     _hasBaseline = true;
                     return _cachedSnapshot;
@@ -205,7 +233,7 @@ public static class CpuUsageMonitor
 
                 if (elapsedSeconds > _suspendThresholdSeconds)
                 {
-                    Array.Copy(_currentCoreTimes, _lastCoreTimes, effectiveCount);
+                    Array.Copy(currentCoreTimes, lastCoreTimes, effectiveCount);
                     _lastSampleTimestamp = now;
                     _cachedUsage = null;
                     _cachedSnapshot = null;
@@ -221,9 +249,9 @@ public static class CpuUsageMonitor
 
                 for (int i = 0; i < effectiveCount; i++)
                 {
-                    long deltaIdle = _currentCoreTimes[i].IdleTime - _lastCoreTimes[i].IdleTime;
-                    long deltaTotal = (_currentCoreTimes[i].KernelTime - _lastCoreTimes[i].KernelTime) +
-                                      (_currentCoreTimes[i].UserTime - _lastCoreTimes[i].UserTime);
+                    long deltaIdle = currentCoreTimes[i].IdleTime - lastCoreTimes[i].IdleTime;
+                    long deltaTotal = (currentCoreTimes[i].KernelTime - lastCoreTimes[i].KernelTime) +
+                                      (currentCoreTimes[i].UserTime - lastCoreTimes[i].UserTime);
 
                     int corePct = deltaTotal > 0
                         ? Math.Clamp((int)Math.Round((1.0 - (double)deltaIdle / deltaTotal) * 100.0), 0, 100)
@@ -246,7 +274,7 @@ public static class CpuUsageMonitor
                         pCoreCount++;
                     }
 
-                    _lastCoreTimes[i] = _currentCoreTimes[i];
+                    lastCoreTimes[i] = currentCoreTimes[i];
                 }
 
                 _lastSampleTimestamp = now;
@@ -346,13 +374,14 @@ public static class CpuUsageMonitor
     {
         try
         {
-            int status = NtQuerySystemInformation(8, PerfInfoBuffer, PerfInfoBufferSize, out int retLength);
+            EnsurePerCoreBuffers();
+            int status = NtQuerySystemInformation(8, _perfInfoBuffer, PerfInfoBufferSize, out int retLength);
             if (status != 0 || retLength < PerfInfoBufferSize)
                 return false;
 
             unsafe
             {
-                var ptr = (SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION*)PerfInfoBuffer;
+                var ptr = (SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION*)_perfInfoBuffer;
                 for (int i = 0; i < ProcessorCount; i++)
                 {
                     destination[i] = ptr[i];
@@ -521,7 +550,9 @@ public static class CpuUsageMonitor
         _lastUserTime = 0;
         _lastSampleTimestamp = 0;
         _lastValidSampleTimestamp = 0;
-        Array.Clear(_lastCoreTimes, 0, _lastCoreTimes.Length);
-        Array.Clear(_currentCoreTimes, 0, _currentCoreTimes.Length);
+        if (_lastCoreTimes != null)
+            Array.Clear(_lastCoreTimes, 0, _lastCoreTimes.Length);
+        if (_currentCoreTimes != null)
+            Array.Clear(_currentCoreTimes, 0, _currentCoreTimes.Length);
     }
 }

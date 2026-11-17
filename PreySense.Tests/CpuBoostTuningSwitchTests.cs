@@ -62,9 +62,11 @@ public class CpuBoostTuningSwitchTests
     }
     [TestMethod]
     [DataRow(0)] [DataRow(1)] [DataRow(2)] [DataRow(3)] [DataRow(4)] [DataRow(5)] [DataRow(6)]
-    public void GlobalBoostSwitchAppliesEveryModePolicyEveryTimeIgnoringLegacyFlags(int boost)
+    public void ModeBoostRequiresBothGlobalAndPerModeSwitch(int boost)
     {
         var cfg = new PreySenseConfig(); cfg.Tuning.EnableCpuBoostTuningControl = true;
+        foreach (var profile in new[] { cfg.Tuning.Eco, cfg.Tuning.Quiet, cfg.Tuning.Balanced, cfg.Tuning.Performance, cfg.Tuning.Turbo })
+            profile.ApplyCpuBoost = true;
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
         vm.TuningConfigurationReader = () => cfg;
         int writes = 0;
@@ -77,14 +79,17 @@ public class CpuBoostTuningSwitchTests
             Assert.IsTrue(vm.ApplyCpuBoostForMode(mode), "Matching policy values must still be written.");
         }
         Assert.AreEqual(10, writes);
-        cfg.Tuning.EnableCpuBoostTuningControl = false;
-        cfg.Tuning.Turbo.ApplyCpuBoost = true;
+        cfg.Tuning.Turbo.ApplyCpuBoost = false;
         Assert.IsTrue(vm.ApplyCpuBoostForMode(5));
-        Assert.AreEqual(10, writes, "The global off switch overrides legacy per-mode flags.");
+        Assert.AreEqual(10, writes, "Per-mode off switch skips boost write.");
+        cfg.Tuning.Turbo.ApplyCpuBoost = true;
+        cfg.Tuning.EnableCpuBoostTuningControl = false;
+        Assert.IsTrue(vm.ApplyCpuBoostForMode(5));
+        Assert.AreEqual(10, writes, "The global off switch overrides per-mode flags.");
     }
 
     [TestMethod]
-    public void BoostToggleLivesInTuningSettingsWhileModesKeepPolicyChoice()
+    public void BoostToggleLivesInBothTuningSettingsAndModeSettings()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "PreySense.slnx"))) root = root.Parent;
@@ -92,7 +97,7 @@ public class CpuBoostTuningSwitchTests
         string settings = File.ReadAllText(Path.Combine(root.FullName, "PreySense.Frontend", "Views", "TuningSettingsWindow.xaml"));
         string modes = File.ReadAllText(Path.Combine(root.FullName, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml"));
         Assert.Contains("EnableCpuBoostTuningControl", settings);
-        Assert.DoesNotContain("SwitchApplyCpuBoost", modes);
+        Assert.Contains("SwitchApplyCpuBoost", modes);
         Assert.Contains("DropdownCpuBoost", modes);
     }
 

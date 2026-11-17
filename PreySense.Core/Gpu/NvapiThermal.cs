@@ -22,7 +22,6 @@ public static class NvapiThermal
     private static void EnsureInitialized()
     {
         if (_initialized) return;
-        _initialized = true;
         try
         {
             var initialize = Query(0x0150e828);
@@ -35,6 +34,7 @@ public static class NvapiThermal
             var channels = Query(0x65fe3aad);
             if (sensors != IntPtr.Zero) _readSensors = Marshal.GetDelegateForFunctionPointer<Read>(sensors);
             if (channels != IntPtr.Zero) _readChannels = Marshal.GetDelegateForFunctionPointer<Read>(channels);
+            _initialized = _readSensors != null || _readChannels != null;
         }
         catch (Exception ex) { AppLogger.Log($"NVAPI thermal initialization failed: {ex.Message}"); }
     }
@@ -50,7 +50,7 @@ public static class NvapiThermal
         lock (Gate)
         {
             EnsureInitialized();
-            IntPtr gpu = explicitHandle.GetValueOrDefault();
+            IntPtr gpu = explicitHandle ?? _gpu;
             if (gpu == IntPtr.Zero) return (null, null);
             float? hotspot = null, memory = null;
             try

@@ -73,6 +73,7 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
 
         byte stagingMode = StagingMode(selected);
         bool wrote = false;
+        bool targetPossiblyActive = false;
         try
         {
             // Dropdown mode must be inactive while ERM4 DB/CT/CP are written.
@@ -100,6 +101,7 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
             // Only a real intermediate mode switch needs an EC settle interval.
             // An already-inactive target can be activated immediately after staging its bytes.
             if (needsStagingSwitch) Pause(AcerOperatingModeTiming.TransitionMilliseconds);
+            targetPossiblyActive = true;
             if (!Switch(selected))
                 throw new InvalidOperationException("Could not switch back to the selected Acer mode.");
             Pause(500);
@@ -113,10 +115,14 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
         catch (Exception ex)
         {
             bool restored = true;
+            bool switchedToStagingInRollback = false;
             if (wrote)
             {
-                if (modes.TryGetAcerPowerMode(out byte current) && current == selected)
+                if (modes.TryGetAcerPowerMode(out byte current) ? current == selected : targetPossiblyActive)
+                {
                     restored = Switch(stagingMode);
+                    switchedToStagingInRollback = restored;
+                }
                 if (restored)
                 {
                     bool db = memory.WritePhysicalByte(address, originalBoost);
@@ -125,6 +131,8 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
                     restored = db && ct && cp && Verify(address, originalBoost, originalDelta, platformOffset.HasValue ? originalPlatform : null);
                 }
             }
+            if (switchedToStagingInRollback && originalMode != stagingMode)
+                Pause(AcerOperatingModeTiming.TransitionMilliseconds);
             bool modeRestored = Switch(originalMode);
             return new(false, restored && modeRestored
                 ? $"{ex.Message} Previous GPU settings were restored."

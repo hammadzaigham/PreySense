@@ -30,6 +30,7 @@ namespace PreySense.Frontend.Services
         private bool _isPredatorKeyPressed;
         private bool _modeKeyDown;
         private bool _brightnessKeyDown;
+        private long _predatorDownTick, _modeDownTick, _brightnessDownTick;
         private bool _predatorUsedInCombo;
         private bool _predatorRComboDown;
         private bool _suppressPredatorReleaseAction;
@@ -60,6 +61,7 @@ namespace PreySense.Frontend.Services
         private void HookThreadMain()
         {
             _hookThreadId = GetCurrentThreadId();
+            PeekMessage(out _, IntPtr.Zero, 0, 0, 0);
             try
             {
                 _hookId = SetHook(_proc);
@@ -84,17 +86,13 @@ namespace PreySense.Frontend.Services
 
         private IntPtr SetHook(LowLevelKeyboardProc proc)
         {
-            using (var curProcess = System.Diagnostics.Process.GetCurrentProcess())
-            using (var curModule = curProcess.MainModule)
+            IntPtr moduleHandle = GetModuleHandle(null);
+            if (moduleHandle != IntPtr.Zero)
             {
-                if (curModule != null && curModule.ModuleName != null)
+                IntPtr hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, moduleHandle, 0);
+                if (hook != IntPtr.Zero)
                 {
-                    IntPtr moduleHandle = GetModuleHandle(curModule.ModuleName);
-                    IntPtr hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, moduleHandle, 0);
-                    if (hook != IntPtr.Zero)
-                    {
-                        return hook;
-                    }
+                    return hook;
                 }
             }
             return SetWindowsHookEx(WH_KEYBOARD_LL, proc, IntPtr.Zero, 0);
@@ -173,6 +171,20 @@ namespace PreySense.Frontend.Services
 
                 if (isKeyDown || isKeyUp)
                 {
+                    long now = Environment.TickCount64;
+                    if (_isPredatorKeyPressed && now - _predatorDownTick > 5000)
+                    {
+                        _isPredatorKeyPressed = false;
+                        _predatorUsedInCombo = false;
+                        _predatorRComboDown = false;
+                        _suppressPredatorReleaseAction = false;
+                        _activePredatorNumber = null;
+                    }
+                    if (_modeKeyDown && now - _modeDownTick > 5000)
+                        _modeKeyDown = false;
+                    if (_brightnessKeyDown && now - _brightnessDownTick > 5000)
+                        _brightnessKeyDown = false;
+
                     var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
                     if (IsBrightnessKey(hookStruct.vkCode, hookStruct.scanCode))
@@ -183,8 +195,8 @@ namespace PreySense.Frontend.Services
                             if (isKeyDown && !_brightnessKeyDown)
                             {
                                 _brightnessKeyDown = true;
-                                PreySense.AppLogger.Log($"TurboKey: Fn brightness vk=0x{hookStruct.vkCode:X2} sc=0x{hookStruct.scanCode:X2} delta={brightnessDelta}");
-                                _onBrightnessDelta(brightnessDelta);
+                                _brightnessDownTick = now;
+                                SafeInvoke(() => _onBrightnessDelta(brightnessDelta));
                             }
                             else if (isKeyUp)
                             {
@@ -200,8 +212,8 @@ namespace PreySense.Frontend.Services
                         if (isKeyDown && !_modeKeyDown)
                         {
                             _modeKeyDown = true;
-                            PreySense.AppLogger.Log($"TurboKey: keyboard Mode/Turbo vk=0x{hookStruct.vkCode:X2} sc=0x{hookStruct.scanCode:X2} flags=0x{hookStruct.flags:X2}");
-                            _onModeKeyPressed();
+                            _modeDownTick = now;
+                            SafeInvoke(_onModeKeyPressed);
                         }
                         else if (isKeyUp)
                         {
@@ -218,6 +230,7 @@ namespace PreySense.Frontend.Services
                             if (!_isPredatorKeyPressed)
                             {
                                 _isPredatorKeyPressed = true;
+                                _predatorDownTick = now;
                                 _predatorUsedInCombo = false;
                             }
                         }
@@ -250,7 +263,7 @@ namespace PreySense.Frontend.Services
                                 _predatorUsedInCombo = true;
                                 _suppressPredatorReleaseAction = true;
                                 _activePredatorNumber = number;
-                                _onPredatorNumberPressed(number);
+                                SafeInvoke(() => _onPredatorNumberPressed(number));
                             }
                         }
                         else if (isKeyUp && _activePredatorNumber == number)
@@ -268,7 +281,7 @@ namespace PreySense.Frontend.Services
                             _predatorRComboDown = true;
                             _predatorUsedInCombo = true;
                             _suppressPredatorReleaseAction = true;
-                            _onPredatorRPressed();
+                            SafeInvoke(_onPredatorRPressed);
                         }
                         else if (isKeyUp)
                         {
@@ -312,13 +325,16 @@ namespace PreySense.Frontend.Services
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
+        private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
 
         [DllImport("user32.dll")]
         private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
 
         [DllImport("user32.dll")]
         private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);

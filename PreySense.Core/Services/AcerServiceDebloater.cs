@@ -8,15 +8,6 @@ using PreySense.Helpers;
 
 namespace PreySense.Core.Services
 {
-    public class ServiceStatusInfo
-    {
-        public string ServiceName { get; set; } = "";
-        public string DisplayName { get; set; } = "";
-        public bool IsInstalled { get; set; }
-        public bool IsRunning { get; set; }
-        public ServiceStartMode StartType { get; set; } = ServiceStartMode.Manual;
-    }
-
     public static class AcerServiceDebloater
     {
         public static readonly string[] ManagedServices = new[]
@@ -103,38 +94,6 @@ namespace PreySense.Core.Services
             }
 
             return services.ToList();
-        }
-
-        public static List<ServiceStatusInfo> GetServicesStatus()
-        {
-            var list = new List<ServiceStatusInfo>();
-            var allNames = GetAllAcerServiceNames();
-            foreach (var name in allNames)
-            {
-                try
-                {
-                    using var sc = new ServiceController(name);
-                    list.Add(new ServiceStatusInfo
-                    {
-                        ServiceName = name,
-                        DisplayName = sc.DisplayName,
-                        IsInstalled = true,
-                        IsRunning = sc.Status == ServiceControllerStatus.Running,
-                        StartType = sc.StartType
-                    });
-                }
-                catch
-                {
-                    list.Add(new ServiceStatusInfo
-                    {
-                        ServiceName = name,
-                        DisplayName = name,
-                        IsInstalled = false,
-                        IsRunning = false
-                    });
-                }
-            }
-            return list;
         }
 
         public static bool AreAllServicesDisabled()
@@ -249,9 +208,7 @@ namespace PreySense.Core.Services
             try
             {
                 string path = process.MainModule?.FileName ?? "";
-                if (path.Contains(@"\Acer\", StringComparison.OrdinalIgnoreCase)
-                    || path.Contains(@"\Predator", StringComparison.OrdinalIgnoreCase)
-                    || path.Contains("predatorservice.inf_", StringComparison.OrdinalIgnoreCase))
+                if (IsAcerSystemPath(path))
                     return true;
 
                 string company = process.MainModule?.FileVersionInfo.CompanyName ?? "";
@@ -261,6 +218,32 @@ namespace PreySense.Core.Services
             {
                 return false;
             }
+        }
+
+        internal static bool IsAcerSystemPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return false;
+            if (path.Contains(@"\DriverStore\FileRepository\predatorservice.inf_", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            bool underProgramFiles = false;
+            foreach (var folder in new[]
+            {
+                Environment.SpecialFolder.ProgramFiles,
+                Environment.SpecialFolder.ProgramFilesX86,
+                Environment.SpecialFolder.CommonProgramFiles,
+                Environment.SpecialFolder.CommonProgramFilesX86
+            })
+            {
+                string root = Environment.GetFolderPath(folder);
+                if (!string.IsNullOrEmpty(root) && path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    underProgramFiles = true;
+                    break;
+                }
+            }
+            return underProgramFiles && (path.Contains(@"\Acer\", StringComparison.OrdinalIgnoreCase)
+                || path.Contains(@"\Predator", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool RemoveAcerScheduledTasks()
@@ -343,11 +326,7 @@ namespace PreySense.Core.Services
             foreach (var name in services)
             {
                 if (!IsServiceInstalled(name))
-                {
-                    allSucceeded = false;
-                    AppLogger.Log($"AcerServiceDebloater: Service not found while enabling: {name}");
                     continue;
-                }
 
                 try
                 {
@@ -397,20 +376,6 @@ namespace PreySense.Core.Services
             catch (Exception ex)
             {
                 AppLogger.Log($"AcerServiceDebloater: Failed to write configuration state: {ex.Message}");
-            }
-        }
-
-        /// <summary>Reads the JSON preference. Returns false if config cannot be loaded.</summary>
-        public static bool GetSavedState()
-        {
-            try
-            {
-                return Configuration.ConfigurationService.Instance.GetCurrent().General.AcerServicesDebloated;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"AcerServiceDebloater: Failed to read configuration state: {ex.Message}");
-                return false;
             }
         }
 

@@ -64,13 +64,13 @@ public class FanModeRuntimeTests
         Run(vm, "ProcessFanCurves", sample);
         var following = vm.GetFanControlDiagnostics();
         Assert.AreEqual(FanControllerState.Following, following.State);
-        Assert.AreEqual(50, following.CpuRequestPercent);
+        Assert.AreEqual(40, following.CpuRequestPercent);
         Assert.AreEqual(0, following.CpuStage);
 
         Run(vm, "ProcessFanCurves", sample with { CpuTemp = -1 });
         var waiting = vm.GetFanControlDiagnostics();
         Assert.AreEqual(FanControllerState.WaitingForCpuTemperature, waiting.State);
-        Assert.AreEqual(50, waiting.CpuRequestPercent, "Missing telemetry must retain the last request, not claim a new measurement.");
+        Assert.AreEqual(40, waiting.CpuRequestPercent, "Missing telemetry must retain the last request, not claim a new measurement.");
         Assert.HasCount(1, hardware.Calls);
 
         hardware.FailWrites = true;
@@ -123,10 +123,10 @@ public class FanModeRuntimeTests
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        Assert.AreEqual(50, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
         Assert.AreEqual(50, vm.AppliedGpuFanPercent);
         Run(vm, "ReleaseCustomFans");
-        CollectionAssert.AreEqual(new[] { "mode:1", "curve:50/50", "mode:0" }, hardware.Calls);
+        CollectionAssert.AreEqual(new[] { "mode:1", "curve:40/50", "mode:0" }, hardware.Calls);
         Assert.IsNull(vm.AppliedGpuFanPercent);
     }
     [TestMethod]
@@ -134,7 +134,6 @@ public class FanModeRuntimeTests
     {
         var hardware = new RecordingFans();
         var vm = Create(hardware);
-        vm.SynchronizeFanSpeeds = false;
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
         Assert.AreEqual(40, vm.AppliedCpuFanPercent);
@@ -151,9 +150,9 @@ public class FanModeRuntimeTests
         Run(vm, "ProcessFanCurves", normal with { CpuTemp = 99, GpuTemp = 90 });
         Run(vm, "ProcessFanCurves", normal with { CpuTemp = -1, GpuTemp = -1 });
         Run(vm, "ProcessFanCurves", normal);
-        CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+        CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
         Assert.AreEqual(0, hardware.PowerModeReads);
-        Assert.AreEqual(50, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
     }
 
     [TestMethod]
@@ -164,13 +163,13 @@ public class FanModeRuntimeTests
         Select(vm, FanControlMode.Custom);
         for (int i = 0; i < 10; i++)
             Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
-        CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+        CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
         Assert.IsNull(vm.AppliedCpuFanPercent);
         hardware.FailWrites = false;
         Select(vm, FanControlMode.Custom);
         Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
         Assert.HasCount(2, hardware.Calls);
-        Assert.AreEqual(50, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
     }
 
     [TestMethod]
@@ -214,7 +213,7 @@ public class FanModeRuntimeTests
         var temperatures = hardware.GetCurrentTelemetry() with { CpuTemp = 78, GpuTemp = gpuTemperature, CpuRpm = -1, GpuRpm = -1 };
         Run(vm, "ProcessFanCurves", temperatures);
         Run(vm, "ProcessFanCurves", temperatures);
-        CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+        CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
         Assert.AreEqual(0, hardware.PowerModeReads);
     }
 
@@ -242,7 +241,7 @@ public class FanModeRuntimeTests
             Assert.AreEqual(TelemetryMetrics.Temperatures, TelemetryCoordinator.RequestedMetrics);
             TelemetryCoordinator.Poll();
             Assert.AreEqual(1, samples);
-            CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+            CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
             Select(vm, FanControlMode.Max);
             Run(vm, "UpdateFanDemand");
             Assert.AreEqual(TelemetryMetrics.None, TelemetryCoordinator.RequestedMetrics);
@@ -273,7 +272,7 @@ public class FanModeRuntimeTests
                 CpuTemp = 78, IsValid = true, IsFanOnly = true
             });
             TelemetryCoordinator.Poll();
-            CollectionAssert.AreEqual(new[] { "curve:50/50" }, hardware.Calls);
+            CollectionAssert.AreEqual(new[] { "curve:40/50" }, hardware.Calls);
         }
         finally
         {

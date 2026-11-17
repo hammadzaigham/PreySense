@@ -58,13 +58,19 @@ namespace PreySense.Frontend.Views
 
         private async void ModeSettingsWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            SyncFromViewModel();
             if (DataContext is MainViewModel vm)
             {
                 vm.PropertyChanged -= OnTuningVmPropertyChanged;
                 vm.PropertyChanged += OnTuningVmPropertyChanged;
                 await System.Threading.Tasks.Task.WhenAll(vm.RefreshProchotLockStateAsync(), vm.RefreshGpuClockTuningAsync());
+                if (IsLoaded)
+                {
+                    LoadGpuClockRows(vm);
+                    UpdateApplyLimitPanels();
+                    UpdateActionButtonsEnabled();
+                }
             }
-            SyncFromViewModel();
         }
 
         private void OnTuningVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -155,6 +161,8 @@ namespace PreySense.Frontend.Views
 
             if (DropdownCpuBoost != null)
                 DropdownCpuBoost.SelectedIndex = Math.Clamp(Draft.EffectiveCpuBoostMode ?? vm.CpuBoostForModeIndex(_selectedModeIndex), 0, 6);
+            if (SwitchApplyCpuBoost != null)
+                SwitchApplyCpuBoost.IsChecked = Draft.ApplyCpuBoost;
 
             UpdateTuningSectionsVisibility();
 
@@ -179,6 +187,7 @@ namespace PreySense.Frontend.Views
         private void ApplyLimitsToggle_Changed(object sender, RoutedEventArgs e)
         {
             if (_isUpdatingUi || !_drafts.ContainsKey(_selectedModeIndex)) return;
+            Draft.ApplyCpuBoost = SwitchApplyCpuBoost?.IsChecked == true;
             Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
             Draft.ApplyGpuLimits = SwitchApplyGpuLimits?.IsChecked == true;
             UpdateApplyLimitPanels();
@@ -260,6 +269,8 @@ namespace PreySense.Frontend.Views
 
         private void UpdateApplyLimitPanels()
         {
+            if (CpuBoostPanel != null)
+                CpuBoostPanel.IsEnabled = SwitchApplyCpuBoost?.IsChecked == true;
             if (CpuLimitsPanel != null)
                 CpuLimitsPanel.IsEnabled = SwitchApplyCpuLimits?.IsChecked == true;
             if (GpuLimitsPanel != null)
@@ -271,11 +282,13 @@ namespace PreySense.Frontend.Views
         private void UpdateActionButtonsEnabled()
         {
             if (DataContext is not MainViewModel vm) return;
+            bool hasDraft = _drafts.TryGetValue(_selectedModeIndex, out var draft);
             bool cpuActive = vm.EnableCpuPowerLimitControl && SwitchApplyCpuLimits?.IsChecked == true;
-            bool gpuPowerActive = vm.EnableGpuPowerLimitControl && vm.IsGpuProfileTuningAvailable && Draft.ApplyGpuLimits;
+            bool gpuPowerActive = vm.EnableGpuPowerLimitControl && vm.IsGpuProfileTuningAvailable && hasDraft && draft!.ApplyGpuLimits;
             bool gpuOcActive = vm.EnableGpuOverclockingControl && SwitchGpuOverclocking?.IsChecked == true;
             bool prochotOnly = vm.IsProchotOffsetEnabled;
-            bool canAct = cpuActive || gpuPowerActive || gpuOcActive || prochotOnly || vm.EnableCpuBoostTuningControl;
+            bool cpuBoostActive = vm.EnableCpuBoostTuningControl && SwitchApplyCpuBoost?.IsChecked == true;
+            bool canAct = cpuActive || gpuPowerActive || gpuOcActive || prochotOnly || cpuBoostActive;
             if (BtnApply != null) BtnApply.IsEnabled = canAct;
             if (BtnSave != null) BtnSave.IsEnabled = true;
             if (BtnReset != null) BtnReset.IsEnabled = canAct;
@@ -324,8 +337,10 @@ namespace PreySense.Frontend.Views
             if (DataContext is not MainViewModel vm)
                 return (10, 10);
 
-            int pl1 = vm.LimitPl1ToPlatform((int)Math.Round(RowPl1?.Value ?? 10));
-            int pl2 = (int)Math.Round(RowPl2?.Value ?? pl1);
+            double rawPl1 = RowPl1 is { } r1 && double.IsFinite(r1.Value) ? r1.Value : (Draft.CpuPl1Watts ?? 10);
+            int pl1 = vm.LimitPl1ToPlatform((int)Math.Round(rawPl1));
+            double rawPl2 = RowPl2 is { } r2 && double.IsFinite(r2.Value) ? r2.Value : (Draft.CpuPl2Watts ?? pl1);
+            int pl2 = (int)Math.Round(rawPl2);
             if (preferPl2 && pl2 < pl1)
                 pl1 = vm.LimitPl1ToPlatform(pl2);
             pl2 = vm.LimitPl2(pl1, pl2);
@@ -489,19 +504,19 @@ namespace PreySense.Frontend.Views
             RowPl1.CommitText(notify: false); RowPl2.CommitText(notify: false);
             StoreGpuClockSliders();
             bool applyGpuOc = vm.EnableGpuOverclockingControl && SwitchGpuOverclocking?.IsChecked == true;
-            Draft.ApplyGpuClockOffsets = applyGpuOc;
+            Draft.ApplyGpuClockOffsets = SwitchGpuOverclocking?.IsChecked == true;
             bool applyProchot = vm.IsProchotOffsetEnabled && !vm.IsProchotOffsetLocked;
             bool applyCpuLimits = vm.EnableCpuPowerLimitControl && SwitchApplyCpuLimits?.IsChecked == true;
-            bool applyCpuBoost = vm.EnableCpuBoostTuningControl;
-            Draft.ApplyCpuBoost = applyCpuBoost;
-            Draft.ApplyCpuLimits = applyCpuLimits;
+            bool applyCpuBoost = vm.EnableCpuBoostTuningControl && SwitchApplyCpuBoost?.IsChecked == true;
+            Draft.ApplyCpuBoost = SwitchApplyCpuBoost?.IsChecked == true;
+            Draft.ApplyCpuLimits = SwitchApplyCpuLimits?.IsChecked == true;
             Draft.CpuPl1Watts = double.IsFinite(RowPl1.Value) ? (int)RowPl1.Value : null;
             Draft.CpuPl2Watts = double.IsFinite(RowPl2.Value) ? (int)RowPl2.Value : null;
             Draft.TauSeconds = ReadTauSeconds();
 
             var gpuOffsets = vm.EnableGpuPowerLimitControl && SwitchApplyGpuLimits.IsChecked == true
                 ? ReadGpuOffsets() : null;
-            Draft.ApplyGpuLimits = gpuOffsets is not null;
+            Draft.ApplyGpuLimits = SwitchApplyGpuLimits.IsChecked == true;
             int? gpuRuntime = null;
             if (applyProchot && vm.ProchotOffsetCelsius is null)
             {

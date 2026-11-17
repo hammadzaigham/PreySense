@@ -30,6 +30,8 @@ namespace PreySense.Core.Configuration
         private readonly string _configFilePath;
         private PreySenseConfig _currentConfig;
         private string? _persistedJson;
+        private DateTime _persistedLastWriteTimeUtc;
+        private long _persistedLength = -1;
 
         public string ConfigPath => _configFilePath;
 
@@ -67,13 +69,6 @@ namespace PreySense.Core.Configuration
             }
         }
 
-        /// <summary>Small immutable read for the fan editor hot path; avoids cloning all profiles and lighting data.</summary>
-        public (bool Measured, int CpuMaxRpm, int GpuMaxRpm) GetFanEstimateSettings()
-        {
-            lock (_gate)
-                return (_currentConfig.Fans.HasMeasuredFanMaximums, _currentConfig.Fans.CpuMaxRpm, _currentConfig.Fans.GpuMaxRpm);
-        }
-
         /// <summary>
         /// Reloads configuration strictly from disk. If the file does not exist,
         /// returns default configuration. Malformed JSON throws an InvalidOperationException with details.
@@ -97,9 +92,9 @@ namespace PreySense.Core.Configuration
 
             lock (_gate)
             {
-                Validate(config);
-                // Own the saved graph once: callers and mutators may retain their objects.
+                // Own and validate a cloned snapshot so failed validation never mutates the caller's object.
                 var snapshot = Clone(config);
+                Validate(snapshot);
                 string json = SerializeForFile(snapshot);
                 if (IsAlreadyPersisted(json))
                 {
@@ -130,6 +125,7 @@ namespace PreySense.Core.Configuration
 
                     _currentConfig = snapshot;
                     _persistedJson = json;
+                    RecordPersistedFileMetadata();
                 }
                 finally
                 {
@@ -141,13 +137,44 @@ namespace PreySense.Core.Configuration
             }
         }
 
+        private void RecordPersistedFileMetadata()
+        {
+            try
+            {
+                var info = new FileInfo(_configFilePath);
+                if (info.Exists)
+                {
+                    _persistedLastWriteTimeUtc = info.LastWriteTimeUtc;
+                    _persistedLength = info.Length;
+                    return;
+                }
+            }
+            catch { }
+            _persistedLastWriteTimeUtc = default;
+            _persistedLength = -1;
+        }
+
         private bool IsAlreadyPersisted(string json)
         {
-            if (!string.Equals(json, _persistedJson, StringComparison.Ordinal) || !File.Exists(_configFilePath))
+            if (!string.Equals(json, _persistedJson, StringComparison.Ordinal))
                 return false;
-            // Explicit saves must still honor the caller's desired state if another
-            // process edited the file. The optimization skips writes, not that check.
-            try { return string.Equals(File.ReadAllText(_configFilePath), json, StringComparison.Ordinal); }
+            try
+            {
+                var info = new FileInfo(_configFilePath);
+                if (!info.Exists)
+                    return false;
+                if (_persistedLength >= 0 && info.LastWriteTimeUtc == _persistedLastWriteTimeUtc && info.Length == _persistedLength)
+                    return true;
+                // Explicit saves must still honor the caller's desired state if another
+                // process edited the file. The optimization skips writes, not that check.
+                if (string.Equals(File.ReadAllText(_configFilePath), json, StringComparison.Ordinal))
+                {
+                    _persistedLastWriteTimeUtc = info.LastWriteTimeUtc;
+                    _persistedLength = info.Length;
+                    return true;
+                }
+                return false;
+            }
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
@@ -294,6 +321,9 @@ namespace PreySense.Core.Configuration
 
             if (config.Lighting.Cover.Speed is < 0 or > 100)
                 throw new ArgumentOutOfRangeException(nameof(config.Lighting.Cover.Speed), "Cover speed must be 0-100.");
+
+            config.Games ??= new GamesConfig();
+            config.Games.Profiles ??= new();
         }
 
         private static void ValidateModeTuning(string modeName, ModeTuningConfig mode)
@@ -351,6 +381,8 @@ namespace PreySense.Core.Configuration
             if (!File.Exists(_configFilePath))
             {
                 _persistedJson = null;
+                _persistedLastWriteTimeUtc = default;
+                _persistedLength = -1;
                 return new PreySenseConfig();
             }
 
@@ -376,6 +408,8 @@ namespace PreySense.Core.Configuration
                 loaded.Fans ??= new FanConfig();
                 loaded.Lighting ??= new LightingConfig();
                 loaded.Overlay ??= new OverlayConfig();
+                loaded.Games ??= new GamesConfig();
+                loaded.Games.Profiles ??= new();
 
                 loaded.Tuning.Quiet ??= new ModeTuningConfig();
                 loaded.Tuning.Eco ??= new ModeTuningConfig();
@@ -409,6 +443,7 @@ namespace PreySense.Core.Configuration
 
                 Validate(loaded);
                 _persistedJson = json;
+                RecordPersistedFileMetadata();
                 return loaded;
             }
             catch (Exception ex)
@@ -430,8 +465,7 @@ namespace PreySense.Core.Configuration
 
         private static PreySenseConfig Clone(PreySenseConfig source)
         {
-            string json = JsonSerializer.Serialize(source, SerializerOptions);
-            return JsonSerializer.Deserialize<PreySenseConfig>(json, SerializerOptions)!;
+            return source.Clone();
         }
     }
 }

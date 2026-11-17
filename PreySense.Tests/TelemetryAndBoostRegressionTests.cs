@@ -72,7 +72,7 @@ public class TelemetryAndBoostRegressionTests
         Assert.AreEqual(0, hardware.Reads);
         Assert.AreEqual(0, hardware.TemperatureReads, "Fan control must not perform independent reads.");
         Assert.AreEqual(0, hardware.AutoWrites);
-        Assert.AreEqual(50, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(40, vm.AppliedCpuFanPercent);
         Assert.AreEqual(50, vm.AppliedGpuFanPercent);
     }
 

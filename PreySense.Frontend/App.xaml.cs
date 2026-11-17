@@ -16,6 +16,7 @@ namespace PreySense.Frontend
         private static Thread? _showAppThread;
         private static volatile bool _exiting;
         private static bool _ownsSingleInstanceMutex;
+        private bool _startupCompleted;
 
         public App()
         {
@@ -27,6 +28,11 @@ namespace PreySense.Frontend
             DispatcherUnhandledException += (_, args) =>
             {
                 args.Handled = true;
+                if (_startupCompleted)
+                {
+                    Services.StartupDiagnostics.CreateReport(args.Exception);
+                    return;
+                }
                 ShowStartupFailure(args.Exception);
                 Shutdown(1);
             };
@@ -81,6 +87,7 @@ namespace PreySense.Frontend
             }
 
             Services.LocalizationService.Initialize();
+            Services.ThemeManager.LoadAndApply();
             _ = Task.Run(PreySense.Overlay.WinRing0Cleanup.RemoveInstalledDriver);
 
             // Start cross-process show event listener
@@ -148,6 +155,7 @@ namespace PreySense.Frontend
             {
                 mainWindow.ShowAndRestore();
             }
+            _startupCompleted = true;
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -156,8 +164,10 @@ namespace PreySense.Frontend
             try { _showAppEvent?.Set(); } catch (ObjectDisposedException) { }
             try
             {
-                if (MainWindow?.DataContext is ViewModels.MainViewModel vm)
-                    vm.PersistSessionSettings();
+                if (MainWindow is MainWindow mw)
+                    mw.DisposeSessionResources();
+                else if (MainWindow?.DataContext is ViewModels.MainViewModel vm)
+                    vm.PersistSessionSettings(includeLighting: false);
                 Views.ModeToastWindow.Shutdown();
             }
             catch (Exception ex) { AppLogger.Error($"Application exit cleanup failed: {ex}"); }

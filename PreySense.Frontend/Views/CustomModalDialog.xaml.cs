@@ -19,7 +19,7 @@ namespace PreySense.Frontend.Views
             // only when there is no application resource dictionary to inherit.
             if (Application.Current?.TryFindResource("AppWindowShellStyle") is null)
             {
-                foreach (string name in new[] { "Colors", "Typography", "Spacing", "Cards", "Controls" })
+                foreach (string name in new[] { "Colors", "Typography", "Spacing", "Controls" })
                     Resources.MergedDictionaries.Add(new ResourceDictionary
                     {
                         Source = new Uri($"pack://application:,,,/PreySense;component/Styles/{name}.xaml")

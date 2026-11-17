@@ -7,12 +7,13 @@
             <TextBlock Text="{Binding Title, ElementName=RootSliderRow}" Style="{DynamicResource SettingLabelStyle}" HorizontalAlignment="Left" />
             <TextBlock>
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource SettingValueStyle}">
+                    <Style TargetType="TextBlock">
                         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                         <Setter Property="HorizontalAlignment" Value="Right" />
                         <Setter Property="TextAlignment" Value="Right" />
+                        <Setter Property="VerticalAlignment" Value="Center" />
                         <Setter Property="Text" Value="{Binding ValueText, ElementName=RootSliderRow}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ValueText, ElementName=RootSliderRow}" Value="">
@@ -34,7 +35,7 @@
         <Slider x:Name="InnerSlider"
                 Minimum="{Binding Minimum, ElementName=RootSliderRow}"
                 Maximum="{Binding Maximum, ElementName=RootSliderRow}"
-                Value="{Binding Value, ElementName=RootSliderRow, Mode=TwoWay}"
+                Value="{Binding Value, ElementName=RootSliderRow, Mode=OneWay}"
                 SmallChange="{Binding SmallChange, ElementName=RootSliderRow}"
                 LargeChange="{Binding LargeChange, ElementName=RootSliderRow}"
                 TickFrequency="{Binding TickFrequency, ElementName=RootSliderRow}"

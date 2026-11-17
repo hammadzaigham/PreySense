@@ -58,14 +58,18 @@ public partial class MainViewModel
 
     internal Func<int, bool>? CpuBoostWriter { get; set; }
 
-    private bool IsModeCpuBoostTuningEnabled =>
-        (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning.EnableCpuBoostTuningControl;
+    private bool IsModeCpuBoostTuningEnabled(byte mode)
+    {
+        var tuning = (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
+        return tuning.EnableCpuBoostTuningControl && ProfileForMode(tuning, mode).ApplyCpuBoost;
+    }
 
     public bool ApplyCpuBoostForMode(byte mode)
     {
-        if (!IsModeCpuBoostTuningEnabled) return true;
+        if (!IsModeCpuBoostTuningEnabled(mode)) return true;
         int boost = CpuBoostModeForMode(mode);
-        CpuBoostMode = boost;
+        if (_dispatcher == null || _dispatcher.CheckAccess()) CpuBoostMode = boost;
+        else _ = _dispatcher.BeginInvoke(() => CpuBoostMode = boost);
         _lastCpuBoostApplySucceeded = (CpuBoostWriter ?? PowerLimitController.SetCpuBoost)(boost);
         if (!_lastCpuBoostApplySucceeded) DiagnosticMessage = "Could not apply CPU boost.";
         return _lastCpuBoostApplySucceeded;
@@ -73,14 +77,15 @@ public partial class MainViewModel
 
     private async System.Threading.Tasks.Task<bool> ApplyCpuBoostForModeAsync(byte mode)
     {
-        if (!IsModeCpuBoostTuningEnabled) return true;
+        if (!IsModeCpuBoostTuningEnabled(mode)) return true;
         return await WriteCpuBoostAsync(mode);
     }
 
     private async System.Threading.Tasks.Task<bool> WriteCpuBoostAsync(byte mode)
     {
         int boost = CpuBoostModeForMode(mode);
-        CpuBoostMode = boost;
+        if (_dispatcher == null || _dispatcher.CheckAccess()) CpuBoostMode = boost;
+        else _ = _dispatcher.BeginInvoke(() => CpuBoostMode = boost);
         bool applied = await System.Threading.Tasks.Task.Run(() => (CpuBoostWriter ?? PowerLimitController.SetCpuBoost)(boost));
         _lastCpuBoostApplySucceeded = applied;
         if (!applied) DiagnosticMessage = "Could not apply CPU boost.";
@@ -139,7 +144,7 @@ public partial class MainViewModel
     }
 
     public int LimitPl1ToPlatform(int pl1Watts) =>
-        Math.Clamp(pl1Watts, 10, EffectivePlatformPl1Limit);
+        Math.Clamp(pl1Watts, 5, EffectivePlatformPl1Limit);
 
     public int LimitPl2(int pl1Watts, int pl2Watts) =>
         Math.Clamp(pl2Watts, LimitPl1ToPlatform(pl1Watts),

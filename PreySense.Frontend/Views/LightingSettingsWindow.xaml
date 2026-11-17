@@ -63,7 +63,7 @@
                                         <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
                                                 Background="{Binding SelectedKeyboardModeColor.ColorHex, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding SelectedKeyboardModeColor.ColorHex, UpdateSourceTrigger=PropertyChanged}" Width="80" Height="26"
+                                        <TextBox Text="{Binding SelectedKeyboardModeColor.ColorHex, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                                  Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
                                                  FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
                                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"

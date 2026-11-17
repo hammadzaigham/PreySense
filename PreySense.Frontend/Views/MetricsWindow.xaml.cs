@@ -88,9 +88,21 @@ namespace PreySense.Frontend.Views
                 Dispatcher.BeginInvoke(new Action(HardwareOverlayManager.RefreshDisplayFlags));
         }, (pending, latest) => { foreach (var entry in latest) pending[entry.Key] = entry.Value; return pending; });
 		InitializeComponent();
+		MaxHeight = SystemParameters.WorkArea.Height - 40;
 		LoadSettings();
 		BuildColumnSlots();
 		_isInitializing = false;
+		IsVisibleChanged += (_, _) =>
+		{
+			if (!IsVisible) return;
+			_isInitializing = true;
+			try
+			{
+				LoadSettings();
+				BuildColumnSlots();
+			}
+			finally { _isInitializing = false; }
+		};
 		OverlayBridge.EnabledChanged += OnOverlayEnabledChanged;
 		Closed += async (object? sender, EventArgs args) =>
 		{
@@ -122,14 +134,16 @@ namespace PreySense.Frontend.Views
 
     private void LoadSettings()
     {
-        bool overlayEnabled = AppConfig.IsOverlay();
-        bool showFps = AppConfig.Get("overlay_show_fps", 1) == 1;
-        int savedScalePercent = AppConfig.Get("overlay_scale_percent", 100);
+        var overlay = ConfigurationService.Instance.GetCurrent().Overlay;
+        bool overlayEnabled = overlay.Enabled;
+        bool showFps = overlay.ShowFps;
+        int savedScalePercent = overlay.ScalePercent;
         int scalePercent = Math.Clamp((int)Math.Round(savedScalePercent / 5.0) * 5, 50, 200);
-        int backgroundOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_alpha", 50));
-        int textOpacityPercent = NormalizeSavedOpacity(AppConfig.Get("overlay_text_alpha", 100));
+        int backgroundOpacityPercent = NormalizeSavedOpacity(overlay.BackgroundAlphaPercent);
+        int textOpacityPercent = NormalizeSavedOpacity(overlay.TextAlphaPercent);
+        _slots = overlay.Slots;
 
-        DropdownOverlayTheme.SelectedIndex = (int)ConfigurationService.Instance.GetCurrent().Overlay.Theme;
+        DropdownOverlayTheme.SelectedIndex = (int)overlay.Theme;
         CheckEnableOverlay.IsChecked = overlayEnabled;
         CheckShowFps.IsChecked = showFps;
         SliderHudScale.Value = scalePercent;
@@ -140,8 +154,8 @@ namespace PreySense.Frontend.Views
         LabelTextOpacity.Text = $"{textOpacityPercent}%";
         DropdownHorizontalPos.ItemsSource = HorizontalPositions;
         DropdownVerticalPos.ItemsSource = VerticalPositions;
-        DropdownHorizontalPos.SelectedItem = AppConfig.GetString("overlay_pos_horizontal", "Left");
-        DropdownVerticalPos.SelectedItem = AppConfig.GetString("overlay_pos_vertical", "Top");
+        DropdownHorizontalPos.SelectedItem = string.IsNullOrWhiteSpace(overlay.PositionHorizontal) ? "Left" : overlay.PositionHorizontal;
+        DropdownVerticalPos.SelectedItem = string.IsNullOrWhiteSpace(overlay.PositionVertical) ? "Top" : overlay.PositionVertical;
     }
 
     private async void OverlayTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)

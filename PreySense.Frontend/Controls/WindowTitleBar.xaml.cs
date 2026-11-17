@@ -91,10 +91,11 @@ namespace PreySense.Frontend.Controls
 
         private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ChangedButton != MouseButton.Left || IsInsideButton(e.OriginalSource as DependencyObject))
+            if (e.ChangedButton != MouseButton.Left || e.LeftButton != MouseButtonState.Pressed || IsInsideButton(e.OriginalSource as DependencyObject))
                 return;
 
-            Window.GetWindow(this)?.DragMove();
+            try { Window.GetWindow(this)?.DragMove(); }
+            catch (System.InvalidOperationException) { }
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

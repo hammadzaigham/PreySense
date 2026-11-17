@@ -8,15 +8,37 @@ namespace PreySense.Frontend.Views
     public partial class TuningSettingsWindow : Window
     {
         private bool _isUpdatingUi;
+        private bool _saved;
+        private bool _hasSnapshot;
+        private bool _snapshotEnabled;
+        private int? _snapshotOffsetCelsius;
 
         public TuningSettingsWindow()
         {
             InitializeComponent();
             Loaded += TuningSettingsWindow_Loaded;
+            IsVisibleChanged += (_, _) =>
+            {
+                if (IsVisible && DataContext is MainViewModel vm)
+                {
+                    _saved = false;
+                    _snapshotEnabled = vm.IsProchotOffsetEnabled;
+                    _snapshotOffsetCelsius = vm.ProchotOffsetCelsius;
+                    _hasSnapshot = true;
+                    SyncFromViewModel();
+                }
+            };
             Closed += (_, _) =>
             {
                 if (DataContext is MainViewModel vm)
+                {
                     vm.PropertyChanged -= OnVmPropertyChanged;
+                    if (!_saved && _hasSnapshot)
+                    {
+                        vm.ProchotOffsetCelsius = _snapshotOffsetCelsius;
+                        vm.IsProchotOffsetEnabled = _snapshotEnabled;
+                    }
+                }
             };
         }
 
@@ -24,6 +46,10 @@ namespace PreySense.Frontend.Views
         {
             if (DataContext is MainViewModel vm)
             {
+                _saved = false;
+                _snapshotEnabled = vm.IsProchotOffsetEnabled;
+                _snapshotOffsetCelsius = vm.ProchotOffsetCelsius;
+                _hasSnapshot = true;
                 vm.PropertyChanged -= OnVmPropertyChanged;
                 vm.PropertyChanged += OnVmPropertyChanged;
             }
@@ -77,6 +103,7 @@ namespace PreySense.Frontend.Views
             if (DataContext is not MainViewModel vm) return;
             RowProchotOffset_LostFocus(RowProchotOffset, new RoutedEventArgs());
             if (!vm.SaveProchotSettings()) { SaveStatus.Text = vm.DiagnosticMessage; return; }
+            _saved = true;
             Close();
         }
     }

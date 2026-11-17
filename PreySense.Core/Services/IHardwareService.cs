@@ -82,19 +82,11 @@ namespace PreySense.Core.Services
         bool GetLcdOverdrive();
         bool TryGetLcdOverdrive(out bool enabled) { enabled = false; return false; }
         bool SetLcdOverdrive(bool enable);
-        bool GetBootSound();
-        void SetBootSound(bool enable);
-        bool GetKbdBacklightTimeout();
-        void SetKbdBacklightTimeout(bool enable);
         void SetKbdBacklightTimeoutSeconds(int seconds);
         int GetUsbChargingLevel();
         void SetUsbChargingLevel(int percent);
 
         // Display & Vision
-        bool GetBlueLightShield();
-        int GetBlueLightShieldMode();
-        void SetBlueLightShield(bool enable);
-        void SetBlueLightShield(int mode);
         int GetDisplayRefreshRate();
         bool SetDisplayRefreshRate(int hz);
         System.Collections.Generic.List<int> GetSupportedRefreshRates();

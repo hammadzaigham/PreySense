@@ -426,8 +426,11 @@ public partial class MainViewModel
             string? previous = SelectedLightingDevice?.Id;
             var draft = SelectedLightingDevice == null ? null : CaptureDeviceLightingSettings();
             int? selectedKey = SelectedLightingKey?.Index;
-            LightingDevices.Clear();
-            foreach (var device in devices) LightingDevices.Add(device);
+            if (!LightingDevices.Select(d => d.Id).SequenceEqual(devices.Select(d => d.Id), StringComparer.Ordinal))
+            {
+                LightingDevices.Clear();
+                foreach (var device in devices) LightingDevices.Add(device);
+            }
             SelectedLightingDevice = LightingDevices.FirstOrDefault(device => device.Id == previous) ?? LightingDevices.FirstOrDefault();
             if (SelectedLightingDevice?.Id == previous && draft != null)
             {
@@ -465,7 +468,8 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(ShowIndividualLedGrid));
             var device = SelectedLightingDevice;
             if (device is null) { SelectedLightingDeviceMode = null; return; }
-            var saved = ConfigurationService.Instance.GetCurrent().Lighting.Devices;
+            var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
+            var saved = lighting.Devices;
             var settings = saved.TryGetValue(device.Id, out var profile) ? profile : new DeviceLightingConfig();
             if (!saved.ContainsKey(device.Id) && device.Kind == "Keyboard" && device.Leds.Count == 4 && _zoneHexColors is { Length: 4 })
             {
@@ -478,14 +482,14 @@ public partial class MainViewModel
             }
             // Missing profiles use the same Mode default for every physical lighting target.
             foreach (var mode in device.GetEditorModes()) LightingDeviceModes.Add(mode);
-            LoadDeviceLightingSettings(settings);
+            LoadDeviceLightingSettings(settings, lighting);
             LightingDeviceStatus = device.Details;
             NotifyLightingEditorVisibility();
         }
         finally { _loadingDeviceEditor = wasLoading; }
     }
 
-    private void LoadDeviceLightingSettings(DeviceLightingConfig settings)
+    private void LoadDeviceLightingSettings(DeviceLightingConfig settings, LightingConfig? lightingConfig = null)
     {
         bool wasLoading = _loadingDeviceEditor;
         _loadingDeviceEditor = true;
@@ -493,19 +497,20 @@ public partial class MainViewModel
         {
             var device = SelectedLightingDevice;
             if (device == null) return;
+            var lighting = lightingConfig ?? ConfigurationService.Instance.GetCurrent().Lighting;
             ClearLightingLedEditors();
             SelectedLightingDeviceMode = LightingDeviceModes.FirstOrDefault(mode => mode.Value == settings.Mode)
                 ?? (device.Modes.Any(m => ModeKeyLighting.IsFollowMode(m.Value))
                     ? LightingDeviceModes.FirstOrDefault(m => ModeKeyLighting.IsFollowMode(m.Value)) : null)
                 ?? LightingDeviceModes.FirstOrDefault();
             DeviceLightingBrightness = ModeKeyLighting.IsFollowMode(settings.Mode)
-                ? ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness : settings.Brightness;
+                ? lighting.ModeBrightness : settings.Brightness;
             DeviceLightingSpeed = settings.Speed;
             DeviceLightingDirection = SelectedLightingDeviceMode?.ResolveDirection(settings.Direction) ?? 0;
             _deviceLightingNativeSpeed = settings.AnimationSpeedLevel;
             OnPropertyChanged(nameof(DeviceLightingSpeedLevel));
             DeviceLightingColorHex = ModeKeyLighting.IsFollowMode(settings.Mode)
-                ? ModeKeyLighting.SharedColorFor(ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors, ActivePowerMode)
+                ? ModeKeyLighting.SharedColorFor(lighting.PowerModeColors, ActivePowerMode)
                 : settings.ColorHex;
             DeviceLightingIndividualColors = SelectedLightingDeviceMode?.Value == -1 || settings.IndividualColors;
             DeviceLightingRandomColors = settings.RandomColors;
@@ -520,7 +525,7 @@ public partial class MainViewModel
             if (IsDirectLightingDeviceMode && !IsPerKeyKeyboard)
                 SelectedLightingKey = LightingLedEditors.FirstOrDefault();
             if ((device.Kind.Equals("Hotkey", StringComparison.OrdinalIgnoreCase) || ModeKeyLighting.IsFollowMode(settings.Mode)) && !settings.SyncWithKeyboard)
-                LoadModePowerModeColorEditors(settings);
+                LoadModePowerModeColorEditors(settings, lighting);
             else
                 ClearModePowerModeColorEditors();
             if (settings.SyncWithKeyboard)
@@ -695,13 +700,14 @@ public partial class MainViewModel
         SelectedModePowerModeColor = null;
     }
 
-    private void LoadModePowerModeColorEditors(DeviceLightingConfig settings)
+    private void LoadModePowerModeColorEditors(DeviceLightingConfig settings, LightingConfig? lightingConfig = null)
     {
         ClearModePowerModeColorEditors();
+        var lighting = lightingConfig ?? ConfigurationService.Instance.GetCurrent().Lighting;
         foreach (var slot in ModeKeyLighting.Slots)
         {
             var editor = new ModePowerModeColorEditor(
-                slot.PowerMode, slot.Name, slot.DefaultHex, ModeKeyLighting.SharedColorFor(ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors, slot.PowerMode));
+                slot.PowerMode, slot.Name, slot.DefaultHex, ModeKeyLighting.SharedColorFor(lighting.PowerModeColors, slot.PowerMode));
             editor.PropertyChanged += OnModePowerModeColorEdited;
             ModePowerModeColorEditors.Add(editor);
         }

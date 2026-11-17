@@ -9,13 +9,18 @@ namespace PreySense.Frontend.Controls
     public partial class SettingValueRow : UserControl
     {
         private bool _syncingText;
+        private bool _committingFromEnter;
         public bool AllowEmpty { get; set; }
         public string UnavailableText { get; set; } = string.Empty;
 
         public SettingValueRow()
         {
             InitializeComponent();
-            InnerValueBox.LostFocus += (_, _) => CommitText(notify: true);
+            InnerValueBox.LostFocus += (_, _) =>
+            {
+                if (_committingFromEnter) return;
+                CommitText(notify: true);
+            };
             InnerValueBox.KeyDown += OnValueKeyDown;
             InnerValueBox.TextChanged += OnTextChanged;
             Loaded += (_, _) => SyncTextFromValue();
@@ -146,8 +151,13 @@ namespace PreySense.Frontend.Controls
         {
             if (e.Key != Key.Enter)
                 return;
-            CommitText(notify: true);
-            Keyboard.ClearFocus();
+            _committingFromEnter = true;
+            try
+            {
+                CommitText(notify: true);
+                Keyboard.ClearFocus();
+            }
+            finally { _committingFromEnter = false; }
             e.Handled = true;
         }
 

@@ -17,6 +17,8 @@ public partial class GamesWindow : Window
         {
             game.Enabled = toggle.IsChecked == true;
             if (ReferenceEquals(vm.SelectedGameProfile, game)) vm.SelectedGameEnabled = game.Enabled;
+            if (IsLoaded && !_updatingEditor)
+                vm.SaveSelectedGameProfile();
         }
     }
 
@@ -26,6 +28,7 @@ public partial class GamesWindow : Window
         MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 48);
         UpdateScrollLimit();
         Loaded += (_, _) => UpdateScrollLimit();
+        IsVisibleChanged += (_, _) => { if (IsVisible) LoadGameControls(); };
         DataContextChanged += (_, _) =>
         {
             if (_viewModel is not null) _viewModel.PropertyChanged -= ViewModelChanged;
@@ -67,6 +70,8 @@ public partial class GamesWindow : Window
                     game.PlatformPowerOffsetWatts = offsets.PlatformOffsetWatts;
                 }
             }
+            GamePl1.Value = game?.CpuPl1Watts is int pl1 ? pl1 : double.NaN;
+            GamePl2.Value = game?.CpuPl2Watts is int pl2 ? pl2 : double.NaN;
             GameTauSlider.Maximum = CpuPowerLimitConfiguration.TauSliderMaximum;
             GameTauSlider.Value = CpuPowerLimitConfiguration.TauStepIndex(game?.TauSeconds ?? 0);
             GameDeltaSlider.Value = game?.GpuDeltaWatts ?? 0;

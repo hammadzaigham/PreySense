@@ -36,6 +36,7 @@ namespace PreySense
         private static readonly byte[] ZoneMasks = { 0x01, 0x02, 0x04, 0x08 };
 
         private readonly object _lock = PreySense.Rgb.AcerLightingTransportGate.Sync;
+        private readonly byte[] _featureBuffer = new byte[ExpectedReportLength];
         private readonly Func<byte, byte, byte, byte, byte, bool> _sendStaticZone;
         private SafeFileHandle? _deviceHandle;
         private bool _isDisposed;
@@ -288,7 +289,7 @@ namespace PreySense
                     return false;
             }
 
-            byte[] packet = new byte[ExpectedReportLength];
+            byte[] packet = _featureBuffer;
             packet[0] = ReportId;
             packet[1] = target;
             packet[2] = effect;

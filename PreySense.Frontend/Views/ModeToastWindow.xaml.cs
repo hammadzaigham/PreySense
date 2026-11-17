@@ -22,6 +22,7 @@ namespace PreySense.Frontend.Views
 
         private readonly DispatcherTimer _hideTimer;
         private bool _isShuttingDown;
+        private long _displayGeneration;
 
         public ModeToastWindow()
         {
@@ -70,6 +71,7 @@ namespace PreySense.Frontend.Views
 
         private void Display(string modeName, string iconPath, string borderBrushKey)
         {
+            long generation = ++_displayGeneration;
             _hideTimer.Stop();
             BeginAnimation(OpacityProperty, null);
 
@@ -90,7 +92,7 @@ namespace PreySense.Frontend.Views
             };
             fadeIn.Completed += (_, _) =>
             {
-                if (IsVisible)
+                if (IsVisible && generation == _displayGeneration)
                     _hideTimer.Start();
             };
             BeginAnimation(OpacityProperty, fadeIn, HandoffBehavior.SnapshotAndReplace);
@@ -99,13 +101,14 @@ namespace PreySense.Frontend.Views
         private void OnHideTimerTick(object? sender, EventArgs e)
         {
             _hideTimer.Stop();
+            long generation = _displayGeneration;
             var fadeOut = new DoubleAnimation(Opacity, 0, FadeOutDuration)
             {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
             };
             fadeOut.Completed += (_, _) =>
             {
-                if (Opacity <= 0.01)
+                if (generation == _displayGeneration && Opacity <= 0.01)
                     Hide();
             };
             BeginAnimation(OpacityProperty, fadeOut, HandoffBehavior.SnapshotAndReplace);

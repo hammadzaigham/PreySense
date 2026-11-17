@@ -18,6 +18,8 @@ namespace PreySense.Frontend
         private readonly Dictionary<Type, Window> _toolWindows = new();
         private Window? _lastActiveWindow;
         private ForegroundWindowEvents? _windowActivityEvents;
+        private System.Windows.Interop.HwndSource? _hwndSource;
+        private bool _sessionResourcesDisposed;
 
         public MainWindow()
         {
@@ -44,8 +46,8 @@ namespace PreySense.Frontend
             IntPtr hWnd = helper.EnsureHandle();
 
             _trayIconManager = new Services.TrayIconManager(hWnd, onOpen: ShowAndRestore, onQuit: QuitApplication);
-            var source = System.Windows.Interop.HwndSource.FromHwnd(hWnd);
-            source?.AddHook(_trayIconManager.WndProc);
+            _hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hWnd);
+            _hwndSource?.AddHook(_trayIconManager.WndProc);
             try { _hidArrivalWatcher = new Services.HidDeviceArrivalWatcher(hWnd); } catch { }
 
             IHardwareService hw;
@@ -55,7 +57,7 @@ namespace PreySense.Frontend
             }
             catch (Exception ex)
             {
-                System.IO.File.WriteAllText("hw_init.log", ex.ToString());
+                PreySense.AppLogger.Error($"Hardware service initialization failed: {ex}");
                 hw = new MockHardwareService();
             }
 
@@ -113,19 +115,29 @@ namespace PreySense.Frontend
                     HideApplicationWindowsForAutoHide();
             };
 
-            Closed += (s, e) =>
+            Closed += (_, _) => DisposeSessionResources();
+        }
+
+        internal void DisposeSessionResources()
+        {
+            if (_sessionResourcesDisposed) return;
+            _sessionResourcesDisposed = true;
+            _windowActivityEvents?.Dispose();
+            _windowActivityEvents = null;
+            _hidArrivalWatcher?.Dispose();
+            _hidArrivalWatcher = null;
+            _keyboardHook?.Dispose();
+            _keyboardHook = null;
+            if (_trayIconManager != null)
             {
-                _windowActivityEvents?.Dispose();
-                _windowActivityEvents = null;
-                _hidArrivalWatcher?.Dispose();
-                _hidArrivalWatcher = null;
-                _keyboardHook?.Dispose();
-                _keyboardHook = null;
-                _trayIconManager?.Dispose();
+                _hwndSource?.RemoveHook(_trayIconManager.WndProc);
+                _trayIconManager.Dispose();
                 _trayIconManager = null;
-                OverlayBridge.Dispose();
+            }
+            _hwndSource = null;
+            OverlayBridge.Dispose();
+            if (DataContext is MainViewModel vm)
                 vm.Dispose();
-            };
         }
 
         private void RunOnUi(Action action)
@@ -146,7 +158,6 @@ namespace PreySense.Frontend
                 {
                     if (DataContext is MainViewModel vm)
                     {
-                        await vm.PrepareFanCalibrationShutdownAsync();
                         await vm.PrepareGameModeShutdownAsync();
                     }
                 }
@@ -155,10 +166,14 @@ namespace PreySense.Frontend
                 {
                     // Also drain if either preceding restore failed. Keep the dispatcher
                     // available until all in-flight mode/tuning work has released its gate.
-                    if (DataContext is MainViewModel closingVm)
-                        await closingVm.PrepareModeSwitchShutdownAsync();
-                    Close();
-                    Application.Current.Shutdown();
+                    try
+                    {
+                        if (DataContext is MainViewModel closingVm)
+                            await closingVm.PrepareModeSwitchShutdownAsync();
+                    }
+                    catch (Exception ex) { PreySense.AppLogger.Error($"Mode switch shutdown drain failed: {ex}"); }
+                    try { Close(); } catch { }
+                    Application.Current?.Shutdown();
                 }
             });
         }

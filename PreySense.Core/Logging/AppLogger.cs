@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 
 namespace PreySense
@@ -5,8 +6,11 @@ namespace PreySense
     public static class AppLogger
     {
         public static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug.log");
+        private static readonly string FallbackLogPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PreySense", "debug.log");
         private static readonly object LockObj = new();
         private static StreamWriter? _writer;
+        private static string _activeLogPath = LogPath;
 
         public static void Log(string message)
         {
@@ -37,16 +41,33 @@ namespace PreySense
                 try
                 {
                     string logLine = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
-                    _writer ??= new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), System.Text.Encoding.UTF8)
+                    if (_writer == null)
                     {
-                        AutoFlush = true
-                    };
+                        try
+                        {
+                            _writer = new StreamWriter(new FileStream(_activeLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), System.Text.Encoding.UTF8)
+                            {
+                                AutoFlush = true
+                            };
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            string? dir = Path.GetDirectoryName(FallbackLogPath);
+                            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                            _activeLogPath = FallbackLogPath;
+                            _writer = new StreamWriter(new FileStream(_activeLogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), System.Text.Encoding.UTF8)
+                            {
+                                AutoFlush = true
+                            };
+                        }
+                    }
                     _writer.WriteLine(logLine);
-                    System.Diagnostics.Debug.Write(logLine);
+                    System.Diagnostics.Debug.WriteLine(logLine);
                 }
                 catch
                 {
-                    // Ignore logging errors to prevent crashes
+                    try { _writer?.Dispose(); } catch { }
+                    _writer = null;
                 }
             }
         }
@@ -59,9 +80,9 @@ namespace PreySense
                 {
                     _writer?.Dispose();
                     _writer = null;
-                    if (File.Exists(LogPath))
+                    if (File.Exists(_activeLogPath))
                     {
-                        File.Delete(LogPath);
+                        File.Delete(_activeLogPath);
                     }
                 }
                 catch { }

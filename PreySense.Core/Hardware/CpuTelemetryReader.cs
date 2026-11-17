@@ -34,6 +34,7 @@ public sealed class CpuTelemetryReader : IDisposable
 
     // Reference clock discovery
     private double? _referenceClockMhz;
+    private ulong? _cachedTemperatureTargetRaw;
 
     // Per-processor state for APERF/MPERF/TSC tracking
     private sealed class ProcessorFrequencyState
@@ -52,7 +53,7 @@ public sealed class CpuTelemetryReader : IDisposable
         }
     }
 
-    private readonly Dictionary<int, ProcessorFrequencyState> _perProcessorState = new();
+    private ProcessorFrequencyState?[] _perProcessorState;
     private readonly ProcessorFrequencyState _currentProcessorState = new();
 
     public readonly record struct FrequencySample(
@@ -90,6 +91,7 @@ public sealed class CpuTelemetryReader : IDisposable
         _backend = backend ?? throw new ArgumentNullException(nameof(backend));
 
         _isECore = customECoreMap ?? BuildECoreMap(Environment.ProcessorCount);
+        _perProcessorState = new ProcessorFrequencyState?[Math.Max(1, _isECore.Length)];
 
         if (explicitReferenceClockMhz.HasValue && explicitReferenceClockMhz.Value > 0)
         {
@@ -212,8 +214,13 @@ public sealed class CpuTelemetryReader : IDisposable
         {
             if (!_backend.IsInitialized) return null;
 
-            if (!_backend.ReadMsr(MSR_TEMPERATURE_TARGET, out ulong targetRaw))
-                return null;
+            if (!_cachedTemperatureTargetRaw.HasValue)
+            {
+                if (!_backend.ReadMsr(MSR_TEMPERATURE_TARGET, out ulong readTargetRaw))
+                    return null;
+                _cachedTemperatureTargetRaw = readTargetRaw;
+            }
+            ulong targetRaw = _cachedTemperatureTargetRaw.Value;
 
             // Attempt MSR 0x1B1 (Package Thermal Status)
             if (_backend.ReadMsr(MSR_PACKAGE_THERM_STAT, out ulong thermalRaw))
@@ -326,10 +333,11 @@ public sealed class CpuTelemetryReader : IDisposable
 
             // All state access is protected by _syncLock, so no concurrent collection is needed.
             var state = _currentProcessorState;
-            if (logicalProcessorIndex is int processorIndex && !_perProcessorState.TryGetValue(processorIndex, out state))
+            if (logicalProcessorIndex is int processorIndex && processorIndex >= 0)
             {
-                state = new ProcessorFrequencyState();
-                _perProcessorState.Add(processorIndex, state);
+                if (processorIndex >= _perProcessorState.Length)
+                    Array.Resize(ref _perProcessorState, processorIndex + 1);
+                state = _perProcessorState[processorIndex] ??= new ProcessorFrequencyState();
             }
 
             if (state.LastTimestamp == 0)
@@ -558,8 +566,9 @@ public sealed class CpuTelemetryReader : IDisposable
         lock (_syncLock)
         {
             _raplInitialized = false;
+            _cachedTemperatureTargetRaw = null;
             _lastEnergyTimestamp = 0;
-            _perProcessorState.Clear();
+            Array.Clear(_perProcessorState, 0, _perProcessorState.Length);
             _currentProcessorState.LastTimestamp = 0;
         }
     }

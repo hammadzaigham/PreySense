@@ -156,17 +156,50 @@ public sealed class RgbKeyboardLayout : FrameworkElement
         };
     }
 
+    private static readonly Typeface CachedTypeface = new("Segoe UI");
+    private static readonly SolidColorBrush SelectionOverlayBrush = CreateFrozenBrush(Color.FromArgb(32, 128, 128, 128));
+    private readonly Dictionary<Color, SolidColorBrush> _brushCache = new();
+    private Pen? _cachedAccentPen2;
+    private Pen? _cachedAccentPen1;
+    private Brush? _lastAccentBrush;
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private SolidColorBrush GetBrush(Color color)
+    {
+        if (!_brushCache.TryGetValue(color, out var brush))
+        {
+            if (_brushCache.Count > 512) _brushCache.Clear();
+            brush = CreateFrozenBrush(color);
+            _brushCache[color] = brush;
+        }
+        return brush;
+    }
+
     private void ChangeSource(object? oldSource, object? newSource)
     {
         if (oldSource is INotifyCollectionChanged oldList) oldList.CollectionChanged -= OnCollectionChanged;
-        if (newSource is INotifyCollectionChanged newList) newList.CollectionChanged += OnCollectionChanged;
+        if (newSource is INotifyCollectionChanged newList)
+        {
+            newList.CollectionChanged -= OnCollectionChanged;
+            newList.CollectionChanged += OnCollectionChanged;
+        }
         _listening = true;
         Rebuild();
     }
     private void ChangeSelection(object? oldSelection, object? newSelection)
     {
         if (oldSelection is INotifyCollectionChanged oldList) oldList.CollectionChanged -= OnSelectionChanged;
-        if (newSelection is INotifyCollectionChanged newList) newList.CollectionChanged += OnSelectionChanged;
+        if (newSelection is INotifyCollectionChanged newList)
+        {
+            newList.CollectionChanged -= OnSelectionChanged;
+            newList.CollectionChanged += OnSelectionChanged;
+        }
         InvalidateVisual();
     }
     private void OnSelectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => InvalidateVisual();
@@ -177,7 +210,11 @@ public sealed class RgbKeyboardLayout : FrameworkElement
         foreach (var key in _keys) key.PropertyChanged -= OnKeyChanged;
         _keys.Clear();
         if (KeysSource != null) _keys.AddRange(KeysSource);
-        foreach (var key in _keys) key.PropertyChanged += OnKeyChanged;
+        foreach (var key in _keys)
+        {
+            key.PropertyChanged -= OnKeyChanged;
+            key.PropertyChanged += OnKeyChanged;
+        }
         _placements = KeyboardLayoutGeometry.Build(_keys.Select(k => new LightingLedInfo(k.Index, k.Name)));
         InvalidateMeasure(); InvalidateVisual();
     }
@@ -191,8 +228,14 @@ public sealed class RgbKeyboardLayout : FrameworkElement
         Color background = (GetValue(KeyBackgroundProperty) as SolidColorBrush)?.Color ?? Color.FromRgb(35, 35, 35);
         Brush foreground = GetValue(KeyForegroundProperty) as Brush ?? Brushes.White;
         Brush accent = GetValue(KeyAccentProperty) as Brush ?? Brushes.DeepSkyBlue;
-        Brush border = GetValue(KeyBorderProperty) as Brush ?? Brushes.DimGray;
-        var typeface = new Typeface("Segoe UI");
+        if (!ReferenceEquals(accent, _lastAccentBrush) || _cachedAccentPen2 == null || _cachedAccentPen1 == null)
+        {
+            _lastAccentBrush = accent;
+            _cachedAccentPen2 = new Pen(accent, 2);
+            _cachedAccentPen1 = new Pen(accent, 1);
+            if (accent.IsFrozen) { _cachedAccentPen2.Freeze(); _cachedAccentPen1.Freeze(); }
+        }
+        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         foreach (var placement in _placements)
         {
             var key = _keys.First(k => k.Index == placement.Index);
@@ -200,16 +243,16 @@ public sealed class RgbKeyboardLayout : FrameworkElement
             try { rgb = (Color)ColorConverter.ConvertFromString(UseIndividualColors ? key.ColorHex : CommonColorHex); } catch { rgb = background; }
             Color tint = Color.FromRgb((byte)((background.R * 3 + rgb.R) / 4), (byte)((background.G * 3 + rgb.G) / 4), (byte)((background.B * 3 + rgb.B) / 4));
             bool selected = Selection.Contains(key) || (Selection.Count == 0 && ReferenceEquals(key, SelectedKey));
-            dc.DrawRoundedRectangle(new SolidColorBrush(tint), selected ? new Pen(accent, 2) : null, placement.Bounds, 4, 4);
+            dc.DrawRoundedRectangle(GetBrush(tint), selected ? _cachedAccentPen2 : null, placement.Bounds, 4, 4);
             var strip = new Rect(placement.Bounds.X + 4, placement.Bounds.Bottom - 5, Math.Max(1, placement.Bounds.Width - 8), 2);
-            dc.DrawRoundedRectangle(new SolidColorBrush(rgb), null, strip, 1, 1);
-            var text = new FormattedText(placement.Label, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface,
-                placement.Label.Length > 5 ? 9 : 11, foreground, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            dc.DrawRoundedRectangle(GetBrush(rgb), null, strip, 1, 1);
+            var text = new FormattedText(placement.Label, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, CachedTypeface,
+                placement.Label.Length > 5 ? 9 : 11, foreground, dpi)
                 { MaxTextWidth = Math.Max(1, placement.Bounds.Width - 6), Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
             dc.DrawText(text, new Point(placement.Bounds.X + 3, placement.Bounds.Y + (placement.Bounds.Height - text.Height) / 2 - 1));
         }
         if (_selectionRectangle is Rect rectangle)
-            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(32, 128, 128, 128)), new Pen(accent, 1), rectangle);
+            dc.DrawRectangle(SelectionOverlayBrush, _cachedAccentPen1, rectangle);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

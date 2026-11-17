@@ -14,16 +14,23 @@ namespace PreySense.Frontend.Services
         public static string DisplayVersion => "v" + CurrentVersion;
         private const string LatestReleaseApi = "https://api.github.com/repos/hammadzaigham/PreySense/releases/latest";
         private const string ReleasesUrl = "https://github.com/hammadzaigham/PreySense/releases";
+        private static readonly HttpClient SharedClient = CreateClient();
+
+        private static HttpClient CreateClient()
+        {
+            var client = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(8)
+            };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("PreySense");
+            return client;
+        }
 
         public static async Task CheckForUpdatesAsync()
         {
             try
             {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("PreySense");
-                client.Timeout = TimeSpan.FromSeconds(8);
-
-                string json = await client.GetStringAsync(LatestReleaseApi);
+                string json = await SharedClient.GetStringAsync(LatestReleaseApi);
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("tag_name", out var tagProperty))
                     return;
@@ -41,16 +48,27 @@ namespace PreySense.Frontend.Services
 
                 string releaseUrl = ReleasesUrl;
                 if (doc.RootElement.TryGetProperty("html_url", out var htmlUrl) &&
-                    htmlUrl.GetString() is { Length: > 0 } pageUrl)
+                    htmlUrl.GetString() is { Length: > 0 } pageUrl &&
+                    Uri.TryCreate(pageUrl, UriKind.Absolute, out var uri) &&
+                    uri.Scheme == Uri.UriSchemeHttps &&
+                    (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+                     uri.Host.EndsWith(".github.com", StringComparison.OrdinalIgnoreCase)))
                 {
-                    releaseUrl = pageUrl;
+                    releaseUrl = uri.AbsoluteUri;
                 }
 
-                bool openDownload = await Application.Current.Dispatcher.InvokeAsync(() =>
+                var app = Application.Current;
+                if (app?.Dispatcher == null || app.Dispatcher.HasShutdownStarted)
+                    return;
+
+                bool openDownload = await app.Dispatcher.InvokeAsync(() =>
                 {
+                    if (app.MainWindow is not { IsVisible: true } owner)
+                        return false;
+
                     var dialog = new Views.CustomModalDialog
                     {
-                        Owner = Application.Current.MainWindow,
+                        Owner = owner,
                         Title = "PreySense — Update Available",
                         HeaderSubtitle = " — Update Available",
                         Message = LocalizationService.Format("Version {0} of PreySense is available.", latestTag),

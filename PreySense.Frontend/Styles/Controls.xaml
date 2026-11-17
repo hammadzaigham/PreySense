@@ -274,42 +274,6 @@
     </Setter>
   </Style>
   <Style x:Key="{x:Type Button}" TargetType="{x:Type Button}" BasedOn="{StaticResource OriginalRButtonActionStyle}" />
-  <Style x:Key="{x:Type controls:ActionButton}" TargetType="{x:Type controls:ActionButton}" BasedOn="{StaticResource OriginalRButtonActionStyle}">
-    <Setter Property="Padding" Value="14,4" />
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="{x:Type controls:ActionButton}">
-          <Border Name="border" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="{TemplateBinding Control.HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding Control.VerticalContentAlignment}" Margin="{TemplateBinding Control.Padding}">
-              <controls:ThemedIcon Source="{TemplateBinding Icon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center">
-                <controls:ThemedIcon.Style>
-                  <Style TargetType="controls:ThemedIcon">
-                    <Style.Triggers>
-                      <Trigger Property="Source" Value="{x:Null}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                      </Trigger>
-                    </Style.Triggers>
-                  </Style>
-                </controls:ThemedIcon.Style>
-              </controls:ThemedIcon>
-              <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
-            </StackPanel>
-          </Border>
-          <ControlTemplate.Triggers>
-            <Trigger Property="UIElement.IsMouseOver" Value="True">
-              <Setter TargetName="border" Property="Border.Background" Value="{DynamicResource ButtonHoverBrush}" />
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="border" Property="Border.Background" Value="{DynamicResource ButtonSecondBrush}" />
-            </Trigger>
-            <Trigger Property="IsEnabled" Value="False">
-              <Setter Property="Opacity" Value="0.45" />
-            </Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
   <Style x:Key="OriginalSectionTitlePanelStyle" TargetType="{x:Type Grid}">
     <Setter Property="Background" Value="{DynamicResource TransparentBrush}" />
     <Setter Property="Margin" Value="0,0,0,8" />
@@ -357,24 +321,20 @@
                 </RepeatButton>
               </Track.IncreaseRepeatButton>
               <Track.Thumb>
-                <Thumb Cursor="Arrow">
+                <Thumb Cursor="Arrow" BorderBrush="{DynamicResource ControlThumbBorderBrush}" BorderThickness="2">
                   <Control.Template>
                     <ControlTemplate TargetType="{x:Type Thumb}">
                       <Grid Width="26" Height="26" Background="{DynamicResource TransparentBrush}">
-                        <Ellipse Name="ThumbBody" Width="16" Height="16" Stroke="{DynamicResource ControlThumbBorderBrush}" StrokeThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{DynamicResource ControlThumbBrush}" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse Name="ThumbBody" Width="16" Height="16" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{DynamicResource ControlThumbBrush}" RenderTransformOrigin="0.5,0.5">
                           <Ellipse.RenderTransform>
                             <ScaleTransform x:Name="ThumbScale" ScaleX="1.0" ScaleY="1.0" />
                           </Ellipse.RenderTransform>
-                          <UIElement.Effect>
-                            <DropShadowEffect Color="{DynamicResource ShadowColor}" BlurRadius="6" ShadowDepth="1" Opacity="0.5" />
-                          </UIElement.Effect>
                         </Ellipse>
                       </Grid>
                       <ControlTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Slider}}" Value="False">
                           <Setter TargetName="ThumbBody" Property="Shape.Fill" Value="{DynamicResource DisabledControlBrush}" />
                           <Setter TargetName="ThumbBody" Property="Shape.Stroke" Value="{DynamicResource ControlTrackBrush}" />
-                          <Setter TargetName="ThumbBody" Property="UIElement.Effect" Value="{x:Null}" />
                         </DataTrigger>
                         <Trigger Property="UIElement.IsMouseOver" Value="True">
                           <Setter TargetName="ThumbBody" Property="Shape.StrokeThickness" Value="2.5" />
@@ -899,7 +859,7 @@
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="{Binding LeftIcon, RelativeSource={RelativeSource TemplatedParent}}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
                   <controls:ThemedIcon.Style>
-                    <Style TargetType="controls:ThemedIcon">
+                    <Style TargetType="controls:ThemedIcon" BasedOn="{StaticResource {x:Type controls:ThemedIcon}}">
                       <Style.Triggers>
                         <Trigger Property="Source" Value="{x:Null}">
                           <Setter Property="Visibility" Value="Collapsed"/>
@@ -915,7 +875,7 @@
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <controls:ThemedIcon Source="{Binding RightIcon, RelativeSource={RelativeSource TemplatedParent}}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
                   <controls:ThemedIcon.Style>
-                    <Style TargetType="controls:ThemedIcon">
+                    <Style TargetType="controls:ThemedIcon" BasedOn="{StaticResource {x:Type controls:ThemedIcon}}">
                       <Style.Triggers>
                         <Trigger Property="Source" Value="{x:Null}">
                           <Setter Property="Visibility" Value="Collapsed"/>

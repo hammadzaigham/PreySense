@@ -110,7 +110,6 @@ namespace PreySense.Core.Services
 
         // Mock WMI / platform system controls
         private bool _mockLcdOverdrive = true;
-        private bool _mockBootSound = false;
         private bool _mockKbdTimeout = false;
         private int _mockUsbCharging = 0;
 
@@ -121,20 +120,11 @@ namespace PreySense.Core.Services
             _mockLcdOverdrive = enable;
             return true;
         }
-        public bool GetBootSound() => _mockBootSound;
-        public void SetBootSound(bool enable) => _mockBootSound = enable;
-        public bool GetKbdBacklightTimeout() => _mockKbdTimeout;
-        public void SetKbdBacklightTimeout(bool enable) => _mockKbdTimeout = enable;
         public void SetKbdBacklightTimeoutSeconds(int seconds) => _mockKbdTimeout = seconds > 0;
         public int GetUsbChargingLevel() => _mockUsbCharging;
         public void SetUsbChargingLevel(int percent) => _mockUsbCharging = percent;
 
-        private int _mockBlueLightMode = 0;
         private int _mockRefreshRate = 240;
-        public bool GetBlueLightShield() => _mockBlueLightMode > 0;
-        public int GetBlueLightShieldMode() => _mockBlueLightMode;
-        public void SetBlueLightShield(bool enable) => _mockBlueLightMode = enable ? 1 : 0;
-        public void SetBlueLightShield(int mode) => _mockBlueLightMode = mode;
         public int GetDisplayRefreshRate() => _mockRefreshRate;
         public bool SetDisplayRefreshRate(int hz) { _mockRefreshRate = hz; return true; }
         public System.Collections.Generic.List<int> GetSupportedRefreshRates() => new() { 60, 120, 240 };

@@ -59,11 +59,28 @@
                 <ScrollViewer x:Name="TuningScroll" Grid.Row="1" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="14,0,14,2">
 
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
+                        <Border x:Name="BorderCpuBoost" Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8"
                                 Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <controls:SettingDropdownRow x:Name="DropdownCpuBoost" Title="CPU Boost" DropdownMinWidth="220"
-                                    IsEnabled="{Binding EnableCpuBoostTuningControl}"/>
+                                <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <controls:ThemedIcon Source="pack://application:,,,/PreySense;component/Resources/icons8-automation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="CPU Boost Tuning" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                    </StackPanel>
+                                    <controls:RectangularSwitch x:Name="SwitchApplyCpuBoost" Grid.Column="1"
+                                        Width="56" Height="28" VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="EnableCpuBoost"
+                                        AutomationProperties.Name="Apply CPU boost"
+                                        Checked="ApplyLimitsToggle_Changed" Unchecked="ApplyLimitsToggle_Changed"/>
+                                </Grid>
+                                <StackPanel x:Name="CpuBoostPanel">
+                                    <controls:SettingDropdownRow x:Name="DropdownCpuBoost" Title="CPU Boost" DropdownMinWidth="220"
+                                        IsEnabled="{Binding EnableCpuBoostTuningControl}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 

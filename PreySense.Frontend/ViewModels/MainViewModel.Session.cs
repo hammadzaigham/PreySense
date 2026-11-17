@@ -39,19 +39,18 @@ namespace PreySense.Frontend.ViewModels
             _sessionHooksAttached = false;
         }
 
-        private void LoadSessionPreferences()
+        private void LoadSessionPreferences(PreySense.Core.Configuration.PreySenseConfig? initialConfig = null)
         {
             try
             {
-                var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
+                var cfg = initialConfig ?? PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
 
+                _suppressPowerProfile = true;
                 IsAutoRefreshRateEnabled = cfg.Display.AutoRefreshRate;
                 IsBatteryLimitEnabled = cfg.Battery.ChargeLimitEnabled;
-                SynchronizeFanSpeeds = cfg.Fans.SynchronizeFanSpeeds;
                 _usbChargingCutoffPercent = cfg.Battery.UsbPowerOffChargingCutoffPercent;
                 IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
 
-                _suppressPowerProfile = true;
                 if (cfg.Session.AcPowerMode is 0 or 1 or 4 or 5 or 6)
                     AcPowerModeIndex = ProfileManager.SourceProfileIndex(cfg.Session.AcPowerMode);
                 BatteryPowerModeIndex = cfg.Session.BatteryPowerMode is 0 or 1 or 4 or 5 or 6
@@ -64,6 +63,7 @@ namespace PreySense.Frontend.ViewModels
                     var source = _hw.GetPowerSource();
                     if (source != PowerSourceKind.Unknown)
                     {
+                        UpdatePowerSourceState(source);
                         ActivePowerMode = source == PowerSourceKind.Battery
                             ? ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex)
                             : ProfileManager.SourceProfileMode(AcPowerModeIndex);
@@ -83,7 +83,7 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        public void PersistSessionSettings(bool includeLighting = true)
+        public void PersistSessionSettings(bool includeLighting = false)
         {
             if (_disposed || _isRestoringSession)
                 return;
@@ -225,6 +225,8 @@ namespace PreySense.Frontend.ViewModels
                     ExitModeSwitchGate();
                 }
             }
+            if (!_disposed && string.Equals(reason, "resume", StringComparison.OrdinalIgnoreCase) && _gameLaunchWatcher != null)
+                await _gameLaunchWatcher.RecheckForegroundAfterResumeAsync();
         }
 
         private string ApplyPersistedHardwareSettings(byte? modeOverride = null)
@@ -234,7 +236,9 @@ namespace PreySense.Frontend.ViewModels
             var restored = RestoreSavedPowerMode(mode);
             if (!restored.Success) failures.Add("Power profile: " + restored.Status);
             if (_hw.TryGetPowerMode(out byte confirmedMode)) mode = confirmedMode;
-            TauSeconds = TauForMode(mode);
+            int tau = TauForMode(mode);
+            if (_dispatcher == null || _dispatcher.CheckAccess()) TauSeconds = tau;
+            else _ = _dispatcher.BeginInvoke(() => TauSeconds = tau);
             if (!ApplyCpuBoostForMode(mode)) failures.Add("CPU boost could not be applied by Windows");
             RestoreFanMode();
 

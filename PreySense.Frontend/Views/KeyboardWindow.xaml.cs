@@ -19,7 +19,72 @@ namespace PreySense.Frontend.Views
             InitializeComponent();
             MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 32);
             Loaded += KeyboardWindow_Loaded;
+            IsVisibleChanged += KeyboardWindow_IsVisibleChanged;
             Closed += KeyboardWindow_Closed;
+        }
+
+        private async void KeyboardWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (!IsVisible || !_isLoaded || DataContext is not MainViewModel vm)
+                return;
+            SyncFromViewModel(vm);
+            await vm.DetectLightingDevicesAsync();
+            UpdateLightingWindowWidth(vm);
+        }
+
+        private void SyncFromViewModel(MainViewModel vm)
+        {
+            // Tab Selection
+            if (TabLightingTarget != null)
+            {
+                TabLightingTarget.SelectedIndex = vm.IsCoverTabSelected ? 1 : 0;
+            }
+
+            // Initialize Keyboard Color Wheel & Hex Input
+            _isUpdatingColorWheel = true;
+            _isUpdatingHexText = true;
+            try
+            {
+                var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
+                ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
+                if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
+            }
+            catch { }
+            finally
+            {
+                _isUpdatingHexText = false;
+                _isUpdatingColorWheel = false;
+            }
+
+            // Cover Mode ComboBox Selection
+            switch (vm.CoverLightingMode)
+            {
+                case 4: ComboCoverMode.SelectedIndex = 0; break; // Mode
+                case 2: ComboCoverMode.SelectedIndex = 2; break; // Breathing
+                case 3: ComboCoverMode.SelectedIndex = 3; break; // Neon
+                default: ComboCoverMode.SelectedIndex = 1; break; // Static
+            }
+
+            UpdateCoverModePanels(vm.CoverLightingMode);
+
+            // Initialize Cover Color Wheel & Hex Input
+            _isUpdatingCoverColorWheel = true;
+            _isUpdatingHexText = true;
+            try
+            {
+                var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
+                CoverColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
+                if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
+            }
+            catch { }
+            finally
+            {
+                _isUpdatingHexText = false;
+                _isUpdatingCoverColorWheel = false;
+            }
+
+            SyncCoverPresetSelection(vm);
+            RestoreLightingModeUi(vm);
         }
 
         private async void KeyboardWindow_Loaded(object sender, RoutedEventArgs e)
@@ -27,58 +92,7 @@ namespace PreySense.Frontend.Views
             if (DataContext is MainViewModel vm)
             {
                 BindLightingViewModel(vm);
-
-                // Tab Selection
-                if (TabLightingTarget != null)
-                {
-                    TabLightingTarget.SelectedIndex = vm.IsCoverTabSelected ? 1 : 0;
-                }
-
-                // Initialize Keyboard Color Wheel & Hex Input
-                _isUpdatingColorWheel = true;
-                _isUpdatingHexText = true;
-                try
-                {
-                    var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
-                    ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
-                    if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
-                }
-                catch { }
-                finally
-                {
-                    _isUpdatingHexText = false;
-                    _isUpdatingColorWheel = false;
-                }
-
-                // Cover Mode ComboBox Selection
-                switch (vm.CoverLightingMode)
-                {
-                    case 4: ComboCoverMode.SelectedIndex = 0; break; // Mode
-                    case 2: ComboCoverMode.SelectedIndex = 2; break; // Breathing
-                    case 3: ComboCoverMode.SelectedIndex = 3; break; // Neon
-                    default: ComboCoverMode.SelectedIndex = 1; break; // Static
-                }
-
-                UpdateCoverModePanels(vm.CoverLightingMode);
-
-                // Initialize Cover Color Wheel & Hex Input
-                _isUpdatingCoverColorWheel = true;
-                _isUpdatingHexText = true;
-                try
-                {
-                    var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
-                    CoverColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
-                    if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
-                }
-                catch { }
-                finally
-                {
-                    _isUpdatingHexText = false;
-                    _isUpdatingCoverColorWheel = false;
-                }
-
-                SyncCoverPresetSelection(vm);
-                RestoreLightingModeUi(vm);
+                SyncFromViewModel(vm);
                 _isLoaded = true;
                 PreySense.Core.Hardware.HidArrivalHub.Arrived += OnLightingDevicesChanged;
                 await vm.DetectLightingDevicesAsync();

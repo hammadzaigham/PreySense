@@ -258,6 +258,14 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
+        partial void OnIsAutoRefreshRateEnabledChanged(bool value)
+        {
+            if (_suppressPowerProfile || _isRestoringSession || _disposed)
+                return;
+            if (value)
+                ApplyAutoRefreshForPower(IsAcConnected);
+        }
+
         [RelayCommand]
         public void ToggleAutoRefreshRate()
         {

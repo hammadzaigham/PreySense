@@ -1,61 +1,44 @@
 using System;
 using System.Diagnostics;
-using System.IO;
-using PreySense.Helpers;
+using System.Runtime.InteropServices;
 
 namespace PreySense.Mode
 {
     /// <summary>
-    /// Governs CPU Boost and hardware power limits.
-    /// Uses the bundled CPU driver for MSR/MMIO limits and powercfg for boost.
+    /// Governs CPU Boost and Windows power policy settings via powrprof.dll.
     /// </summary>
     public class PowerLimitController
     {
-        private static readonly object CpuLimitGate = new();
         private static readonly object PowerCfgGate = new();
-        public static string LastCpuPowerLimitStatus { get; private set; } = "CPU limits have not been applied.";
-        /// <summary>
-        /// Applies matching limits through the bundled driver's verified MSR/MMIO transaction.
-        /// A partial result returns false and is described by LastCpuPowerLimitStatus.
-        /// </summary>
-        public static bool SetCpuPowerLimits(
-            int pl1Watts,
-            int pl2Watts,
-            bool pl2Enable = true,
-            int tauSeconds = PreySense.Core.Driver.CpuPowerLimitConfiguration.FactoryTauSeconds)
-        {
-            lock (CpuLimitGate)
-            {
-            pl1Watts = Math.Clamp(pl1Watts, 5, PreySense.Core.Driver.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
-            pl2Watts = Math.Clamp(pl2Watts, 5, PreySense.Core.Driver.CpuPowerLimitConfiguration.MaxPowerLimitWatts);
-            var driverController = PreySense.Core.Hardware.CpuDriverRuntime.PowerLimits;
-            var backend = PreySense.Core.Hardware.CpuDriverRuntime.Backend;
-            if (driverController == null || backend == null)
-            {
-                LastCpuPowerLimitStatus = PreySense.Core.Hardware.CpuDriverRuntime.Status;
-                AppLogger.Log(LastCpuPowerLimitStatus);
-                return false;
-            }
+        private static readonly Guid SubgroupProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
+        private static readonly Guid SettingPerfBoostMode = new("be337238-0d82-4146-a960-4f3749d470c7");
+        private static readonly Guid SubgroupEnergySaver = new("de830923-a562-41af-a086-e3a2c6bad2da");
+        private static readonly Guid SettingEnergySaverBatteryThreshold = new("e69653ca-cf7f-4f05-aa73-cb833fa90ad4");
 
-            if (!backend.TryReadMchbar(out ulong mchbar))
-            {
-                LastCpuPowerLimitStatus = "Cannot discover the supported CPU MCHBAR; nothing was written.";
-                return false;
-            }
-            var result = driverController.ExecuteCombinedTransaction(mchbar, pl1Watts, pl2Watts, pl2Enable, tauSeconds);
-            LastCpuPowerLimitStatus = result.Status;
-            AppLogger.Log(LastCpuPowerLimitStatus);
-            return result.Success;
-            }
-        }
+        [DllImport("powrprof.dll")]
+        private static extern uint PowerGetActiveScheme(IntPtr UserRootPowerKey, out IntPtr ActivePolicyGuid);
 
-        public static string GetCpuPowerLimitDiagnostic(
-            int pl1Watts,
-            int pl2Watts,
-            bool pl2Enable = true)
-        {
-            return LastCpuPowerLimitStatus;
-        }
+        [DllImport("powrprof.dll")]
+        private static extern uint PowerWriteACValueIndex(
+            IntPtr RootPowerKey,
+            in Guid SchemeGuid,
+            in Guid SubGroupOfPowerSettingsGuid,
+            in Guid PowerSettingGuid,
+            uint AcValueIndex);
+
+        [DllImport("powrprof.dll")]
+        private static extern uint PowerWriteDCValueIndex(
+            IntPtr RootPowerKey,
+            in Guid SchemeGuid,
+            in Guid SubGroupOfPowerSettingsGuid,
+            in Guid PowerSettingGuid,
+            uint DcValueIndex);
+
+        [DllImport("powrprof.dll")]
+        private static extern uint PowerSetActiveScheme(IntPtr UserRootPowerKey, in Guid SchemeGuid);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LocalFree(IntPtr hMem);
 
         /// <summary>
         /// Sets Windows PERFBOOSTMODE on the active scheme (AC + DC).
@@ -73,10 +56,15 @@ namespace PreySense.Mode
         {
             lock (PowerCfgGate)
             {
-            int threshold = EnergySaverBatteryThreshold(enabled);
-            if (!RunPowerCfg($"-setdcvalueindex scheme_current sub_energysaver esbattthreshold {threshold}") ||
-                !RunPowerCfg("-setactive scheme_current")) return;
-            AppLogger.Log($"Windows Energy Saver on battery: {(enabled ? "on" : "off")} (threshold {threshold}).");
+                int threshold = EnergySaverBatteryThreshold(enabled);
+                if (!TryGetActiveScheme(out Guid scheme))
+                    return;
+                if (PowerWriteDCValueIndex(IntPtr.Zero, in scheme, in SubgroupEnergySaver, in SettingEnergySaverBatteryThreshold, (uint)threshold) != 0 ||
+                    PowerSetActiveScheme(IntPtr.Zero, in scheme) != 0)
+                {
+                    return;
+                }
+                AppLogger.Log($"Windows Energy Saver on battery: {(enabled ? "on" : "off")} (threshold {threshold}).");
             }
         }
 
@@ -84,18 +72,30 @@ namespace PreySense.Mode
         {
             lock (PowerCfgGate)
             {
-            value = Math.Clamp(value, 0, 6);
-            return RunPowerCfg($"-setacvalueindex scheme_current sub_processor perfboostmode {value}") &&
-                RunPowerCfg($"-setdcvalueindex scheme_current sub_processor perfboostmode {value}") &&
-                RunPowerCfg("-setactive scheme_current");
+                value = Math.Clamp(value, 0, 6);
+                if (!TryGetActiveScheme(out Guid scheme))
+                    return false;
+                uint boost = (uint)value;
+                return PowerWriteACValueIndex(IntPtr.Zero, in scheme, in SubgroupProcessor, in SettingPerfBoostMode, boost) == 0 &&
+                    PowerWriteDCValueIndex(IntPtr.Zero, in scheme, in SubgroupProcessor, in SettingPerfBoostMode, boost) == 0 &&
+                    PowerSetActiveScheme(IntPtr.Zero, in scheme) == 0;
             }
         }
 
-        private static bool RunPowerCfg(string args)
+        private static bool TryGetActiveScheme(out Guid scheme)
         {
-            bool success = RunCommand("powercfg", args, 5000, out string error);
-            if (!success) AppLogger.Error($"powercfg {args} failed: {error}");
-            return success;
+            scheme = Guid.Empty;
+            if (PowerGetActiveScheme(IntPtr.Zero, out IntPtr activeGuidPtr) != 0 || activeGuidPtr == IntPtr.Zero)
+                return false;
+            try
+            {
+                scheme = Marshal.PtrToStructure<Guid>(activeGuidPtr);
+                return true;
+            }
+            finally
+            {
+                LocalFree(activeGuidPtr);
+            }
         }
 
         private static bool RunCommand(string executable, string args, int timeoutMs, out string error)

@@ -303,11 +303,6 @@ namespace PreySense.Frontend.Services
             return _wmi.SetLcdOverdrive(enable);
         }
 
-        public bool GetBootSound() => _wmi.GetBootSound();
-        public void SetBootSound(bool enable) => _wmi.SetBootSound(enable);
-
-        public bool GetKbdBacklightTimeout() => _wmi.GetLedTimeout();
-        public void SetKbdBacklightTimeout(bool enable) => SetKbdBacklightTimeoutSeconds(enable ? 30 : 0);
         public void SetKbdBacklightTimeoutSeconds(int seconds)
         {
             _kbdTimeoutSeconds = Math.Max(0, seconds);
@@ -320,16 +315,6 @@ namespace PreySense.Frontend.Services
 
         public int GetUsbChargingLevel() => _wmi.GetUsbChargingLevel();
         public void SetUsbChargingLevel(int percent) => _wmi.SetUsbChargingLevel(percent);
-
-        private int _blueLightShieldMode = 0;
-        public bool GetBlueLightShield() => _blueLightShieldMode > 0;
-        public int GetBlueLightShieldMode() => _blueLightShieldMode;
-        public void SetBlueLightShield(bool enable) => SetBlueLightShield(enable ? 1 : 0);
-        public void SetBlueLightShield(int mode)
-        {
-            _blueLightShieldMode = mode;
-            DisplayManager.SetBlueLightShield(mode);
-        }
 
         public int GetDisplayRefreshRate() => DisplayManager.GetCurrentRefreshRate();
         public bool SetDisplayRefreshRate(int hz) => DisplayManager.SetRefreshRate(hz);

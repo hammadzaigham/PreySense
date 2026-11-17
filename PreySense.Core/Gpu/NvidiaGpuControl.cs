@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using NvAPIWrapper.GPU;
 using NvAPIWrapper.Native;
+using NvAPIWrapper.Native.Exceptions;
 using NvAPIWrapper.Native.GPU;
 using NvAPIWrapper.Native.GPU.Structures;
 using NvAPIWrapper.Native.Interfaces.GPU;
@@ -12,22 +13,22 @@ using PreySense;
 
 namespace PreySense.Gpu
 {
-    public partial class NvidiaGpuControl : IGpuControl, IGpuClockTuning
+    public partial class NvidiaGpuControl : IGpuClockTuning, IDisposable
     {
         private static readonly Lazy<NvidiaGpuControl> SharedLazy = new(() => new NvidiaGpuControl(), true);
         public static NvidiaGpuControl Shared => SharedLazy.Value;
 
-        private static PhysicalGPU? _internalGpu;
+        private PhysicalGPU? _internalGpu;
 
         public NvidiaGpuControl()
         {
-            _internalGpu = GetInternalDiscreteGpu();
+            Volatile.Write(ref _internalGpu, GetInternalDiscreteGpu());
         }
 
-        public void RefreshDevice() => _internalGpu = GetInternalDiscreteGpu();
-        public bool IsValid => _internalGpu != null;
+        public void RefreshDevice() => Volatile.Write(ref _internalGpu, GetInternalDiscreteGpu());
+        public bool IsValid => Volatile.Read(ref _internalGpu) != null;
         public bool IsNvidia => IsValid;
-        public string FullName => _internalGpu != null ? _internalGpu.FullName : "NVIDIA GPU";
+        public string FullName => Volatile.Read(ref _internalGpu)?.FullName ?? "NVIDIA GPU";
 
         private static bool verboseLog = false;
 
@@ -39,12 +40,18 @@ namespace PreySense.Gpu
         private GpuState GetGpuState(out PerformanceStateId perfState)
         {
             perfState = PerformanceStateId.Undefined;
-            if (!IsValid) return GpuState.Off;
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null) return GpuState.Off;
             try
             {
-                perfState = GPUApi.GetCurrentPerformanceState(_internalGpu!.Handle);
+                perfState = GPUApi.GetCurrentPerformanceState(gpu.Handle);
                 if (verboseLog) AppLogger.Log($"GPU: {perfState}");
                 return GpuState.Active;
+            }
+            catch (NVIDIAApiException ex) when ((int)ex.Status == -104 || ex.Message == "NVAPI_GPU_NOT_POWERED")
+            {
+                if (verboseLog) AppLogger.Log($"GPU: {ex.Message}");
+                return GpuState.Asleep;
             }
             catch (Exception ex)
             {
@@ -72,11 +79,12 @@ namespace PreySense.Gpu
 
         private bool HasUserGpuClient()
         {
-            if (!IsValid || _internalGpu is null) return false;
-            int currentPid = Process.GetCurrentProcess().Id;
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null) return false;
+            int currentPid = Environment.ProcessId;
             try
             {
-                Process[] processes = _internalGpu.GetActiveApplications();
+                Process[] processes = gpu.GetActiveApplications();
                 bool found = false;
                 foreach (Process process in processes)
                 {
@@ -113,10 +121,11 @@ namespace PreySense.Gpu
 
         private int? ReadAwakeTemperature(bool log = false)
         {
-            if (!IsValid) return null;
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null) return null;
             try
             {
-                var thermalSettings = GPUApi.GetThermalSettings(_internalGpu!.Handle);
+                var thermalSettings = GPUApi.GetThermalSettings(gpu.Handle);
                 if (thermalSettings.Sensors is null) return null;
 
                 IThermalSensor? gpuSensor = thermalSettings.Sensors
@@ -131,11 +140,9 @@ namespace PreySense.Gpu
             }
         }
 
-        public int? GetCurrentTemperature() => ReadCurrentTemperature();
-
         public void Dispose()
         {
-            _internalGpu = null;
+            Volatile.Write(ref _internalGpu, null);
         }
 
         private static readonly HashSet<string> _systemProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -152,15 +159,16 @@ namespace PreySense.Gpu
 
         public void KillGPUApps()
         {
-            if (!IsValid) return;
-            PhysicalGPU internalGpu = _internalGpu!;
+            var internalGpu = Volatile.Read(ref _internalGpu);
+            if (internalGpu is null) return;
 
-            int currentPid = Process.GetCurrentProcess().Id;
+            int currentPid = Environment.ProcessId;
 
             try
             {
                 Process[] processes = internalGpu.GetActiveApplications();
                 foreach (Process process in processes)
+                {
                     try
                     {
                         if (process.Id == currentPid) continue;
@@ -174,6 +182,11 @@ namespace PreySense.Gpu
                     {
                         AppLogger.Log(ex.Message);
                     }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -246,7 +259,7 @@ namespace PreySense.Gpu
                 NvmlHelper.Shutdown();
                 return default;
             }
-            if (!Wants(TelemetryMetrics.GpuPower | TelemetryMetrics.GpuMemory | TelemetryMetrics.GpuMemoryClock | TelemetryMetrics.GpuHotspot | TelemetryMetrics.GpuThrottleReasons | TelemetryMetrics.GpuPowerLimit))
+            if (!Wants(TelemetryMetrics.GpuPower | TelemetryMetrics.GpuMemory | TelemetryMetrics.GpuMemoryClock | TelemetryMetrics.GpuThrottleReasons | TelemetryMetrics.GpuPowerLimit))
                 NvmlHelper.Shutdown();
             if (GetGpuState(out var performanceState) != GpuState.Active)
             {
@@ -268,34 +281,15 @@ namespace PreySense.Gpu
             var voltage = Wants(TelemetryMetrics.GpuVoltage) ? GetGpuVoltage(true) : null;
             var power = Wants(TelemetryMetrics.GpuPower) ? GetGpuPower(true) : null;
             var memory = Wants(TelemetryMetrics.GpuMemory) ? GetVramInfo(true) : null;
+            var gpuHandle = Volatile.Read(ref _internalGpu)?.Handle.MemoryAddress;
             var thermal = Wants(TelemetryMetrics.GpuHotspot | TelemetryMetrics.GpuMemoryTemperature)
-                ? NvapiThermal.ReadTemperatures(_internalGpu?.Handle.MemoryAddress, Wants(TelemetryMetrics.GpuHotspot), Wants(TelemetryMetrics.GpuMemoryTemperature))
+                ? NvapiThermal.ReadTemperatures(gpuHandle, Wants(TelemetryMetrics.GpuHotspot), Wants(TelemetryMetrics.GpuMemoryTemperature))
                 : ((float? HotspotC, float? MemoryC))(null, null);
             var throttleReasons = Wants(TelemetryMetrics.GpuThrottleReasons) ? GetThrottleReasons(true) : null;
             var powerLimit = Wants(TelemetryMetrics.GpuPowerLimit) ? GetGpuPowerLimit(true) : null;
             return new Metrics(true, temperature, usage, null, memoryClock, voltage, power,
                 memory?.usedMb, memory?.totalMb, thermal.HotspotC, throttleReasons, powerLimit, thermal.MemoryC, activeClock);
         }
-
-        public float? GetGpuHotspot() => GetGpuHotspot(false);
-
-        private float? GetGpuHotspot(bool stateChecked)
-        {
-            if (!IsValid) return null;
-            if (!stateChecked && (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)) return null;
-            return NvapiThermal.GetHotspot(_internalGpu?.Handle.MemoryAddress);
-        }
-
-        public float? GetGpuMemoryTemperature() => GetGpuMemoryTemperature(false);
-
-        private float? GetGpuMemoryTemperature(bool stateChecked)
-        {
-            if (!IsValid) return null;
-            if (!stateChecked && (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1 || GetGpuState() != GpuState.Active)) return null;
-            return NvapiThermal.GetMemoryTemperature(_internalGpu?.Handle.MemoryAddress);
-        }
-
-        public ulong? GetThrottleReasons() => GetThrottleReasons(false);
 
         private ulong? GetThrottleReasons(bool stateChecked)
         {
@@ -304,8 +298,6 @@ namespace PreySense.Gpu
             return NvmlHelper.GetThrottleReasons();
         }
 
-        public float? GetGpuPowerLimit() => GetGpuPowerLimit(false);
-
         private float? GetGpuPowerLimit(bool stateChecked)
         {
             if (!IsValid) return null;
@@ -313,16 +305,14 @@ namespace PreySense.Gpu
             return NvmlHelper.GetGpuPowerLimitWatts();
         }
 
-        public int? GetGpuUse() => GetGpuUse(false);
-
         private int? GetGpuUse(bool stateChecked)
         {
-            if (!IsValid) return null;
+            var internalGpu = Volatile.Read(ref _internalGpu);
+            if (internalGpu is null) return null;
             if (!stateChecked && GetGpuState() != GpuState.Active) return null;
 
             try
             {
-                PhysicalGPU internalGpu = _internalGpu!;
                 IUtilizationDomainInfo? gpuUsage = GPUApi.GetUsages(internalGpu.Handle).GPU;
                 return (int?)gpuUsage?.Percentage;
             }
@@ -331,8 +321,6 @@ namespace PreySense.Gpu
                 return null;
             }
         }
-
-        public float? GetGpuPower() => GetGpuPower(false);
 
         private float? GetGpuPower(bool stateChecked)
         {
@@ -347,8 +335,6 @@ namespace PreySense.Gpu
             return NvmlHelper.GetGpuPower();
         }
 
-        public (long usedMb, long totalMb)? GetVramInfo() => GetVramInfo(false);
-
         private (long usedMb, long totalMb)? GetVramInfo(bool stateChecked)
         {
             if (!IsValid) return null;
@@ -356,15 +342,15 @@ namespace PreySense.Gpu
             return NvmlHelper.GetMemoryInfo();
         }
 
-
         /// <summary>NVAPI current graphics clock in kHz, rounded like mVolt's RTSS display.</summary>
         private int? GetGpuActiveClock(bool stateChecked)
         {
-            if (!IsValid || !stateChecked && GetGpuState() != GpuState.Active) return null;
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null || (!stateChecked && GetGpuState() != GpuState.Active)) return null;
             try
             {
                 // Verified mVolt call: 0x14022786C, NV_GPU_CLOCK_FREQUENCIES_V2 (0x20108), type 0.
-                var clock = GPUApi.GetAllClockFrequencies(_internalGpu!.Handle,
+                var clock = GPUApi.GetAllClockFrequencies(gpu.Handle,
                     new ClockFrequenciesV2(ClockType.CurrentClock)).GraphicsClock;
                 return GpuClockReading.FromKilohertz(clock.IsPresent, clock.Frequency);
             }
@@ -375,8 +361,6 @@ namespace PreySense.Gpu
             }
         }
 
-        public int? GetGpuMemoryClock() => GetGpuMemoryClock(false);
-
         private int? GetGpuMemoryClock(bool stateChecked)
         {
             if (!IsValid) return null;
@@ -384,24 +368,19 @@ namespace PreySense.Gpu
             return NvmlHelper.GetGpuMemoryClock();
         }
 
-        public float? GetGpuVoltage() => GetGpuVoltage(false);
-
         private float? GetGpuVoltage(bool stateChecked)
         {
-            if (!IsValid) return null;
+            var gpu = Volatile.Read(ref _internalGpu);
+            if (gpu is null) return null;
             if (!stateChecked && GetGpuState() != GpuState.Active) return null;
             try
             {
-                var status = GPUApi.GetCurrentVoltage(_internalGpu!.Handle);
+                var status = GPUApi.GetCurrentVoltage(gpu.Handle);
                 if (status.ValueInMicroVolt > 0)
                     return (float)(status.ValueInMicroVolt / 1000000.0);
             }
             catch { }
             return null;
         }
-
-
     }
-
-
 }

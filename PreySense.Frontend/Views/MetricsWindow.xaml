@@ -17,14 +17,15 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Title Bar -->
-                <RowDefinition Height="Auto"/> <!-- Content -->
+                <RowDefinition Height="*"/> <!-- Content -->
             </Grid.RowDefinitions>
 
             <!-- Title Bar -->
             <controls:WindowTitleBar Grid.Row="0" Title="Overlay"/>
 
             <!-- Main Content -->
-            <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="{StaticResource WindowContentMargin}">
 
                 <!-- Display & Appearance Options -->
                 <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0,0,0,8">
@@ -121,7 +122,8 @@
                         <StackPanel x:Name="PanelColumnsContainer"/>
                     </StackPanel>
                 </Border>
-            </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

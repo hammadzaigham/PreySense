@@ -30,7 +30,7 @@ public sealed class FanReferenceResolution
     /// overrides and does not reconstruct the running EC's hysteresis or stage.
     /// </summary>
     public FanRpmEstimate EstimateAtTemperature(byte mode, int temperatureC, int percent,
-        bool gpu = false, int variantBit = 0, int? measuredMaximumRpm = null)
+        bool gpu = false, int variantBit = 0)
     {
         if (temperatureC is < 0 or > 125) throw new ArgumentOutOfRangeException(nameof(temperatureC));
         var table = GetTable(mode, variantBit);
@@ -44,7 +44,7 @@ public sealed class FanReferenceResolution
             risingStage++;
         }
         return Range(table, risingStage, last, percent, gpu,
-            "Approximate steady rising-temperature reference; other sensor and EC hysteresis are unknown. Transition delays and overrides are excluded.", measuredMaximumRpm);
+            "Approximate steady rising-temperature reference; other sensor and EC hysteresis are unknown. Transition delays and overrides are excluded.");
     }
 
     private static int LastNormalStage(FactoryFanTable table)
@@ -59,18 +59,12 @@ public sealed class FanReferenceResolution
     }
 
     private static FanRpmEstimate Range(FactoryFanTable table, int first, int last,
-        int percent, bool gpu, string description, int? measuredMaximumRpm = null)
+        int percent, bool gpu, string description)
     {
         int minimum = int.MaxValue, maximum = int.MinValue;
         for (int stage = first; stage <= last; stage++)
         {
             int rpm = table.EstimateCustomTargetRpm(stage, percent, gpu);
-            if (measuredMaximumRpm is int measured)
-            {
-                if (measured is <= 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(measuredMaximumRpm));
-                int baseline = Math.Min(gpu ? table.Stages[stage].GpuTargetRpm : table.Stages[stage].CpuTargetRpm, measured);
-                rpm = baseline + (measured - baseline) * percent / 100;
-            }
             minimum = Math.Min(minimum, rpm);
             maximum = Math.Max(maximum, rpm);
         }

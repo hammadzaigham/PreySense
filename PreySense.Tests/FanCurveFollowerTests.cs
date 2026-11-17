@@ -10,12 +10,12 @@ public class FanCurveFollowerTests
     {
         var follower = new FanCurveFollower();
         var stages = FanCurveProfile.DefaultStages(1);
-        follower.Evaluate(65, 40, stages, 2, 1000, synchronizeFanSpeeds: false);
+        follower.Evaluate(65, 40, stages, 2, 1000);
         Assert.AreEqual(2, follower.CpuStage);
         Assert.IsNull(follower.CpuPendingStage);
         Assert.AreEqual(0, follower.GpuStage);
         Assert.IsNull(follower.GpuPendingStage);
-        follower.Evaluate(65, 40, stages, 2, 3000, synchronizeFanSpeeds: false);
+        follower.Evaluate(65, 40, stages, 2, 3000);
         Assert.AreEqual(2, follower.CpuStage);
         Assert.IsNull(follower.CpuPendingStage);
         follower.Reset();
@@ -33,25 +33,23 @@ public class FanCurveFollowerTests
             new FanStage { CpuRiseC = 127, GpuRiseC = 127, CpuTargetRpm = 6400, GpuTargetRpm = 6400 }
         };
         var follower = new FanCurveFollower();
-        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 0, 0, false));
-        Assert.AreEqual((30, 100, 1), follower.Evaluate(45, 95, stages, 0, 1, false));
+        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 0, 0));
+        Assert.AreEqual((30, 100, 1), follower.Evaluate(45, 95, stages, 0, 1));
         follower.Reset();
-        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 2, 0, false));
-        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 1000, false));
-        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 2000, false));
-        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 3000, false));
+        Assert.AreEqual((100, 30, 1), follower.Evaluate(90, 45, stages, 2, 0));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 1000));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 2000));
+        Assert.AreEqual((100, 100, 1), follower.Evaluate(90, 95, stages, 2, 3000));
     }
 
     [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public void InitialHotSampleIsImmediateDespiteLegacyDelay(bool synchronized)
+    public void InitialHotSampleIsImmediateDespiteLegacyDelay()
     {
         var follower = new FanCurveFollower();
         var stages = Balanced();
-        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 0, synchronized).Stage);
-        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 1999, synchronized).Stage);
-        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 2000, synchronized).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 0).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 1999).Stage);
+        Assert.AreEqual(1, follower.Evaluate(56, 40, stages, 2, 2000).Stage);
     }
 
     [TestMethod]
@@ -65,30 +63,20 @@ public class FanCurveFollowerTests
         Assert.AreEqual(0, gpu);
         (cpu, gpu, stage) = follower.Evaluate(56, 40, stages, 0, 1000);
         Assert.AreEqual(1, stage);
-        int shared = Math.Max(
-            FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm),
-            FanStage.RpmToDuty(1850, FanStage.GpuMaxRpm));
-        Assert.AreEqual(shared, cpu);
-        Assert.AreEqual(shared, gpu);
+        Assert.AreEqual(FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm), cpu);
+        Assert.AreEqual(0, gpu);
     }
 
     [TestMethod]
-    public void SynchronizeFanSpeeds_ControlsIndependentOrCoupledDuties()
+    public void IndependentFansEvaluateTheirOwnDuties()
     {
         var follower = new FanCurveFollower();
         var stages = Balanced();
-        // Advance to stage 1 (CPU 1800 RPM -> 28%, GPU 1850 RPM -> 29%)
         int cpuDuty = FanStage.RpmToDuty(1800, FanStage.CpuMaxRpm);
         int gpuDuty = FanStage.RpmToDuty(1850, FanStage.GpuMaxRpm);
         Assert.AreNotEqual(cpuDuty, gpuDuty);
 
-        // When synchronized is true: both fans run at the higher duty
-        var (syncCpu, syncGpu, _) = follower.Evaluate(56, 40, stages, 0, 1000, synchronizeFanSpeeds: true);
-        Assert.AreEqual(Math.Max(cpuDuty, gpuDuty), syncCpu);
-        Assert.AreEqual(Math.Max(cpuDuty, gpuDuty), syncGpu);
-
-        // When synchronized is false: fans run at their respective independent duties
-        var (indCpu, indGpu, _) = follower.Evaluate(56, 40, stages, 0, 2000, synchronizeFanSpeeds: false);
+        var (indCpu, indGpu, _) = follower.Evaluate(56, 40, stages, 0, 2000);
         Assert.AreEqual(cpuDuty, indCpu);
         Assert.AreEqual(stages[0].GpuDutyPercent, indGpu, "A cool GPU must stay on its own stage.");
     }
@@ -103,16 +91,16 @@ public class FanCurveFollowerTests
     }
 
     [TestMethod]
-    public void RetreatUsesPreviousRiseAndRequiresBothSensorsClear()
+    public void RetreatUsesPreviousRisePerSensor()
     {
         var follower = new FanCurveFollower();
         var stages = Balanced();
         follower.Evaluate(65, 56, stages, 0, 0);
         var (_, _, stage) = follower.Evaluate(65, 56, stages, 0, 1000);
         Assert.AreEqual(2, stage);
-        // Stage 2 was entered via stage 1 rises (CPU 65 / GPU 56). GPU still at 56 must not retreat.
+        // GPU still at 56 keeps GPU at stage 2 (so Math.Max(_cpuStage, _gpuStage) remains 2).
         (_, _, stage) = follower.Evaluate(50, 56, stages, 0, 2000);
-        Assert.AreEqual(2, stage, "CPU below previous rise but GPU still at previous rise must not retreat.");
+        Assert.AreEqual(2, stage);
         // Both below stage-1 rises → stage 1; still above stage-0 rises (56/50) → stay at 1.
         (_, _, stage) = follower.Evaluate(60, 52, stages, 0, 3000);
         Assert.AreEqual(1, stage);

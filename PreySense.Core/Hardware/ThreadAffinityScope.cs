@@ -10,15 +10,16 @@ namespace PreySense.Core.Hardware;
 /// and restores the original affinity upon disposal.
 /// Safe across Windows processor groups (up to 64 cores per group).
 /// </summary>
-public sealed class ThreadAffinityScope : IDisposable
+public readonly struct ThreadAffinityScope : IDisposable
 {
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     internal struct GROUP_AFFINITY
     {
         public UIntPtr Mask;
         public ushort Group;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-        public ushort[] Reserved;
+        public ushort Reserved0;
+        public ushort Reserved1;
+        public ushort Reserved2;
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -35,9 +36,8 @@ public sealed class ThreadAffinityScope : IDisposable
 
     private readonly bool _affinityApplied;
     private readonly bool _useGroupAffinity;
-    private GROUP_AFFINITY _previousGroupAffinity;
-    private IntPtr _previousLegacyMask;
-    private bool _disposed;
+    private readonly GROUP_AFFINITY _previousGroupAffinity;
+    private readonly IntPtr _previousLegacyMask;
 
     /// <summary>
     /// Gets whether thread affinity was successfully pinned.
@@ -50,6 +50,10 @@ public sealed class ThreadAffinityScope : IDisposable
     /// </summary>
     public ThreadAffinityScope(int? logicalProcessorIndex)
     {
+        _previousGroupAffinity = default;
+        _previousLegacyMask = IntPtr.Zero;
+        _useGroupAffinity = false;
+
         if (!OperatingSystem.IsWindows() || !logicalProcessorIndex.HasValue || logicalProcessorIndex.Value < 0)
         {
             _affinityApplied = false;
@@ -65,16 +69,16 @@ public sealed class ThreadAffinityScope : IDisposable
         ulong mask = 1UL << indexInGroup;
 
         // Try SetThreadGroupAffinity first
-        _previousGroupAffinity = new GROUP_AFFINITY { Reserved = new ushort[3] };
+        var previousGroupAffinity = default(GROUP_AFFINITY);
         var newAffinity = new GROUP_AFFINITY
         {
             Group = group,
-            Mask = new UIntPtr(mask),
-            Reserved = new ushort[3]
+            Mask = new UIntPtr(mask)
         };
 
-        if (SetThreadGroupAffinity(threadHandle, ref newAffinity, ref _previousGroupAffinity))
+        if (SetThreadGroupAffinity(threadHandle, ref newAffinity, ref previousGroupAffinity))
         {
+            _previousGroupAffinity = previousGroupAffinity;
             _useGroupAffinity = true;
             _affinityApplied = true;
             return;
@@ -102,16 +106,16 @@ public sealed class ThreadAffinityScope : IDisposable
 
     public void Dispose()
     {
-        if (_disposed || !_affinityApplied) return;
-        _disposed = true;
+        if (!_affinityApplied) return;
 
         try
         {
             IntPtr threadHandle = GetCurrentThread();
             if (_useGroupAffinity)
             {
-                var unused = new GROUP_AFFINITY { Reserved = new ushort[3] };
-                if (!SetThreadGroupAffinity(threadHandle, ref _previousGroupAffinity, ref unused))
+                var previousGroupAffinity = _previousGroupAffinity;
+                var unused = default(GROUP_AFFINITY);
+                if (!SetThreadGroupAffinity(threadHandle, ref previousGroupAffinity, ref unused))
                 {
                     int err = Marshal.GetLastWin32Error();
                     Trace.TraceWarning($"[ThreadAffinityScope] Failed to restore thread group affinity (group {_previousGroupAffinity.Group}, mask 0x{_previousGroupAffinity.Mask.ToUInt64():X}): Win32 error {err}");

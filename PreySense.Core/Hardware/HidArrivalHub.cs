@@ -26,8 +26,12 @@ public static class HidArrivalHub
         Interlocked.Increment(ref _generation);
         Action? handlers;
         lock (Gate) handlers = ArrivedHandlers;
-        try { handlers?.Invoke(); }
-        catch { }
+        if (handlers == null) return;
+        foreach (Action subscriber in handlers.GetInvocationList())
+        {
+            try { subscriber(); }
+            catch { }
+        }
     }
 
     public static async Task WaitAsync(CancellationToken cancellationToken)

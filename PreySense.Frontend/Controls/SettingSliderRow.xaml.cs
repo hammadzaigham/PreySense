@@ -54,7 +54,15 @@ namespace PreySense.Frontend.Controls
                 nameof(Value),
                 typeof(double),
                 typeof(SettingSliderRow),
-                new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+                new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnValueChanged));
+
+        private static void OnValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var row = (SettingSliderRow)d;
+            double next = (double)e.NewValue;
+            if (row.InnerSlider != null && Math.Abs(row.InnerSlider.Value - next) > 0.0001)
+                row.InnerSlider.SetCurrentValue(System.Windows.Controls.Primitives.RangeBase.ValueProperty, next);
+        }
 
         public double Value
         {
@@ -144,6 +152,8 @@ namespace PreySense.Frontend.Controls
 
         private void InnerSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
+            if (Math.Abs(Value - e.NewValue) > 0.0001)
+                SetCurrentValue(ValueProperty, e.NewValue);
             ValueChanged?.Invoke(this, e);
         }
     }

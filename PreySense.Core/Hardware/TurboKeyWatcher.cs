@@ -294,7 +294,12 @@ namespace PreySense
         private static string FormatRawDetail(object? rawDetail) => rawDetail switch
         {
             byte[] bytes => BitConverter.ToString(bytes),
-            Array arr => string.Join("-", arr.Cast<object?>().Take(8).Select(v => Convert.ToByte(v).ToString("X2"))),
+            Array arr => string.Join("-", arr.Cast<object?>().Take(8).Select(static v =>
+            {
+                if (v is null) return "null";
+                try { return Convert.ToInt64(v).ToString("X2"); }
+                catch { return v.ToString() ?? "?"; }
+            })),
             null => "null",
             _ => $"{rawDetail.GetType().Name}:{rawDetail}"
         };

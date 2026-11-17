@@ -37,10 +37,10 @@ public sealed class FanStage
 
     public bool HasActiveRise(bool gpu) => RiseCelsius(gpu) < DisabledTripCelsius;
 
-    public static int RpmToDuty(int rpm, int maxRpm) =>
+    public static int RpmToDuty(int rpm, int maxRpm) => maxRpm <= 0 ? 0 :
         Math.Clamp((int)Math.Round(Math.Clamp(rpm, 0, maxRpm) * 100.0 / maxRpm, MidpointRounding.AwayFromZero), 0, 100);
 
-    public static int DutyToRpm(int dutyPercent, int maxRpm) =>
+    public static int DutyToRpm(int dutyPercent, int maxRpm) => maxRpm <= 0 ? 0 :
         Math.Clamp((int)Math.Round(Math.Clamp(dutyPercent, 0, 100) * maxRpm / 100.0, MidpointRounding.AwayFromZero), 0, maxRpm);
 
     public FanStage Copy() => new()
@@ -90,7 +90,7 @@ public sealed class FanStage
             SetRise(stages[stageIndex - 1], gpu, temps[v]);
         }
 
-        int lastVisible = stageIndices[^1];
+        int lastVisible = Math.Max(0, stageIndices[^1]);
         for (int i = lastVisible; i < stages.Length; i++)
             SetRise(stages[i], gpu, DisabledTripCelsius);
 
@@ -131,6 +131,11 @@ public sealed class FanStage
                 temperatures[i] = DisabledTripCelsius - 1;
             if (temperatures[i] <= temperatures[i - 1])
                 temperatures[i] = Math.Min(DisabledTripCelsius - 1, temperatures[i - 1] + 1);
+        }
+        for (int i = temperatures.Length - 2; i >= 0; i--)
+        {
+            if (temperatures[i] >= temperatures[i + 1])
+                temperatures[i] = Math.Max(0, temperatures[i + 1] - 1);
         }
     }
 

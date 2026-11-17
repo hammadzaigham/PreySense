@@ -118,7 +118,7 @@ namespace PreySense.Frontend.Services
         private static extern IntPtr LoadImage(IntPtr hinst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
 
         [DllImport("shell32.dll", CharSet = CharSet.Auto)]
-        private static extern uint ExtractIconEx(string szFileName, int nIconIndex, out IntPtr phiconLarge, out IntPtr phiconSmall, uint nIcons);
+        private static extern uint ExtractIconEx(string szFileName, int nIconIndex, IntPtr phiconLarge, out IntPtr phiconSmall, uint nIcons);
 
         [DllImport("user32.dll")]
         private static extern IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
@@ -194,6 +194,7 @@ namespace PreySense.Frontend.Services
         private readonly uint _taskbarCreatedMsg;
         private NOTIFYICONDATA _nid;
         private IntPtr _hIcon = IntPtr.Zero;
+        private bool _ownsIcon = false;
         private bool _isCreated = false;
         private bool _disposed = false;
 
@@ -211,7 +212,7 @@ namespace PreySense.Frontend.Services
 
         private void InitTrayIcon()
         {
-            _hIcon = LoadAppIcon();
+            _hIcon = LoadAppIcon(out _ownsIcon);
 
             _nid = new NOTIFYICONDATA
             {
@@ -232,7 +233,7 @@ namespace PreySense.Frontend.Services
             }
         }
 
-        private static IntPtr LoadAppIcon()
+        private static IntPtr LoadAppIcon(out bool ownsIcon)
         {
             try
             {
@@ -240,7 +241,11 @@ namespace PreySense.Frontend.Services
                 if (File.Exists(iconPath))
                 {
                     IntPtr h = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 16, 16, LR_LOADFROMFILE);
-                    if (h != IntPtr.Zero) return h;
+                    if (h != IntPtr.Zero)
+                    {
+                        ownsIcon = true;
+                        return h;
+                    }
                 }
             }
             catch { }
@@ -250,12 +255,17 @@ namespace PreySense.Frontend.Services
                 string? exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
                 if (!string.IsNullOrEmpty(exePath))
                 {
-                    ExtractIconEx(exePath, 0, out _, out IntPtr hSmall, 1);
-                    if (hSmall != IntPtr.Zero) return hSmall;
+                    ExtractIconEx(exePath, 0, IntPtr.Zero, out IntPtr hSmall, 1);
+                    if (hSmall != IntPtr.Zero)
+                    {
+                        ownsIcon = true;
+                        return hSmall;
+                    }
                 }
             }
             catch { }
 
+            ownsIcon = false;
             return LoadIcon(IntPtr.Zero, (IntPtr)IDI_APPLICATION);
         }
 
@@ -265,9 +275,12 @@ namespace PreySense.Frontend.Services
 
             if (_taskbarCreatedMsg != 0 && msg == (int)_taskbarCreatedMsg)
             {
-                Shell_NotifyIcon(NIM_ADD, ref _nid);
-                _nid.uTimeoutOrVersion = NOTIFYICON_VERSION_4;
-                Shell_NotifyIcon(NIM_SETVERSION, ref _nid);
+                _isCreated = Shell_NotifyIcon(NIM_ADD, ref _nid);
+                if (_isCreated)
+                {
+                    _nid.uTimeoutOrVersion = NOTIFYICON_VERSION_4;
+                    Shell_NotifyIcon(NIM_SETVERSION, ref _nid);
+                }
                 handled = true;
                 return IntPtr.Zero;
             }
@@ -383,8 +396,10 @@ namespace PreySense.Frontend.Services
 
             if (_hIcon != IntPtr.Zero)
             {
-                DestroyIcon(_hIcon);
+                if (_ownsIcon)
+                    DestroyIcon(_hIcon);
                 _hIcon = IntPtr.Zero;
+                _ownsIcon = false;
             }
         }
     }

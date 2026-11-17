@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace PreySense.Frontend.Controls
 {
@@ -9,6 +10,19 @@ namespace PreySense.Frontend.Controls
         public SettingSwitchRow()
         {
             InitializeComponent();
+        }
+
+        public static readonly DependencyProperty IconProperty =
+            DependencyProperty.Register(
+                nameof(Icon),
+                typeof(ImageSource),
+                typeof(SettingSwitchRow),
+                new PropertyMetadata(null));
+
+        public ImageSource? Icon
+        {
+            get => (ImageSource?)GetValue(IconProperty);
+            set => SetValue(IconProperty, value);
         }
 
         public static readonly DependencyProperty TitleProperty =
@@ -29,7 +43,14 @@ namespace PreySense.Frontend.Controls
                 nameof(IsChecked),
                 typeof(bool?),
                 typeof(SettingSwitchRow),
-                new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+                new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnIsCheckedChanged));
+
+        private static void OnIsCheckedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var row = (SettingSwitchRow)d;
+            if (row.InnerSwitch != null && row.InnerSwitch.IsChecked != (bool?)e.NewValue)
+                row.InnerSwitch.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, e.NewValue);
+        }
 
         public bool? IsChecked
         {
@@ -100,6 +121,12 @@ namespace PreySense.Frontend.Controls
         {
             get => (double)GetValue(SwitchWidthProperty);
             set => SetValue(SwitchWidthProperty, value);
+        }
+
+        private void InnerSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (InnerSwitch.IsChecked != IsChecked)
+                SetCurrentValue(IsCheckedProperty, InnerSwitch.IsChecked);
         }
     }
 }

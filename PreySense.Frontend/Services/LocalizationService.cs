@@ -147,6 +147,14 @@ public static class LocalizationService
                 return;
             case LabeledTabSwitcher tabs:
                 Apply(tabs, LabeledTabSwitcher.LeftTextProperty); Apply(tabs, LabeledTabSwitcher.RightTextProperty); return;
+            case ComboBox combo:
+                if (combo.ItemsSource == null)
+                {
+                    foreach (object? item in combo.Items)
+                        if (item is DependencyObject d)
+                            LocalizeTree(d);
+                }
+                break;
             case TextBlock text:
                 if (text.Inlines.Count > 1)
                     LocalizeInlines(text.Inlines);

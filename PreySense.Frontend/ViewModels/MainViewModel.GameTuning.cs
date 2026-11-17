@@ -27,9 +27,9 @@ public partial class MainViewModel
         var tuning = (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
         bool applyCpu = tuning.EnableCpuPowerLimitControl && game.ApplyCpuLimits;
         bool applyGpu = tuning.EnableGpuPowerLimitControl && game.ApplyGpuLimits;
-        bool applyBoost = tuning.EnableCpuBoostTuningControl;
+        bool applyBoost = tuning.EnableCpuBoostTuningControl && game.ApplyCpuBoost;
         tuning.FactoryDefaults.TryGetValue(ProfileManager.ModeToProfileName(game.PowerMode), out var factory);
-        if (!IsHardwareTuningEnabled || ((applyCpu || applyGpu) && (!tuning.HasFactoryDefaults || factory is null)))
+        if ((applyCpu || applyGpu) && (!IsHardwareTuningEnabled || !tuning.HasFactoryDefaults || factory is null))
         { status = "Tuning is unavailable until factory defaults are ready."; return false; }
         factory ??= new();
         var saved = ProfileForMode(tuning, game.PowerMode);

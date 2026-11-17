@@ -21,7 +21,6 @@ namespace PreySense.Frontend.ViewModels
 
         // Platform Features
         [ObservableProperty] private bool _isRunOnStartupEnabled = false;
-        [ObservableProperty] private bool _isBootSoundEnabled = false;
 
         private int _startupPreferenceRevision;
         private int _startupPreferenceReads;
@@ -121,6 +120,7 @@ namespace PreySense.Frontend.ViewModels
             }
             catch (Exception ex)
             {
+                IsRunOnStartupEnabled = !IsRunOnStartupEnabled;
                 DiagnosticMessage = $"Startup config failed: {ex.Message}";
             }
             finally
@@ -128,21 +128,6 @@ namespace PreySense.Frontend.ViewModels
                 _startupPreferenceWriteInProgress = false;
                 OnPropertyChanged(nameof(CanChangeRunOnStartup));
             }
-        }
-
-        [RelayCommand]
-        public async Task ToggleBootSoundAsync()
-        {
-            if (_disposed) return;
-            bool enabled = !IsBootSoundEnabled;
-            try
-            {
-                await Task.Run(() => _hw.SetBootSound(enabled));
-                if (_disposed) return;
-                IsBootSoundEnabled = enabled;
-                DiagnosticMessage = enabled ? "Predator Boot Sound & Animation: Enabled" : "Predator Boot Sound: Muted";
-            }
-            catch (Exception ex) { DiagnosticMessage = $"Boot sound update failed: {ex.Message}"; }
         }
 
         [RelayCommand]

@@ -51,8 +51,8 @@ namespace PreySense.Gpu
         private const uint SettingIdBlockingApps = 0x333;
         private const uint CommandCommit = 0x10000;
 
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
-        private static extern IntPtr LoadLibraryA(string lpLibFileName);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibraryW(string lpLibFileName);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
         private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
@@ -150,7 +150,7 @@ namespace PreySense.Gpu
                 return false;
             }
 
-            _hModule = LoadLibraryA(dllPath);
+            _hModule = LoadLibraryW(dllPath);
             if (_hModule == IntPtr.Zero)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -372,6 +372,13 @@ namespace PreySense.Gpu
                     _isInitialized = false;
                 }
 
+                _init = null;
+                _close = null;
+                _getInfo = null;
+                _getSetting = null;
+                _setSetting = null;
+                _execute = null;
+
                 if (_hModule != IntPtr.Zero)
                 {
                     try
@@ -383,12 +390,6 @@ namespace PreySense.Gpu
                     _hModule = IntPtr.Zero;
                 }
             }
-            GC.SuppressFinalize(this);
-        }
-
-        ~NvidiaDdsService()
-        {
-            Dispose();
         }
     }
 }

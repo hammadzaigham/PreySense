@@ -6,6 +6,12 @@ namespace PreySense.Overlay
 {
     public static class OverlayChartRenderer
     {
+        [ThreadStatic]
+        private static GraphicsPath? _outlinePath;
+
+        [ThreadStatic]
+        private static GraphicsPath? _areaPath;
+
         public static void DrawHistoryChart(
             Graphics graphics,
             int x, int y, int width, int height,
@@ -50,8 +56,8 @@ namespace PreySense.Overlay
 
             void DrawSeries(float[] history, PointF[] points, SolidBrush brush, Pen pen)
             {
-                using var outline = new GraphicsPath();
-                using var area = new GraphicsPath();
+                var outline = _outlinePath ??= new GraphicsPath();
+                var area = _areaPath ??= new GraphicsPath();
                 int segmentStart = -1;
                 for (int i = 0; i <= historyLength; i++)
                 {

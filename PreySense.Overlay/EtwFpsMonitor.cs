@@ -11,6 +11,7 @@ namespace PreySense.Overlay
         // ── ETW Constants ────────────────────────────────────────────────────────
         private const uint ERROR_SUCCESS = 0;
         private const uint ERROR_WMI_INSTANCE_NOT_FOUND = 0x1069;
+        private const uint EVENT_CONTROL_CODE_DISABLE_PROVIDER = 0;
         private const uint EVENT_CONTROL_CODE_ENABLE_PROVIDER = 1;
         private const uint EVENT_TRACE_CONTROL_FLUSH = 3; // ControlTrace code — deliver buffers now
         private const byte TRACE_LEVEL_INFORMATION = 4;
@@ -189,6 +190,7 @@ namespace PreySense.Overlay
         private long _traceHandle;
 
         private readonly object _sessionGate = new();
+        private readonly object _ringLock = new();
         private bool _stopped;
         private volatile int _targetPid;  // written by overlay timer thread, read by ETW callback thread
         private int _lastTargetPid;       // detects PID switches so the window can be reset
@@ -203,11 +205,6 @@ namespace PreySense.Overlay
         private volatile int _frameHead = 0;    // next write slot — read by overlay tick thread
         private volatile int _framesFilled = 0; // valid entries
 
-        private static readonly bool FpsDiagLogging = false;
-        private long _diagStart, _diagLastEvent;
-        private int _diagFrames;
-        private double _diagLatMin, _diagLatMax, _diagLatSum, _diagGapMax;
-
         private EventRecordCallback? _callbackRef; // keep delegate alive
 
         public int TargetPid
@@ -215,11 +212,28 @@ namespace PreySense.Overlay
             get => _targetPid;
             set
             {
-                if (_targetPid == value) return;
-                _targetPid = value;
-                if (value != 0 && _sessionHandle != 0)
-                    ApplyKernelFilters(value);
+                lock (_sessionGate)
+                {
+                    if (_targetPid == value) return;
+                    _targetPid = value;
+                    lock (_ringLock)
+                    {
+                        _frameHead = 0;
+                        _framesFilled = 0;
+                    }
+                    if (_stopped || _sessionHandle == 0) return;
+                    if (value != 0)
+                        ApplyKernelFilters(value);
+                    else
+                        DisableProviders();
+                }
             }
+        }
+
+        private void DisableProviders()
+        {
+            EnableTraceEx2(_sessionHandle, DxgiProviderId, EVENT_CONTROL_CODE_DISABLE_PROVIDER, 0, 0, 0, 0, IntPtr.Zero);
+            EnableTraceEx2(_sessionHandle, DxgKrnlProviderId, EVENT_CONTROL_CODE_DISABLE_PROVIDER, 0, 0, 0, 0, IntPtr.Zero);
         }
 
         private void ApplyKernelFilters(int pid)
@@ -315,80 +329,88 @@ namespace PreySense.Overlay
             }
         }
 
-        public void Start(int targetPid = 0)
+        public void Start(int targetPid = 0, Action? onReady = null)
         {
             long traceHandle;
             lock (_sessionGate)
             {
                 if (_stopped) return;
-            _targetPid = targetPid;
+                if (targetPid != 0)
+                    _targetPid = targetPid;
 
-            ForceStopSession();
+                ForceStopSession();
 
-            var props = BuildSessionProperties();
-            uint hr = StartTrace(out _sessionHandle, SessionName, ref props);
+                var props = BuildSessionProperties();
+                uint hr = StartTrace(out _sessionHandle, SessionName, ref props);
 
-            if (hr != ERROR_SUCCESS)
-            {
-                if (hr == 0xB7 /*ERROR_ALREADY_EXISTS*/)
+                if (hr != ERROR_SUCCESS)
                 {
-                    var queryProps = BuildSessionProperties();
-                    uint queryHr = ControlTrace(0, SessionName, ref queryProps, 0); // 0 = EVENT_TRACE_CONTROL_QUERY
-                    if (queryHr == ERROR_SUCCESS)
+                    if (hr == 0xB7 /*ERROR_ALREADY_EXISTS*/)
                     {
-                        _sessionHandle = (long)queryProps.Wnode.HistoricalContext;
-                        hr = ERROR_SUCCESS;
-                    }
-                    else
-                    {
-                        AppLogger.Log($"EtwFpsMonitor: Failed to query existing session: 0x{queryHr:X}");
+                        var queryProps = BuildSessionProperties();
+                        uint queryHr = ControlTrace(0, SessionName, ref queryProps, 0); // 0 = EVENT_TRACE_CONTROL_QUERY
+                        if (queryHr == ERROR_SUCCESS)
+                        {
+                            _sessionHandle = (long)queryProps.Wnode.HistoricalContext;
+                            hr = ERROR_SUCCESS;
+                        }
+                        else
+                        {
+                            AppLogger.Log($"EtwFpsMonitor: Failed to query existing session: 0x{queryHr:X}");
+                        }
                     }
                 }
-            }
 
-            if (hr != ERROR_SUCCESS)
-            {
-                AppLogger.Log($"EtwFpsMonitor: Failed to start/acquire ETW session. FPS monitoring disabled.");
-                return;
-            }
-
-            // Do not briefly enable system-wide graphics events while there is no
-            // foreground target. TargetPid enables both providers with PID filters.
-            if (_targetPid != 0)
-                ApplyKernelFilters(_targetPid);
-
-            _callbackRef = OnEventRecord;
-            IntPtr loggerNamePtr = Marshal.StringToHGlobalUni(SessionName);
-            try
-            {
-                var logfile = new EVENT_TRACE_LOGFILE
+                if (hr != ERROR_SUCCESS)
                 {
-                    LoggerName = loggerNamePtr,
-                    ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME |
-                                       PROCESS_TRACE_MODE_EVENT_RECORD |
-                                       PROCESS_TRACE_MODE_RAW_TIMESTAMP,
-                    EventRecordCallback = Marshal.GetFunctionPointerForDelegate(_callbackRef),
-                };
+                    AppLogger.Log($"EtwFpsMonitor: Failed to start/acquire ETW session. FPS monitoring disabled.");
+                    return;
+                }
 
-                _traceHandle = OpenTrace(ref logfile);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"EtwFpsMonitor: OpenTrace failed: {ex.Message}");
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(loggerNamePtr);
-            }
+                // Do not briefly enable system-wide graphics events while there is no
+                // foreground target. TargetPid enables both providers with PID filters.
+                if (_targetPid != 0)
+                    ApplyKernelFilters(_targetPid);
 
-            if (_traceHandle == 0 || _traceHandle == -1)
-            {
-                AppLogger.Log($"EtwFpsMonitor: Invalid trace handle. Aborting ProcessTrace.");
-                return;
-            }
+                _callbackRef = OnEventRecord;
+                IntPtr loggerNamePtr = Marshal.StringToHGlobalUni(SessionName);
+                try
+                {
+                    var logfile = new EVENT_TRACE_LOGFILE
+                    {
+                        LoggerName = loggerNamePtr,
+                        ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME |
+                                           PROCESS_TRACE_MODE_EVENT_RECORD |
+                                           PROCESS_TRACE_MODE_RAW_TIMESTAMP,
+                        EventRecordCallback = Marshal.GetFunctionPointerForDelegate(_callbackRef),
+                    };
 
-            traceHandle = _traceHandle;
+                    _traceHandle = OpenTrace(ref logfile);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"EtwFpsMonitor: OpenTrace failed: {ex.Message}");
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(loggerNamePtr);
+                }
+
+                if (_traceHandle == 0 || _traceHandle == -1)
+                {
+                    if (_sessionHandle != 0)
+                    {
+                        var stopProps = BuildSessionProperties();
+                        StopTrace(_sessionHandle, SessionName, ref stopProps);
+                        _sessionHandle = 0;
+                    }
+                    AppLogger.Log($"EtwFpsMonitor: Invalid trace handle. Aborting ProcessTrace.");
+                    return;
+                }
+
+                traceHandle = _traceHandle;
             }
+            try { onReady?.Invoke(); } catch { }
             uint procHr = ProcessTrace(new[] { traceHandle }, 1, IntPtr.Zero, IntPtr.Zero);
         }
 
@@ -447,82 +469,62 @@ namespace PreySense.Overlay
                 }
             }
 
-            if (isDxgiPresent)
-                _dxgiActiveForCurrentPid = true;
-            else if (_dxgiActiveForCurrentPid)
-                return;
+            RecordPresentTimestamp(targetPid, isDxgiPresent, record.EventHeader.TimeStamp);
+        }
 
-            if (targetPid != _lastTargetPid)
+        internal void RecordPresentTimestamp(int targetPid, bool isDxgiPresent, long timestamp)
+        {
+            lock (_ringLock)
             {
-                _lastTargetPid = targetPid;
-                _frameHead = 0;
-                _framesFilled = 0;
-                _dxgiActiveForCurrentPid = false;
-                return;
+                if (targetPid != _lastTargetPid)
+                {
+                    _lastTargetPid = targetPid;
+                    _frameHead = 0;
+                    _framesFilled = 0;
+                    _dxgiActiveForCurrentPid = isDxgiPresent;
+                }
+                else if (isDxgiPresent)
+                {
+                    _dxgiActiveForCurrentPid = true;
+                }
+                else if (_dxgiActiveForCurrentPid)
+                {
+                    return;
+                }
+
+                _frameTimes[_frameHead] = timestamp;
+                _frameHead = (_frameHead + 1) % RollingWindowSize;
+                if (_framesFilled < RollingWindowSize) _framesFilled++;
             }
-
-            _frameTimes[_frameHead] = record.EventHeader.TimeStamp;
-            _frameHead = (_frameHead + 1) % RollingWindowSize;
-            if (_framesFilled < RollingWindowSize) _framesFilled++;
-
-            if (FpsDiagLogging) LogFpsDiagnostics(record.EventHeader.TimeStamp);
         }
 
         public double SampleFps()
         {
-            int filled = _framesFilled;
-            if (filled < 2) return double.NaN;
-
-            long freq = Stopwatch.Frequency;
-            int head = _frameHead;
-            long newest = _frameTimes[(head - 1 + RollingWindowSize) % RollingWindowSize];
-
-            if (Stopwatch.GetTimestamp() - newest > MaxSampleAgeSeconds * freq) return double.NaN;
-
-            long cutoff = newest - freq;
-            int count = 1;
-            long oldest = newest;
-            for (int i = 2; i <= filled; i++)
+            lock (_ringLock)
             {
-                long t = _frameTimes[(head - i + RollingWindowSize) % RollingWindowSize];
-                if (t < cutoff) break;
-                oldest = t;
-                count++;
-            }
+                int filled = _framesFilled;
+                if (filled < 2) return double.NaN;
 
-            double elapsed = (double)(newest - oldest) / freq;
-            if (elapsed <= 0) return double.NaN;
-            return (count - 1) / elapsed;
-        }
+                long freq = Stopwatch.Frequency;
+                int head = _frameHead;
+                long newest = _frameTimes[(head - 1 + RollingWindowSize) % RollingWindowSize];
 
-        private void LogFpsDiagnostics(long presentTick)
-        {
-            long freq = Stopwatch.Frequency;
-            long nowTick = Stopwatch.GetTimestamp();
-            double latMs = (double)(nowTick - presentTick) / freq * 1000.0;
-            if (_diagFrames == 0) { _diagLatMin = _diagLatMax = latMs; }
-            else
-            {
-                if (latMs < _diagLatMin) _diagLatMin = latMs;
-                if (latMs > _diagLatMax) _diagLatMax = latMs;
-            }
-            _diagLatSum += latMs;
-            if (_diagLastEvent != 0)
-            {
-                double gapMs = (double)(nowTick - _diagLastEvent) / freq * 1000.0;
-                if (gapMs > _diagGapMax) _diagGapMax = gapMs;
-            }
-            _diagLastEvent = nowTick;
-            _diagFrames++;
-            if (_diagStart == 0) _diagStart = nowTick;
-            else if (nowTick - _diagStart >= freq)
-            {
-                double secs = (double)(nowTick - _diagStart) / freq;
-                AppLogger.Log(
-                    $"FPS diag: frames={_diagFrames} rate={_diagFrames / secs:F0}/s | " +
-                    $"ETW latency ms: min={_diagLatMin:F0} avg={_diagLatSum / _diagFrames:F0} max={_diagLatMax:F0} | " +
-                    $"maxgap={_diagGapMax:F0}ms");
-                _diagStart = nowTick; _diagFrames = 0; _diagLatSum = 0; _diagGapMax = 0;
+                if (Stopwatch.GetTimestamp() - newest > MaxSampleAgeSeconds * freq) return double.NaN;
+
+                long cutoff = newest - freq;
+                int count = 1;
+                long oldest = newest;
+                for (int i = 2; i <= filled; i++)
+                {
+                    long t = _frameTimes[(head - i + RollingWindowSize) % RollingWindowSize];
+                    if (t < cutoff) break;
+                    oldest = t;
+                    count++;
+                }
+
+                double elapsed = (double)(newest - oldest) / freq;
+                if (elapsed <= 0) return double.NaN;
+                return (count - 1) / elapsed;
             }
         }
 

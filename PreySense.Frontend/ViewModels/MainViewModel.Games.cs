@@ -154,6 +154,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void AddGameProfile()
     {
+        bool previousSuppression = App.SuppressAutoHide;
         App.SuppressAutoHide = true;
         try
         {
@@ -165,7 +166,7 @@ public partial class MainViewModel
             if (picker.ShowDialog() != true) return;
             AddGameProfilePath(picker.FileName);
         }
-        finally { App.SuppressAutoHide = false; }
+        finally { App.SuppressAutoHide = previousSuppression; }
     }
 
     internal void AddGameProfilePath(string executablePath)

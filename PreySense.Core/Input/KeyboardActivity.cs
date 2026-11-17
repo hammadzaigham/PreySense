@@ -15,7 +15,13 @@ namespace PreySense.Helpers
         public static void NoteKeyDown()
         {
             Volatile.Write(ref _lastKeyTick, Environment.TickCount);
-            KeyDown?.Invoke();
+            var handlers = KeyDown;
+            if (handlers == null) return;
+            foreach (Action subscriber in handlers.GetInvocationList())
+            {
+                try { subscriber(); }
+                catch { }
+            }
         }
     }
 }

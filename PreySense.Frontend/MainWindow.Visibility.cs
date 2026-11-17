@@ -76,11 +76,11 @@ public partial class MainWindow
 
     internal void QueueAutoHide()
     {
-        if (_isExplicitExit || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        if (_isExplicitExit || App.SuppressAutoHide || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
         long revision = _visibilitySession.Revision;
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
-            if (_isExplicitExit || !IsVisible || !_visibilitySession.CanAutoHide(revision)) return;
+            if (_isExplicitExit || App.SuppressAutoHide || !IsVisible || !_visibilitySession.CanAutoHide(revision)) return;
             if (_visibilitySession.ShouldAutoHide(revision, IsApplicationForeground(GetForegroundWindow())))
                 HideApplicationWindowsForAutoHide();
         });
@@ -97,6 +97,7 @@ public partial class MainWindow
     {
         RunOnUi(() =>
         {
+            if (App.SuppressAutoHide) return;
             var visibleWindows = Application.Current.Windows.Cast<Window>()
                 .Where(window => window is not Views.ModeToastWindow && window.IsVisible).ToArray();
             Window? activeWindow = visibleWindows.LastOrDefault(window => window.IsActive)

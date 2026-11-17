@@ -27,9 +27,17 @@ namespace PreySense.Frontend.ViewModels
 
         internal void NotifyConfirmedPowerMode(byte mode)
         {
-            ActivePowerMode = mode;
-            UpdateModeName(mode);
-            NotifyModeSelectionsChanged();
+            void UpdateUi()
+            {
+                ActivePowerMode = mode;
+                TauSeconds = TauForMode(mode);
+                UpdateModeName(mode);
+                NotifyModeSelectionsChanged();
+            }
+            if (_dispatcher == null || _dispatcher.CheckAccess())
+                UpdateUi();
+            else
+                _dispatcher.Invoke(UpdateUi);
             ScheduleHotkeyLightingRestoreAfterModeSwitch();
             if (ModeToastPresenter is { } presenter) presenter(mode, GetModeTitle(mode));
             else ModeToastWindow.ShowConfirmedMode(mode, GetModeTitle(mode));
@@ -376,9 +384,16 @@ namespace PreySense.Frontend.ViewModels
             byte? actual = null;
             try { actual = await Task.Run(() => _hw.TryGetPowerMode(out byte current) ? (byte?)current : null); }
             catch (Exception ex) { AppLogger.Error($"Could not read Acer mode after failed switch: {ex}"); }
-            ActivePowerMode = actual ?? 0xFF;
-            UpdateModeName(ActivePowerMode);
-            NotifyModeSelectionsChanged();
+            void UpdateUi()
+            {
+                ActivePowerMode = actual ?? 0xFF;
+                UpdateModeName(ActivePowerMode);
+                NotifyModeSelectionsChanged();
+            }
+            if (_dispatcher == null || _dispatcher.CheckAccess())
+                UpdateUi();
+            else
+                await _dispatcher.InvokeAsync(UpdateUi);
         }
 
         internal void ApplyPowerProfileForSource(PowerSourceKind source)

@@ -26,9 +26,12 @@ public partial class MainViewModel
     private ConfigurationService TuningStore =>
         TuningConfigurationStore ?? ProfileManager.ConfigurationStore ?? ConfigurationService.Instance;
 
-    private void LoadTuningProfilesFromJson()
+    private void LoadTuningProfilesFromJson(PreySenseConfig? initialConfig = null)
     {
-        var t = TuningStore.GetCurrent().Tuning;
+        var t = (initialConfig != null && TuningConfigurationStore == null && ProfileManager.ConfigurationStore == null
+            ? initialConfig
+            : TuningStore.GetCurrent()).Tuning;
+        RefreshFactoryTuningFlags(t);
         ProchotOffsetCelsius = t.ProchotOffsetCelsius;
         IsProchotOffsetLocked = t.FactoryProchotOffsetLocked == true;
         IsProchotOffsetEnabled = t.ApplyProchotOffset && !IsProchotOffsetLocked;
@@ -40,7 +43,7 @@ public partial class MainViewModel
         void ApplyEditor(int index, Action<ModeTuningConfig> assign)
         {
             // Prefer saved values, then factory fallbacks — never invent 0W drafts.
-            assign(TuningEditorMode(index));
+            assign(TuningEditorMode(index, t));
         }
 
         ApplyEditor(0, d =>
@@ -141,6 +144,12 @@ public partial class MainViewModel
             var gpu = new AcerProfileApplyTransaction(backend, new TuningModeController(this))
                 .Apply(request.Mode, offsets!.DeltaWatts, offsets.DynamicBoostWatts, (byte)offsets.PlatformOffsetWatts);
             if (!gpu.Success) return new(false, gpu.Status);
+            if (_fanControlGate != null && _fanFollower != null)
+            {
+                lock (_fanControlGate) { _sentMaxFanMode = false; _sentCpuFan = _sentGpuFan = null; }
+                RestoreFanMode();
+            }
+            ScheduleHotkeyLightingRestoreAfterModeSwitch();
         }
 
         if (request.ApplyCpuLimits)
@@ -256,6 +265,7 @@ public partial class MainViewModel
             cfg.Tuning.ProchotOffsetCelsius = null;
             cfg.Tuning.ApplyProchotOffset = false;
         });
+        RefreshFactoryTuningFlags();
     }
 
     private void ResetAllTuningEditorsToFactory()

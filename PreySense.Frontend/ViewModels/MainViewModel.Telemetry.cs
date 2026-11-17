@@ -12,6 +12,7 @@ public partial class MainViewModel
     [ObservableProperty] private string _activeGpuDisplayMode = "—";
     private volatile bool _mainWindowTelemetryVisible;
     private int _mainWindowTelemetryRevision;
+    private int _latestUiSnapshotRevision;
 
     internal void SetMainWindowTelemetryVisible(bool visible)
     {
@@ -29,10 +30,15 @@ public partial class MainViewModel
     private void OnMainWindowTelemetrySnapshot(TelemetrySnapshot snapshot)
     {
         if (!_mainWindowTelemetryVisible || _disposed || _dispatcher.HasShutdownStarted) return;
-        int revision = _mainWindowTelemetryRevision;
+        _latestUiSnapshot = snapshot;
+        int revision = System.Threading.Volatile.Read(ref _mainWindowTelemetryRevision);
+        System.Threading.Volatile.Write(ref _latestUiSnapshotRevision, revision);
+        if (System.Threading.Interlocked.Exchange(ref _telemetryUiUpdateQueued, 1) != 0) return;
         _dispatcher.BeginInvoke(() =>
         {
-            if (revision == _mainWindowTelemetryRevision) ApplyMainWindowTelemetry(snapshot);
+            System.Threading.Interlocked.Exchange(ref _telemetryUiUpdateQueued, 0);
+            if (System.Threading.Volatile.Read(ref _latestUiSnapshotRevision) == _mainWindowTelemetryRevision)
+                ApplyMainWindowTelemetry(_latestUiSnapshot);
         });
     }
 

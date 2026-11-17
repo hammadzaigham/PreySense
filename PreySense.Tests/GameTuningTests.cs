@@ -223,7 +223,7 @@ public class GameTuningTests
     }
     [TestMethod]
     [DataRow(0)] [DataRow(6)]
-    public async Task GameBoostAlwaysAppliesAndRestoresWithGlobalTuningOn(int boostMode)
+    public async Task GameBoostAppliesAndRestoresOnlyWhenBothGlobalAndGameSwitchesAreOn(int boostMode)
     {
         var (vm, config, _) = Create(); config.Tuning.EnableCpuBoostTuningControl = true;
         var game = new GameProfile { PowerMode = 5, CpuBoostMode = boostMode, ApplyCpuBoost = false };
@@ -233,6 +233,12 @@ public class GameTuningTests
         vm.GameBoostPolicyRestorer = snapshot => { restores++; Assert.AreEqual(previous, snapshot); return true; };
         vm.CpuBoostWriter = value => { writes++; Assert.AreEqual(boostMode, value); return true; };
         vm.DriverTuningExecutor = _ => throw new AssertFailedException("A boost-only game must skip driver writes.");
+        Assert.IsTrue(await vm.ApplyGameProfileWithOverridesAsync(game), vm.GameModeStatus);
+        Assert.AreEqual(0, writes);
+        Assert.IsTrue(await vm.RestoreModeAfterGameAsync(), vm.GameModeStatus);
+        Assert.AreEqual(0, restores);
+
+        game.ApplyCpuBoost = true;
         Assert.IsTrue(await vm.ApplyGameProfileWithOverridesAsync(game), vm.GameModeStatus);
         Assert.AreEqual(1, writes);
         Assert.IsTrue(await vm.RestoreModeAfterGameAsync(), vm.GameModeStatus);
@@ -262,7 +268,8 @@ public class GameTuningTests
         string source = document.ToString();
         Assert.IsLessThan(source.IndexOf("Title=\"CPU Power Limits\"", StringComparison.Ordinal), source.IndexOf("Title=\"CPU Boost\"", StringComparison.Ordinal));
         Assert.IsLessThan(source.IndexOf("Title=\"GPU Power Limits\"", StringComparison.Ordinal), source.IndexOf("Title=\"CPU Power Limits\"", StringComparison.Ordinal));
-        Assert.DoesNotContain("ApplyCpuBoost", source);
+        Assert.Contains("ApplyCpuBoost", source);
+        Assert.Contains("Name=\"GameCpuBoost\"", source);
         Assert.DoesNotContain("Name=\"GameBoost\"", source);
         Assert.AreEqual(2, document.Descendants().Count(e => e.Name.LocalName == "SettingValueRow"));
         var sliders = document.Descendants().Where(e => e.Name.LocalName == "Slider").ToArray();

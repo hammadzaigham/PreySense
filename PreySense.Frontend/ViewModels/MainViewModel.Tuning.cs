@@ -97,6 +97,7 @@ namespace PreySense.Frontend.ViewModels
             OnPropertyChanged(nameof(UsbChargingStatus));
             OnPropertyChanged(nameof(ProchotActivationLabel));
             OnPropertyChanged(nameof(EcoOrQuietModeName));
+            OnPropertyChanged(nameof(GameCpuBoostNames));
             UpdateModeName(ActivePowerMode);
         }
 

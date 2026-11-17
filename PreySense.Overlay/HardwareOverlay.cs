@@ -58,6 +58,7 @@ namespace PreySense.Overlay
         private readonly Pen _graphGpuPen = new(Color.FromArgb(58, 170, 84), 1.5f);
         private readonly SolidBrush _graphCpuBrush = new(Color.FromArgb(24, 44, 124, 180));
         private readonly SolidBrush _graphGpuBrush = new(Color.FromArgb(34, 58, 170, 84));
+        private readonly GraphicsPath _clipPath = new();
 
         private float _lastScale = 0f;
         private Font? _font;
@@ -90,6 +91,8 @@ namespace PreySense.Overlay
         private readonly float[] _vramSpeedHistory = new float[HistoryLength];
         private readonly float[] _gpuHotspotHistory = new float[HistoryLength];
         private readonly float[] _gpuMemoryTempHistory = new float[HistoryLength];
+        private readonly float[] _cpuPowerLimitHistory = new float[HistoryLength];
+        private readonly float[] _gpuPowerLimitHistory = new float[HistoryLength];
         private static readonly float[] EmptyHistory = new float[HistoryLength];
 
         private const int FpsShowDelayMs = 3000;
@@ -150,8 +153,28 @@ namespace PreySense.Overlay
 
         private const int WM_NCDESTROY = 0x0082;
         private const int WM_SETCURSOR  = 0x0020;
+        private const int OverlayRepaintMessage = 0x8000 + 92;
+        private const int OverlayTickMessage = 0x8000 + 93;
+        private int _repaintQueued;
+        private int _tickQueued;
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == OverlayRepaintMessage)
+            {
+                Interlocked.Exchange(ref _repaintQueued, 0);
+                if (_active && IsShowing && !IsDisposed)
+                {
+                    SyncDynamicWidthBeforePaint();
+                    Invalidate();
+                }
+                return;
+            }
+            if (m.Msg == OverlayTickMessage)
+            {
+                Interlocked.Exchange(ref _tickQueued, 0);
+                if (_active && !IsDisposed) TickCore();
+                return;
+            }
             if (m.Msg == ForegroundChangedMessage)
             {
                 Interlocked.Exchange(ref _foregroundUpdateQueued, 0);
@@ -260,6 +283,13 @@ namespace PreySense.Overlay
 
         private void Tick()
         {
+            if (!_active || IsDisposed) return;
+            if (Handle != IntPtr.Zero)
+            {
+                if (Interlocked.Exchange(ref _tickQueued, 1) == 0 && !PostMessage(Handle, OverlayTickMessage, 0, 0))
+                    Interlocked.Exchange(ref _tickQueued, 0);
+                return;
+            }
             if (System.Threading.Interlocked.Exchange(ref _tickRunning, 1) != 0)
                 return;
 
@@ -326,28 +356,57 @@ namespace PreySense.Overlay
             if (_graphMetrics.Count > 0)
             {
                 foreach (var (metric, gpu) in _graphMetrics)
-                    HistoryFor(metric, gpu)[_historyHead] = TelemetryGraphValue.Read(snapshot, metric, gpu);
+                {
+                    var history = HistoryFor(metric, gpu);
+                    if (!ReferenceEquals(history, EmptyHistory))
+                        history[_historyHead] = TelemetryGraphValue.Read(snapshot, metric, gpu);
+                }
                 _historyHead = (_historyHead + 1) % HistoryLength;
             }
 
+            RequestRepaint();
+        }
+
+        private void RequestRepaint()
+        {
+            if (Handle != IntPtr.Zero)
+            {
+                if (Interlocked.Exchange(ref _repaintQueued, 1) == 0 && !PostMessage(Handle, OverlayRepaintMessage, 0, 0))
+                    Interlocked.Exchange(ref _repaintQueued, 0);
+                return;
+            }
+            SyncDynamicWidthBeforePaint();
             Invalidate();
+        }
+
+        private void SyncDynamicWidthBeforePaint()
+        {
+            Size targetSize = CalculateOverlaySize(_scalePercent);
+            if (Size == targetSize) return;
+            if (Handle != IntPtr.Zero)
+            {
+                Point center = new Point(Location.X + Width / 2, Location.Y + Height / 2);
+                Screen screen = Screen.FromPoint(center);
+                bool isRight = center.X > screen.Bounds.X + screen.Bounds.Width / 2;
+                int newX = isRight ? Location.X + Width - targetSize.Width : Location.X;
+                newX = ClampToDisplay(newX, screen.Bounds.Left, screen.Bounds.Right, targetSize.Width);
+                SetBoundsCore(newX, Location.Y, targetSize.Width, targetSize.Height);
+            }
+            else
+            {
+                _size = targetSize;
+            }
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                StopOverlay();
                 _bgBrush.Dispose(); _cpuBrush.Dispose(); _gpuBrush.Dispose(); _dragBgBrush.Dispose();
                 _graphCpuPen.Dispose(); _graphGpuPen.Dispose();
                 _graphCpuBrush.Dispose(); _graphGpuBrush.Dispose();
-                Microsoft.Win32.SystemEvents.PowerModeChanged -= OnOverlayPowerModeChanged;
-                StopForegroundEvents();
-                PreySense.Core.Services.TelemetryCoordinator.ConfigureFrameSampler(null);
-                PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
-                PreySense.Core.Services.TelemetryCoordinator.Heartbeat -= Tick;
-                PreySense.Core.Services.TelemetryCoordinator.SetOverlayActive(false);
-                PreySense.Core.Services.TelemetryCoordinator.SnapshotAvailable -= OnTelemetrySnapshot;
-                PreySense.Core.Services.TelemetryCoordinator.SetDemand(PreySense.Core.Services.TelemetryDemand.Overlay, false);
+                _clipPath.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -454,18 +513,16 @@ namespace PreySense.Overlay
             if (radius > 0)
             {
                 g.FillRoundedRectangle(fillBrush, Bound, radius);
-                using (var path = new GraphicsPath())
-                {
-                    int diameter = Math.Max(1, radius * 2);
-                    Rectangle bounds = Bound;
-                    path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
-                    path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
-                    path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-                    path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-                    path.CloseAllFigures();
-                    g.SetClip(path);
-                    // Keep the clip for all text and graphs: layered-window corner pixels stay transparent.
-                }
+                _clipPath.Reset();
+                int diameter = Math.Max(1, radius * 2);
+                Rectangle bounds = Bound;
+                _clipPath.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+                _clipPath.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+                _clipPath.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+                _clipPath.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+                _clipPath.CloseAllFigures();
+                g.SetClip(_clipPath);
+                // Keep the clip for all text and graphs: layered-window corner pixels stay transparent.
             }
             else
             {
@@ -589,14 +646,15 @@ namespace PreySense.Overlay
             DrawTextWithUnit(g, font, unitFont, s, brush, new PointF(x + colW, y), alignRight: true);
         }
 
+        private static readonly string[] Units = { "GHz", "MHz", "mV", "GB", "W", "%", "v", "°C", "°" };
+
         private static float DrawTextWithUnit(Graphics g, Font mainFont, Font unitFont, string text, Brush brush, PointF pos, bool alignRight = false)
         {
             if (string.IsNullOrEmpty(text)) return 0f;
 
-            string[] units = { "GHz", "MHz", "mV", "GB", "W", "%", "v", "Â°C", "Â°" };
             string matchedUnit = "";
             string trimmed = text.Trim();
-            foreach (var u in units)
+            foreach (var u in Units)
             {
                 if (trimmed.EndsWith(u))
                 {
@@ -671,7 +729,7 @@ namespace PreySense.Overlay
                     DrawTextWithUnit(g, font, unitFont, TelemetryText.Format(gpu ? null : HardwareControl.cpuEffectiveMhz, "MHz"), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "Power Limit":
-                    DrawTextWithUnit(g, font, unitFont, FmtPow(HardwareControl.gpuPowerLimit), brush, new PointF(colX + colW, y), alignRight: true);
+                    DrawTextWithUnit(g, font, unitFont, FmtPow(gpu ? HardwareControl.gpuPowerLimit : HardwareControl.cpuPl1Watts), brush, new PointF(colX + colW, y), alignRight: true);
                     break;
                 case "PerfCap Reason":
                     DrawTextWithUnit(g, font, unitFont, GpuThrottleReasonText.Format(HardwareControl.gpuThrottleReasons), brush, new PointF(colX + colW, y), alignRight: true);
@@ -743,6 +801,7 @@ namespace PreySense.Overlay
             "Effective Clock" => gpu ? EmptyHistory : _cpuEffectiveClockHistory,
             "Voltage" => gpu ? _gpuVoltageHistory : _cpuVoltageHistory,
             "Power" => gpu ? _gpuPowerHistory : _cpuPowerHistory,
+            "Power Limit" => gpu ? _gpuPowerLimitHistory : _cpuPowerLimitHistory,
             "Memory" => gpu ? _vramHistory : _ramHistory,
             "Memory Speed" => gpu ? _vramSpeedHistory : _ramSpeedHistory,
             "Fan Speed" => gpu ? _gpuFanHistory : _cpuFanHistory,
@@ -759,7 +818,8 @@ namespace PreySense.Overlay
                 _gpuActiveClockHistory, _cpuActiveClockHistory, _cpuEffectiveClockHistory,
                 _cpuPowerHistory, _gpuPowerHistory, _ramHistory, _vramHistory,
                 _cpuFanHistory, _gpuFanHistory, _gpuVoltageHistory, _cpuVoltageHistory,
-                _ramSpeedHistory, _vramSpeedHistory, _gpuHotspotHistory, _gpuMemoryTempHistory
+                _ramSpeedHistory, _vramSpeedHistory, _gpuHotspotHistory, _gpuMemoryTempHistory,
+                _cpuPowerLimitHistory, _gpuPowerLimitHistory
             })
                 Array.Fill(history, float.NaN);
         }
@@ -860,6 +920,11 @@ namespace PreySense.Overlay
                 overlay.OffsetY = offsetY;
                 if (horizontal != null) overlay.PositionHorizontal = horizontal;
                 if (vertical != null) overlay.PositionVertical = vertical;
+                if (horizontal == null && vertical == null && !scalePercent.HasValue)
+                {
+                    overlay.PositionHorizontal = "";
+                    overlay.PositionVertical = "";
+                }
                 if (scalePercent.HasValue) overlay.ScalePercent = scalePercent.Value;
             });
         }

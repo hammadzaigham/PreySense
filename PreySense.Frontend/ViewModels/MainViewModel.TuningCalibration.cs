@@ -13,6 +13,20 @@ public partial class MainViewModel
 {
     private bool _tuningEnablePending;
     private bool _updatingTuningEnabled;
+    private bool _factoryTuningFlagsCached;
+    private bool _hasFactoryDefaults;
+    private bool _hasFactoryGpuProfiles;
+    private bool _hasFactoryStaticCpuLimits;
+
+    private void RefreshFactoryTuningFlags(TuningConfig? tuning = null)
+    {
+        var t = tuning ?? (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
+        _hasFactoryDefaults = t.HasFactoryDefaults;
+        _hasFactoryGpuProfiles = t.HasFactoryGpuProfiles;
+        _hasFactoryStaticCpuLimits = t.HasFactoryStaticCpuLimits;
+        _factoryTuningFlagsCached = true;
+    }
+
     private void SetTuningEnabledState(bool enabled)
     {
         _updatingTuningEnabled = true;
@@ -83,13 +97,24 @@ public partial class MainViewModel
                 cfg.Tuning.FactoryProchotOffsetLocked = capture.ProchotOffsetLocked;
                 cfg.Tuning.FactoryTjMaxCelsius = capture.TjMaxCelsius;
             });
-            if (capture.GpuBaselineWatts.HasValue) GpuBasePowerWatts = capture.GpuBaselineWatts;
-            OnPropertyChanged(nameof(IsGpuProfileTuningAvailable));
-            OnPropertyChanged(nameof(ProchotActivationLabel));
-            OnPropertyChanged(nameof(TjMaxLabel));
             var saved = TuningStore.GetCurrent();
-            if (HasCompleteFactoryDefaults(saved.Tuning))
-                SetTuningEnabledState(true);
+            RefreshFactoryTuningFlags(saved.Tuning);
+            void NotifyCalibrated()
+            {
+                if (capture.GpuBaselineWatts.HasValue) GpuBasePowerWatts = capture.GpuBaselineWatts;
+                LoadTuningProfilesFromJson(saved);
+                OnPropertyChanged(nameof(IsGpuProfileTuningAvailable));
+                OnPropertyChanged(nameof(CanEnableCpuPowerLimitControl));
+                OnPropertyChanged(nameof(CanEnableGpuPowerLimitControl));
+                OnPropertyChanged(nameof(ProchotActivationLabel));
+                OnPropertyChanged(nameof(TjMaxLabel));
+                if (HasCompleteFactoryDefaults(saved.Tuning))
+                    SetTuningEnabledState(true);
+            }
+            if (_dispatcher == null || _dispatcher.CheckAccess())
+                NotifyCalibrated();
+            else
+                await _dispatcher.InvokeAsync(NotifyCalibrated);
         }
         catch (Exception ex)
         {
@@ -184,17 +209,18 @@ public partial class MainViewModel
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
-    internal ModeTuningConfig SavedTuningMode(int index)
+    internal ModeTuningConfig SavedTuningMode(int index, TuningConfig? tuning = null)
     {
-        var tuning = (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
-        return index switch { 0 => tuning.Eco, 1 => tuning.Quiet, 2 => tuning.Balanced,
-            3 => tuning.Performance, 4 => tuning.Turbo, _ => throw new ArgumentOutOfRangeException(nameof(index)) };
+        var t = tuning ?? (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
+        return index switch { 0 => t.Eco, 1 => t.Quiet, 2 => t.Balanced,
+            3 => t.Performance, 4 => t.Turbo, _ => throw new ArgumentOutOfRangeException(nameof(index)) };
     }
 
-    internal ModeTuningConfig TuningEditorMode(int index)
+    internal ModeTuningConfig TuningEditorMode(int index, TuningConfig? tuning = null)
     {
-        var saved = SavedTuningMode(index);
-        var factory = FactoryTuningMode(index);
+        var t = tuning ?? (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning;
+        var saved = SavedTuningMode(index, t);
+        var factory = FactoryTuningMode(index, t);
         return new ModeTuningConfig
         {
             CpuPl1Watts = saved.CpuPl1Watts ?? factory?.CpuPl1Watts,
@@ -219,10 +245,20 @@ public partial class MainViewModel
     internal int? TuningEditorProchotOffset =>
         ProchotOffsetCelsius ?? TuningStore.GetCurrent().Tuning.FactoryProchotOffsetCelsius;
 
-    internal ModeTuningConfig? FactoryTuningMode(int index) =>
-        TuningStore.GetCurrent().Tuning.FactoryDefaults.GetValueOrDefault(TuningModeName(index));
+    internal ModeTuningConfig? FactoryTuningMode(int index, TuningConfig? tuning = null) =>
+        (tuning ?? (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning)
+            .FactoryDefaults.GetValueOrDefault(TuningModeName(index));
 
     /// <summary>GPU offset tuning requires verified ERM4 profiles.</summary>
     public bool IsGpuProfileTuningAvailable =>
-        TuningStore.GetCurrent().Tuning.HasFactoryGpuProfiles;
+        _factoryTuningFlagsCached && TuningConfigurationReader is null && TuningConfigurationStore is null
+            ? _hasFactoryGpuProfiles
+            : (TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning.HasFactoryGpuProfiles;
+
+    public bool CanEnableCpuPowerLimitControl =>
+        _factoryTuningFlagsCached && TuningConfigurationReader is null && TuningConfigurationStore is null
+            ? (_hasFactoryDefaults && _hasFactoryStaticCpuLimits)
+            : HasCompleteFactoryDefaults((TuningConfigurationReader?.Invoke() ?? TuningStore.GetCurrent()).Tuning);
+
+    public bool CanEnableGpuPowerLimitControl => IsGpuProfileTuningAvailable;
 }

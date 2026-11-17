@@ -807,7 +807,8 @@ namespace PreySense.Frontend.ViewModels
         {
             if (int.TryParse(modeStr, out int m))
             {
-                CoverLightingMode = Math.Clamp(m, 1, 3);
+                int clamped = Math.Clamp(m, 1, 4);
+                CoverLightingMode = clamped;
             }
         }
 
@@ -838,12 +839,12 @@ namespace PreySense.Frontend.ViewModels
 
         public void SaveLightingSettings() => _ = QueueLighting(LightingWork.Save);
 
-        public void LoadCoverLightingSettings()
+        public void LoadCoverLightingSettings(PreySenseConfig? initialConfig = null)
         {
             _isLoadingLighting = true;
             try
             {
-                var cover = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Lighting.Cover;
+                var cover = (initialConfig ?? PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent()).Lighting.Cover;
                 CoverLightingMode = cover.Mode;
                 CoverHexColor = NormalizeHex(cover.ColorHex);
                 // Brightness 0 replaces the old on/off switch.
@@ -853,6 +854,7 @@ namespace PreySense.Frontend.ViewModels
                 IsCoverSyncWithKeyboard = cover.SyncWithKeyboard;
                 CoverModeName = CoverLightingMode switch
                 {
+                    4 => "Mode",
                     2 => "Breathing",
                     3 => "Neon Wave",
                     _ => "Static"
@@ -868,13 +870,14 @@ namespace PreySense.Frontend.ViewModels
             }
         }
 
-        public void LoadRgbSettings()
+        public void LoadRgbSettings(PreySenseConfig? initialConfig = null)
         {
             _isLoadingLighting = true;
             try
             {
-                var kbd = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Lighting.Keyboard;
-                LoadKeyboardModeColors(PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors);
+                var lighting = (initialConfig ?? PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent()).Lighting;
+                var kbd = lighting.Keyboard;
+                LoadKeyboardModeColors(lighting.PowerModeColors);
                 _keyboardLightingDirection = kbd.Direction;
                 OnPropertyChanged(nameof(KeyboardLightingDirection));
                 _isSyncingRgbBrightness = true;

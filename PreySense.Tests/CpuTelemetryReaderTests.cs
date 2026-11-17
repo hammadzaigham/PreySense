@@ -300,18 +300,16 @@ public class CpuTelemetryReaderTests
         // Testing that creating and disposing ThreadAffinityScope does not throw on Windows
         using (var scope = new ThreadAffinityScope(0))
         {
-            Assert.IsNotNull(scope);
+            _ = scope.IsPinned;
         }
 
         using (var scope = new ThreadAffinityScope(null))
         {
-            Assert.IsNotNull(scope);
             Assert.IsFalse(scope.IsPinned);
         }
 
         using (var scope = new ThreadAffinityScope(-1))
         {
-            Assert.IsNotNull(scope);
             Assert.IsFalse(scope.IsPinned);
         }
     }

@@ -93,12 +93,24 @@ public sealed class WpfFanCurveControl : FrameworkElement
         return new(CelsiusToX(celsius), Plot.Bottom - Plot.Height * Math.Clamp(duty, 0, 100) / 100.0);
     }
 
+    private Pen? _cachedGridPen;
+    private Brush? _lastGridBrush;
+    private Pen? _cachedAccentPen;
+    private Brush? _lastAccentBrush;
+    private Typeface? _cachedTypeface;
+
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
         dc.DrawRectangle(Surface, null, new Rect(RenderSize));
         var plot = Plot;
-        var thin = new Pen(GridBrush, 1);
+        if (!ReferenceEquals(GridBrush, _lastGridBrush) || _cachedGridPen == null)
+        {
+            _lastGridBrush = GridBrush;
+            _cachedGridPen = new Pen(GridBrush, 1);
+            if (GridBrush.IsFrozen) _cachedGridPen.Freeze();
+        }
+        var thin = _cachedGridPen;
         for (int percent = 0; percent <= 100; percent += 20)
         {
             double y = plot.Bottom - plot.Height * percent / 100;
@@ -113,7 +125,13 @@ public sealed class WpfFanCurveControl : FrameworkElement
             Label(dc, Temperatures[i] + "°", x - 10, plot.Bottom + 7);
         }
         if (PointCount == 0) return;
-        var line = new Pen(Accent, 2);
+        if (!ReferenceEquals(Accent, _lastAccentBrush) || _cachedAccentPen == null)
+        {
+            _lastAccentBrush = Accent;
+            _cachedAccentPen = new Pen(Accent, 2);
+            if (Accent.IsFrozen) _cachedAccentPen.Freeze();
+        }
+        var line = _cachedAccentPen;
         int leadDuty = LeadInDuty ?? Values[0];
         Point first = At(0, Values[0]);
         Point last = At(PointCount - 1, Values[PointCount - 1]);
@@ -138,10 +156,10 @@ public sealed class WpfFanCurveControl : FrameworkElement
 
     private void Label(DrawingContext dc, string text, double x, double y)
     {
-        var font = new Typeface((FontFamily?)TryFindResource("AppFontFamily") ?? new FontFamily("Segoe UI"),
+        _cachedTypeface ??= new Typeface((FontFamily?)TryFindResource("AppFontFamily") ?? new FontFamily("Segoe UI"),
             FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         dc.DrawText(new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            font, 10, TextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip), new(x, y));
+            _cachedTypeface, 10, TextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip), new(x, y));
     }
 
     private int HitPoint(Point p)
@@ -240,9 +258,11 @@ public sealed class WpfFanCurveControl : FrameworkElement
         _dragging = true;
         int previousDuty = Values[SelectedIndex];
         int previousCelsius = SelectedIndex < Temperatures.Length ? Temperatures[SelectedIndex] : MinCelsius;
+        if (_dragStartValues.Length == Values.Length)
+            Array.Copy(_dragStartValues, Values, Values.Length);
         SetDuty(Values, SelectedIndex, _dragStartDuty + (int)Math.Round(deltaY / Plot.Height * 100));
         if (SelectedIndex < Temperatures.Length)
-            SetTemperature(Temperatures, SelectedIndex, XToCelsius(_dragOrigin.X + deltaX));
+            SetTemperature(Temperatures, SelectedIndex, XToCelsius(CelsiusToX(_dragStartCelsius) + deltaX));
         if (Values[SelectedIndex] == previousDuty
             && (SelectedIndex >= Temperatures.Length || Temperatures[SelectedIndex] == previousCelsius))
             return;

@@ -24,6 +24,8 @@ namespace PreySense.Frontend.ViewModels
         private readonly HidModeKeyWatcher _hidModeKeyWatcher;
         private DateTime _lastPhysicalModeKeyUtc;
         private int _powerSourceUpdateQueued;
+        private int _telemetryUiUpdateQueued;
+        private TelemetrySnapshot _latestUiSnapshot = TelemetrySnapshot.Empty;
         private bool _disposed;
 
         public IHardwareService HardwareService => _hw;
@@ -149,9 +151,11 @@ namespace PreySense.Frontend.ViewModels
 
             _ = RefreshStartupPreferenceAsync();
 
+            PreySense.Core.Configuration.PreySenseConfig? initialConfig = null;
             try
             {
-                var cfg = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
+                initialConfig = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
+                var cfg = initialConfig;
                 _isHardwareTuningEnabled = HasCompleteFactoryDefaults(cfg.Tuning);
 
                 // JSON preference paints the UI immediately; reconcile against live
@@ -186,10 +190,10 @@ namespace PreySense.Frontend.ViewModels
             ActiveGpuMuxMode = -1;
             GpuMuxModeName = GetGpuModeName(ActiveGpuMuxMode);
 
-            LoadCoverLightingSettings();
-            LoadRgbSettings();
-            LoadTuningProfilesFromJson();
-            LoadSessionPreferences();
+            LoadCoverLightingSettings(initialConfig);
+            LoadRgbSettings(initialConfig);
+            LoadTuningProfilesFromJson(initialConfig);
+            LoadSessionPreferences(initialConfig);
             CpuBoostMode = CpuBoostModeForMode(ActivePowerMode);
             CpuBoostModeName = GetCpuBoostModeName(CpuBoostMode);
             UpdateModeName(ActivePowerMode);
@@ -334,7 +338,6 @@ namespace PreySense.Frontend.ViewModels
         public void Dispose()
         {
             if (_disposed) return;
-            _fanCalibrationCancellation?.Cancel();
             // Drain the last queued fan edit before session persistence and hardware teardown.
             _fanSettingsWorker?.StopAsync(drainPending: true).GetAwaiter().GetResult();
             // Save before the disposed guard suppresses persistence; lighting is drained below.

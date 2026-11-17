@@ -19,9 +19,12 @@ public partial class HardwareOverlay
         _ = Task.Run(() =>
         {
             if (!_active || !ReferenceEquals(_fps, fps)) return;
-            fps.Start();
-            if (!_active || !ReferenceEquals(_fps, fps)) { fps.Dispose(); return; }
-            _foregroundEvents?.Refresh(); // Start resets TargetPid; reapply the current target once ready.
+            fps.Start(onReady: () =>
+            {
+                if (_active && ReferenceEquals(_fps, fps))
+                    _foregroundEvents?.Refresh();
+            });
+            if (!_active || !ReferenceEquals(_fps, fps)) { fps.Dispose(); }
         });
     }
 

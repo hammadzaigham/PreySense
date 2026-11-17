@@ -6,9 +6,18 @@ public readonly record struct GpuClockRange(int MinimumMhz, int MaximumMhz)
 {
     public bool Contains(int value) => value >= MinimumMhz && value <= MaximumMhz;
 
-    public GpuClockRange ForStep(int step) => new(
-        (int)Math.Ceiling(MinimumMhz / (double)step) * step,
-        (int)Math.Floor(MaximumMhz / (double)step) * step);
+    public GpuClockRange ForStep(int step)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(step);
+        int min = (int)Math.Ceiling(MinimumMhz / (double)step) * step;
+        int max = (int)Math.Floor(MaximumMhz / (double)step) * step;
+        if (min > max)
+        {
+            int fallback = Math.Clamp(MinimumMhz, MinimumMhz, MaximumMhz);
+            return new(fallback, fallback);
+        }
+        return new(min, max);
+    }
 
     public int Snap(int value, int step)
     {

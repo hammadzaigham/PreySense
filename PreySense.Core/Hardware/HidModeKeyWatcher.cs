@@ -36,8 +36,9 @@ namespace PreySense
         private readonly Action<int>? _onBrightnessDelta;
         private readonly CancellationTokenSource _cts = new();
         private readonly HashSet<string> _seenReports = new(StringComparer.Ordinal);
-        private DateTime _lastModeUtc = DateTime.MinValue;
-        private DateTime _lastBrightnessUtc = DateTime.MinValue;
+        private readonly object _debounceLock = new();
+        private long _lastModeTimestamp;
+        private long _lastBrightnessTimestamp;
         private volatile bool _disposed;
 
         public HidModeKeyWatcher(Action onModeKeyPressed, Action<int>? onBrightnessDelta = null)
@@ -203,41 +204,58 @@ namespace PreySense
                         continue;
                     }
                     if (read <= 0 || token.IsCancellationRequested || _disposed) break;
-                    string hex = ToHex(buffer, read);
+                    bool logSeen;
                     lock (_seenReports)
                     {
-                        if (_seenReports.Add(hex) && _seenReports.Count <= UniqueReportCap)
-                            AppLogger.Log($"TurboKey: HID {ShortCollection(path)} report {hex}");
+                        logSeen = _seenReports.Count < UniqueReportCap;
+                    }
+                    if (logSeen)
+                    {
+                        string hex = ToHex(buffer, read);
+                        lock (_seenReports)
+                        {
+                            if (_seenReports.Count < UniqueReportCap && _seenReports.Add(hex))
+                                AppLogger.Log($"TurboKey: HID {ShortCollection(path)} report {hex}");
+                        }
                     }
 
                     HotkeyKind kind = ClassifyReport(buffer, read);
                     if (kind == HotkeyKind.None)
                         continue;
 
-                    DateTime now = DateTime.UtcNow;
+                    long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (kind == HotkeyKind.Mode)
                     {
-                        if ((now - _lastModeUtc).TotalMilliseconds < 80)
-                            continue;
-                        _lastModeUtc = now;
-                        AppLogger.Log($"TurboKey: chassis Mode / Turbo HID report {hex}.");
-                        _onModeKeyPressed();
+                        lock (_debounceLock)
+                        {
+                            if (_lastModeTimestamp != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(_lastModeTimestamp, nowTicks).TotalMilliseconds < 80)
+                                continue;
+                            _lastModeTimestamp = nowTicks;
+                        }
+                        AppLogger.Log($"TurboKey: chassis Mode / Turbo HID report {ToHex(buffer, read)}.");
+                        try { _onModeKeyPressed(); }
+                        catch (Exception ex) { AppLogger.Error($"TurboKey: Mode callback failed: {ex.Message}"); }
                     }
                     else if (_onBrightnessDelta != null)
                     {
-                        if ((now - _lastBrightnessUtc).TotalMilliseconds < 30)
-                            continue;
-                        _lastBrightnessUtc = now;
+                        lock (_debounceLock)
+                        {
+                            if (_lastBrightnessTimestamp != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(_lastBrightnessTimestamp, nowTicks).TotalMilliseconds < 30)
+                                continue;
+                            _lastBrightnessTimestamp = nowTicks;
+                        }
                         int delta = kind == HotkeyKind.BrightnessUp ? 1 : -1;
-                        AppLogger.Log($"TurboKey: Fn brightness HID report {hex} delta={delta}.");
-                        _onBrightnessDelta(delta);
+                        AppLogger.Log($"TurboKey: Fn brightness HID report {ToHex(buffer, read)} delta={delta}.");
+                        try { _onBrightnessDelta(delta); }
+                        catch (Exception ex) { AppLogger.Error($"TurboKey: Brightness callback failed: {ex.Message}"); }
                     }
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (token.IsCancellationRequested || _disposed) { }
+            catch (ObjectDisposedException) when (_disposed) { }
             catch (Exception ex)
             {
-                if (!token.IsCancellationRequested) AppLogger.Log($"TurboKey: HID reader failed on '{path}': {ex.Message}");
+                if (!token.IsCancellationRequested && !_disposed) AppLogger.Log($"TurboKey: HID reader failed on '{path}': {ex.Message}");
             }
         }
 

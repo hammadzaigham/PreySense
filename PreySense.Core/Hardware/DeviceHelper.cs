@@ -209,14 +209,18 @@ namespace PreySense.Helpers
                 bool integratedRunning = false;
                 bool discreteRunning = false;
                 using var searcher = new ManagementObjectSearcher("SELECT PNPDeviceID, Availability FROM Win32_VideoController");
-                foreach (ManagementObject gpu in searcher.Get())
+                using var results = searcher.Get();
+                foreach (ManagementBaseObject item in results)
                 {
-                    string id = (gpu["PNPDeviceID"] as string ?? "").ToUpperInvariant();
-                    bool running = Convert.ToInt32(gpu["Availability"] ?? 0) == 3;
-                    if (id.Contains("VEN_8086") || id.Contains("VEN_1002"))
-                        integratedRunning |= running;
-                    else if (id.Contains("VEN_10DE"))
-                        discreteRunning |= running;
+                    using (item)
+                    {
+                        string id = (item["PNPDeviceID"] as string ?? "").ToUpperInvariant();
+                        bool running = Convert.ToInt32(item["Availability"] ?? 0) == 3;
+                        if (id.Contains("VEN_8086") || id.Contains("VEN_1002"))
+                            integratedRunning |= running;
+                        else if (id.Contains("VEN_10DE"))
+                            discreteRunning |= running;
+                    }
                 }
 
                 if (discreteRunning || integratedRunning)

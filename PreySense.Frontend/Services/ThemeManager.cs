@@ -175,14 +175,13 @@ public static class ThemeManager
 
     private static Color Parse(string value) => (Color)ColorConverter.ConvertFromString(value);
 
-    private static void SetBrush(string key, Color color)
-    {
-        if (Application.Current.TryFindResource(key) is SolidColorBrush brush && !brush.IsFrozen)
-        {
-            brush.Color = color;
-            return;
-        }
+    private static void SetBrush(string key, Color color) =>
+        SetBrush(Application.Current.Resources, key, color);
 
-        Application.Current.Resources[key] = new SolidColorBrush(color);
+    private static void SetBrush(ResourceDictionary resources, string key, Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        resources[key] = brush;
     }
 }

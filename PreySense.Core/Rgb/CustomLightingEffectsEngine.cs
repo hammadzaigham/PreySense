@@ -155,7 +155,7 @@ namespace PreySense.Rgb
                 or CustomEffectMode.OceanTide or CustomEffectMode.IceCrystal)
                 return;
 
-            CancellationToken token;
+            CancellationTokenSource cts;
             lock (_lock)
             {
                 _currentMode = mode;
@@ -165,13 +165,12 @@ namespace PreySense.Rgb
                 _lastPublishedIdleState = null;
                 _forceHwDispatch = true;
                 _hasLastFrame = false;
-                _cts = new CancellationTokenSource();
-                token = _cts.Token;
+                cts = new CancellationTokenSource();
+                _cts = cts;
+                KeyboardActivity.NoteKeyDown();
+                _animationTask = Task.Run(() => AnimationLoopAsync(cts));
             }
 
-            KeyboardActivity.NoteKeyDown();
-
-            _animationTask = Task.Run(() => AnimationLoopAsync(token));
             AppLogger.Log($"CustomLightingEffectsEngine: Started effect {mode} (speed={speed}, brightness={brightness}).");
         }
 
@@ -240,17 +239,12 @@ namespace PreySense.Rgb
                 _idleDimmed = false;
                 if (_cts != null)
                 {
-                    try
-                    {
-                        _cts.Cancel();
-                        _cts.Dispose();
-                    }
+                    try { _cts.Cancel(); }
                     catch { }
                     _cts = null;
                 }
             }
 
-            _animationTask = null;
             RestoreHardwareTimeout();
         }
 
@@ -302,178 +296,188 @@ namespace PreySense.Rgb
                 _wmi.SetLedTimeoutSeconds(seconds);
         }
 
-        private async Task AnimationLoopAsync(CancellationToken ct)
+        private async Task AnimationLoopAsync(CancellationTokenSource cts)
         {
+            CancellationToken ct = cts.Token;
             double step = 0;
             int frameCount = 0;
             long lastHwDispatch = 0;
             Color[] frame = new Color[4];
 
-            while (!ct.IsCancellationRequested && !_isDisposed)
+            try
             {
-                try
+                while (!ct.IsCancellationRequested && !_isDisposed)
                 {
-                    // Software-effect loop only (hardware DYN modes do not use this engine).
-                    const int frameIntervalMs = 28; // ~35 FPS for preview + zone color generation
-                    double speedStep = 0.03 + (_speed / 100.0) * 0.32;
-                    step += speedStep;
-                    frameCount++;
-
-                    int hwThrottleMs = Math.Max(70, 180 - (int)(_speed * 1.1));
-
-                    switch (_currentMode)
+                    try
                     {
-                        case CustomEffectMode.RainbowCycle:
-                            GenerateRainbowCycleFrame(frame, step);
-                            break;
+                        // Software-effect loop only (hardware DYN modes do not use this engine).
+                        const int frameIntervalMs = 28; // ~35 FPS for preview + zone color generation
+                        double speedStep = 0.03 + (_speed / 100.0) * 0.32;
+                        step += speedStep;
+                        frameCount++;
 
-                        case CustomEffectMode.PoliceStrobe:
-                            GeneratePoliceStrobeFrame(frame, frameCount);
-                            hwThrottleMs = Math.Max(80, 220 - (int)(_speed * 1.4));
-                            break;
+                        int hwThrottleMs = Math.Max(70, 180 - (int)(_speed * 1.1));
 
-                        case CustomEffectMode.FireEmber:
-                            GenerateFireEmberFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.MatrixCascade:
-                            GenerateMatrixCascadeFrame(frame, frameCount);
-                            break;
-
-                        case CustomEffectMode.CylonScanner:
-                            GenerateCylonScannerFrame(frame, frameCount);
-                            break;
-
-                        case CustomEffectMode.AuroraDrift:
-                            GenerateAuroraDriftFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.Heartbeat:
-                            GenerateHeartbeatFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.LightningStorm:
-                            GenerateLightningStormFrame(frame, frameCount);
-                            hwThrottleMs = Math.Max(50, 140 - (int)(_speed * 0.8));
-                            break;
-
-                        case CustomEffectMode.Starlight:
-                            GenerateStarlightFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.NeonPulse:
-                            GenerateNeonPulseFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.PlasmaOrb:
-                            GeneratePlasmaOrbFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.GlitchStorm:
-                            GenerateGlitchStormFrame(frame, frameCount);
-                            hwThrottleMs = Math.Max(40, 120 - (int)(_speed * 0.8));
-                            break;
-
-                        case CustomEffectMode.BioHazard:
-                            GenerateBioHazardFrame(frame, step);
-                            break;
-
-                        case CustomEffectMode.SolarFlare:
-                            GenerateSolarFlareFrame(frame, frameCount);
-                            hwThrottleMs = Math.Max(55, 160 - (int)(_speed * 1.0));
-                            break;
-
-                        default:
-                            for (int i = 0; i < 4; i++) frame[i] = _zoneColors[i];
-                            break;
-                    }
-
-                    int timeoutSeconds;
-                    lock (_lock)
-                    {
-                        timeoutSeconds = _idleTimeoutSeconds;
-                    }
-
-                    if (timeoutSeconds > 0)
-                    {
-                        SuppressHardwareTimeout();
-                        uint lastInputTick = KeyboardActivity.LastKeyTick;
-                        if (GetIdleSeconds(lastInputTick) >= timeoutSeconds)
+                        switch (_currentMode)
                         {
-                            lock (_lock)
-                            {
-                                _idleDimmed = true;
-                                Array.Copy(IdleOffFrame, _lastFrame, 4);
-                                _hasLastFrame = true;
-                            }
+                            case CustomEffectMode.RainbowCycle:
+                                GenerateRainbowCycleFrame(frame, step);
+                                break;
 
-                            _wmi.SetZoneColors(IdleOffFrame, 0);
-                            FrameUpdated?.Invoke(IdleOffFrame);
-                            PublishIdleStateFrame(IdleOffFrame, idleOff: true);
-                            AppLogger.Log($"CustomLightingEffectsEngine: backlight off after {timeoutSeconds}s idle. Animation stopped.");
+                            case CustomEffectMode.PoliceStrobe:
+                                GeneratePoliceStrobeFrame(frame, frameCount);
+                                hwThrottleMs = Math.Max(80, 220 - (int)(_speed * 1.4));
+                                break;
 
-                            KeyboardActivity.KeyDown += WakeIdle;
-                            try
-                            {
-                                while (!ct.IsCancellationRequested && !_isDisposed)
-                                {
-                                    // Observe first, then inspect state: a key or settings change
-                                    // between the check and await cannot be lost.
-                                    Task changed = _idleWake.WaitAsync(ct);
-                                    int stillTimeout;
-                                    lock (_lock) { stillTimeout = _idleTimeoutSeconds; }
-                                    bool keyPressed = KeyboardActivity.LastKeyTick != lastInputTick;
-                                    if (stillTimeout <= 0 || keyPressed)
-                                    {
-                                        lock (_lock) { _idleDimmed = false; }
-                                        lastHwDispatch = 0;
-                                        if (keyPressed)
-                                            AppLogger.Log("CustomLightingEffectsEngine: backlight restored after input.");
-                                        break;
-                                    }
-                                    await changed.ConfigureAwait(false);
-                                }
-                            }
-                            finally { KeyboardActivity.KeyDown -= WakeIdle; }
-                            continue;
+                            case CustomEffectMode.FireEmber:
+                                GenerateFireEmberFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.MatrixCascade:
+                                GenerateMatrixCascadeFrame(frame, frameCount);
+                                break;
+
+                            case CustomEffectMode.CylonScanner:
+                                GenerateCylonScannerFrame(frame, frameCount);
+                                break;
+
+                            case CustomEffectMode.AuroraDrift:
+                                GenerateAuroraDriftFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.Heartbeat:
+                                GenerateHeartbeatFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.LightningStorm:
+                                GenerateLightningStormFrame(frame, frameCount);
+                                hwThrottleMs = Math.Max(50, 140 - (int)(_speed * 0.8));
+                                break;
+
+                            case CustomEffectMode.Starlight:
+                                GenerateStarlightFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.NeonPulse:
+                                GenerateNeonPulseFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.PlasmaOrb:
+                                GeneratePlasmaOrbFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.GlitchStorm:
+                                GenerateGlitchStormFrame(frame, frameCount);
+                                hwThrottleMs = Math.Max(40, 120 - (int)(_speed * 0.8));
+                                break;
+
+                            case CustomEffectMode.BioHazard:
+                                GenerateBioHazardFrame(frame, step);
+                                break;
+
+                            case CustomEffectMode.SolarFlare:
+                                GenerateSolarFlareFrame(frame, frameCount);
+                                hwThrottleMs = Math.Max(55, 160 - (int)(_speed * 1.0));
+                                break;
+
+                            default:
+                                for (int i = 0; i < 4; i++) frame[i] = _zoneColors[i];
+                                break;
                         }
+
+                        int timeoutSeconds;
+                        lock (_lock)
+                        {
+                            timeoutSeconds = _idleTimeoutSeconds;
+                        }
+
+                        if (timeoutSeconds > 0)
+                        {
+                            SuppressHardwareTimeout();
+                            uint lastInputTick = KeyboardActivity.LastKeyTick;
+                            if (GetIdleSeconds(lastInputTick) >= timeoutSeconds)
+                            {
+                                lock (_lock)
+                                {
+                                    _idleDimmed = true;
+                                    Array.Copy(IdleOffFrame, _lastFrame, 4);
+                                    _hasLastFrame = true;
+                                }
+
+                                _wmi.SetZoneColors(IdleOffFrame, 0);
+                                FrameUpdated?.Invoke(IdleOffFrame);
+                                PublishIdleStateFrame(IdleOffFrame, idleOff: true);
+                                AppLogger.Log($"CustomLightingEffectsEngine: backlight off after {timeoutSeconds}s idle. Animation stopped.");
+
+                                KeyboardActivity.KeyDown += WakeIdle;
+                                try
+                                {
+                                    while (!ct.IsCancellationRequested && !_isDisposed)
+                                    {
+                                        // Observe first, then inspect state: a key or settings change
+                                        // between the check and await cannot be lost.
+                                        Task changed = _idleWake.WaitAsync(ct);
+                                        int stillTimeout;
+                                        lock (_lock) { stillTimeout = _idleTimeoutSeconds; }
+                                        bool keyPressed = KeyboardActivity.LastKeyTick != lastInputTick;
+                                        if (stillTimeout <= 0 || keyPressed)
+                                        {
+                                            lock (_lock) { _idleDimmed = false; }
+                                            lastHwDispatch = 0;
+                                            if (keyPressed)
+                                                AppLogger.Log("CustomLightingEffectsEngine: backlight restored after input.");
+                                            break;
+                                        }
+                                        await changed.ConfigureAwait(false);
+                                    }
+                                }
+                                finally { KeyboardActivity.KeyDown -= WakeIdle; }
+                                continue;
+                            }
+                        }
+
+                        // 1. UI / cover-sync preview only when someone is listening
+                        var frameUpdated = FrameUpdated;
+                        frameUpdated?.Invoke(frame);
+                        PublishIdleStateFrame(frame, idleOff: false);
+
+                        byte brightness;
+                        bool forceHw;
+                        lock (_lock)
+                        {
+                            brightness = _brightness;
+                            forceHw = _forceHwDispatch;
+                            _forceHwDispatch = false;
+                            Array.Copy(frame, _lastFrame, 4);
+                            _hasLastFrame = true;
+                        }
+
+                        // 2. Throttled dispatch to physical keyboard via direct ENEK5130 HID / WMI
+                        long now = Stopwatch.GetTimestamp();
+                        if (forceHw || lastHwDispatch == 0 || Stopwatch.GetElapsedTime(lastHwDispatch, now).TotalMilliseconds >= hwThrottleMs)
+                        {
+                            lastHwDispatch = now;
+                            _wmi.SetZoneColors(frame, brightness);
+                        }
+
+                        int delayMs = frameUpdated != null ? frameIntervalMs : hwThrottleMs;
+                        await Task.Delay(delayMs, ct);
                     }
-
-                    // 1. UI / cover-sync preview only when someone is listening
-                    FrameUpdated?.Invoke(frame);
-                    PublishIdleStateFrame(frame, idleOff: false);
-
-                    byte brightness;
-                    bool forceHw;
-                    lock (_lock)
+                    catch (TaskCanceledException)
                     {
-                        brightness = _brightness;
-                        forceHw = _forceHwDispatch;
-                        _forceHwDispatch = false;
-                        Array.Copy(frame, _lastFrame, 4);
-                        _hasLastFrame = true;
+                        break;
                     }
-
-                    // 2. Throttled dispatch to physical keyboard via direct ENEK5130 HID / WMI
-                    long now = Stopwatch.GetTimestamp();
-                    if (forceHw || lastHwDispatch == 0 || Stopwatch.GetElapsedTime(lastHwDispatch, now).TotalMilliseconds >= hwThrottleMs)
+                    catch (Exception ex)
                     {
-                        lastHwDispatch = now;
-                        _wmi.SetZoneColors(frame, brightness);
+                        AppLogger.Error($"CustomLightingEffectsEngine stopped after a frame failure: {ex}");
+                        Stop(); // This is the animation task itself: never join it from here.
+                        break;
                     }
-
-                    await Task.Delay(frameIntervalMs, ct);
                 }
-                catch (TaskCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Error($"CustomLightingEffectsEngine stopped after a frame failure: {ex}");
-                    Stop(); // This is the animation task itself: never join it from here.
-                    break;
-                }
+            }
+            finally
+            {
+                try { cts.Dispose(); } catch { }
             }
         }
 

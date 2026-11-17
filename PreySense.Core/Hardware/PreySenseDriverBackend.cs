@@ -557,6 +557,7 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
     private DriverServiceOwnership _serviceOwnership = DriverServiceOwnership.Unknown;
     private bool _initialized;
     private bool _disposed;
+    private ulong? _cachedMchbar;
 
     public bool IsInitialized => _initialized && !_disposed && _deviceOps.IsOpen;
 
@@ -817,6 +818,11 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
         {
             address = 0;
             if (_disposed || !IsInitialized) return false;
+            if (_cachedMchbar is ulong cached && cached != 0)
+            {
+                address = cached;
+                return true;
+            }
             bool ReadConfig(byte offset, out uint value) => TryReadHostBridgeConfig(offset, out value);
             // Supported Intel bridges expose MCHBAR at config 0x48/0x4C.
             // Arrow Lake HX uses a 128 KiB window, address bits 41:17 (Intel 835538).
@@ -826,7 +832,9 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
             ushort device = (ushort)(id >> 16);
             ulong mask = device is 0x7D1C or 0x7D2D or 0x7D2F ? 0x3FFFFFE0000UL : ~0x7FFFUL;
             address = ((ulong)high << 32 | low) & mask;
-            return address != 0;
+            if (address == 0) return false;
+            _cachedMchbar = address;
+            return true;
         }
     }
 
@@ -948,6 +956,10 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
             if (!_disposed)
             {
                 _initialized = false;
+                _cachedMchbar = null;
+
+                // Close the open device handle before stopping the driver service so WDM unload can proceed cleanly.
+                _deviceOps.CloseDevice();
 
                 // Service ownership cleanup:
                 // Only stop the service if PreySense started/owned it. Never stop or delete an external/attached service!
@@ -970,10 +982,6 @@ public sealed class PreySenseDriverBackend : ICpuDriverBackend, IPhysicalMemoryB
                 if (_ownsDeviceOps)
                 {
                     _deviceOps.Dispose();
-                }
-                else
-                {
-                    _deviceOps.CloseDevice();
                 }
                 _disposed = true;
             }

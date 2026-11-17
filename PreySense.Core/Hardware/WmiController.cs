@@ -17,10 +17,13 @@ namespace PreySense.Helpers
         private ManagementObject? _cachedObj;
         private ManagementObject? _cachedApgeObj;
         private ManagementObject? _cachedBatteryObj;
-        private ManagementEventWatcher? _powerSourceWatcher;
+        private readonly Dictionary<string, (ManagementBaseObject Params, string InputName, CimType InputType)> _cachedGamingMethodParams = new(StringComparer.Ordinal);
+        private ManagementBaseObject? _cachedGetGamingSysInfoParams;
+        private ManagementBaseObject? _cachedApgeSetParams;
+        private string? _cachedApgeSetParamName;
+        private ManagementBaseObject? _cachedApgeGetParams;
+        private string? _cachedApgeGetParamName;
         private readonly object _lock = new();
-
-        public event EventHandler<PowerSourceKind>? PowerSourceChanged;
 
         [DllImport("powrprof.dll")]
         private static extern uint PowerSetActiveOverlayScheme(Guid scheme);
@@ -57,6 +60,24 @@ namespace PreySense.Helpers
         public int LastRgbMode => _lastMode;
         public Color[] ZoneColors => _zoneColors;
 
+        private static ManagementObject? FirstOrDefaultAndDisposeRest(ManagementObjectSearcher searcher)
+        {
+            using var results = searcher.Get();
+            ManagementObject? first = null;
+            foreach (ManagementBaseObject item in results)
+            {
+                if (first is null && item is ManagementObject mo)
+                {
+                    first = mo;
+                }
+                else
+                {
+                    item.Dispose();
+                }
+            }
+            return first;
+        }
+
         public ManagementObject? GetWmiObject()
         {
             lock (_lock)
@@ -65,7 +86,7 @@ namespace PreySense.Helpers
                 try
                 {
                     using var searcher = new ManagementObjectSearcher(AcerWmi.Namespace, $"SELECT * FROM {AcerWmi.Classes.GamingFunction}");
-                    _cachedObj = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+                    _cachedObj = FirstOrDefaultAndDisposeRest(searcher);
                 }
                 catch { _cachedObj = null; }
                 return _cachedObj;
@@ -80,7 +101,7 @@ namespace PreySense.Helpers
                 try
                 {
                     using var searcher = new ManagementObjectSearcher(AcerWmi.Namespace, $"SELECT * FROM {AcerWmi.Classes.ApgeAction}");
-                    _cachedApgeObj = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+                    _cachedApgeObj = FirstOrDefaultAndDisposeRest(searcher);
                 }
                 catch { _cachedApgeObj = null; }
                 return _cachedApgeObj;
@@ -95,7 +116,7 @@ namespace PreySense.Helpers
                 try
                 {
                     using var searcher = new ManagementObjectSearcher(AcerWmi.Namespace, $"SELECT * FROM {AcerWmi.Classes.BatteryControl}");
-                    _cachedBatteryObj = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+                    _cachedBatteryObj = FirstOrDefaultAndDisposeRest(searcher);
                 }
                 catch { _cachedBatteryObj = null; }
                 return _cachedBatteryObj;
@@ -106,8 +127,24 @@ namespace PreySense.Helpers
         {
             lock (_lock)
             {
+                foreach (var entry in _cachedGamingMethodParams.Values)
+                {
+                    try { entry.Params.Dispose(); } catch { }
+                }
+                _cachedGamingMethodParams.Clear();
+                _cachedGetGamingSysInfoParams?.Dispose();
+                _cachedGetGamingSysInfoParams = null;
+                _cachedApgeSetParams?.Dispose();
+                _cachedApgeSetParams = null;
+                _cachedApgeSetParamName = null;
+                _cachedApgeGetParams?.Dispose();
+                _cachedApgeGetParams = null;
+                _cachedApgeGetParamName = null;
+                _cachedObj?.Dispose();
                 _cachedObj = null;
+                _cachedApgeObj?.Dispose();
                 _cachedApgeObj = null;
+                _cachedBatteryObj?.Dispose();
                 _cachedBatteryObj = null;
             }
         }
@@ -121,19 +158,24 @@ namespace PreySense.Helpers
                     var obj = GetWmiObject();
                     if (obj == null) return (false, 0);
 
-                    using var inParams = obj.GetMethodParameters(method);
-                    // Dynamically discover the input parameter name (not always "gmInput")
-                    string inputName = "gmInput";
-                    foreach (var inProp in inParams.Properties.Cast<PropertyData>())
+                    if (!_cachedGamingMethodParams.TryGetValue(method, out var cached))
                     {
-                        if (!inProp.Name.StartsWith("__"))
+                        var created = obj.GetMethodParameters(method);
+                        string inputName = "gmInput";
+                        foreach (var inProp in created.Properties.Cast<PropertyData>())
                         {
-                            inputName = inProp.Name;
-                            break;
+                            if (!inProp.Name.StartsWith("__"))
+                            {
+                                inputName = inProp.Name;
+                                break;
+                            }
                         }
+                        var inputProp = created.Properties[inputName];
+                        cached = (created, inputName, inputProp.Type);
+                        _cachedGamingMethodParams[method] = cached;
                     }
-                    var inputProp = inParams.Properties[inputName];
-                    object typedInput = inputProp.Type switch
+
+                    object typedInput = cached.InputType switch
                     {
                         System.Management.CimType.UInt32 => Convert.ToUInt32(input),
                         System.Management.CimType.UInt16 => Convert.ToUInt16(input),
@@ -142,8 +184,8 @@ namespace PreySense.Helpers
                         System.Management.CimType.UInt64 => Convert.ToUInt64(input),
                         _ => input
                     };
-                    inParams[inputName] = typedInput;
-                    using var outParams = obj.InvokeMethod(method, inParams, null);
+                    cached.Params[cached.InputName] = typedInput;
+                    using var outParams = obj.InvokeMethod(method, cached.Params, null);
                     // Dynamically discover the output parameter name
                     string outputName = "gmOutput";
                     foreach (var outProp in outParams.Properties.Cast<PropertyData>())
@@ -167,14 +209,12 @@ namespace PreySense.Helpers
         }
 
         private readonly Lazy<EnekRgbClient> _enekRgbClient = new(() => new EnekRgbClient(), true);
-        private readonly Lazy<AcerCoverLogoHidClient> _coverLogoHidClient = new(() => new AcerCoverLogoHidClient(), true);
         private CustomLightingEffectsEngine? _attachedEffects;
         private readonly Lazy<CustomLightingEffectsEngine> _customEffects;
         private readonly Lazy<OemLightingController> _oemLighting = new(() => new OemLightingController(), true);
         public OemLightingController OemLighting => _oemLighting.Value;
 
         private EnekRgbClient EnekRgbClient => _enekRgbClient.Value;
-        private AcerCoverLogoHidClient CoverLogoHid => _coverLogoHidClient.Value;
         /// <summary>Prefer the Production-owned engine when attached so FrameUpdated/idle stay single-instance.</summary>
         private CustomLightingEffectsEngine Effects => _attachedEffects ?? _customEffects.Value;
 
@@ -185,7 +225,6 @@ namespace PreySense.Helpers
         public bool IsCoverLogoHidAvailable => AcerHidLightingCapabilities.GetSupportedTargets().Contains(0x83);
 
         public EnekRgbClient EnekRgb => EnekRgbClient;
-        public AcerCoverLogoHidClient CoverLogoHidClient => CoverLogoHid;
 
         public WmiController()
         {
@@ -422,12 +461,12 @@ namespace PreySense.Helpers
                     if (obj == null)
                         return new ThermalSnapshot(-1, -1, -1, -1);
 
-                    using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
-                    int cpuTemp = includeTemperatures ? ReadSensor(obj, inParams, AcerWmi.Sensors.CpuTemperature) : -1;
+                    var inParams = _cachedGetGamingSysInfoParams ??= obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
+                    int cpuTemp = includeTemperatures ? ReadSensor(ref obj, inParams, AcerWmi.Sensors.CpuTemperature) : -1;
                     // GPU temperature comes from NVIDIA; avoid the stale EC GPU sensor.
                     int gpuTemp = 0;
-                    int cpuRpm = readCpuRpm ? RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.CpuFanRpm)) : -1;
-                    int gpuRpm = readGpuRpm ? RoundToNearest100(ReadSensor(obj, inParams, AcerWmi.Sensors.GpuFanRpm)) : -1;
+                    int cpuRpm = readCpuRpm && obj != null ? RoundToNearest100(ReadSensor(ref obj, _cachedGetGamingSysInfoParams ??= obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo), AcerWmi.Sensors.CpuFanRpm)) : -1;
+                    int gpuRpm = readGpuRpm && obj != null ? RoundToNearest100(ReadSensor(ref obj, _cachedGetGamingSysInfoParams ??= obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo), AcerWmi.Sensors.GpuFanRpm)) : -1;
                     return new ThermalSnapshot(cpuTemp, gpuTemp, cpuRpm, gpuRpm);
                 }
                 catch
@@ -447,8 +486,8 @@ namespace PreySense.Helpers
                     var obj = GetWmiObject();
                     if (obj == null) return -1;
 
-                    using var inParams = obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
-                    return ReadSensor(obj, inParams, sensorId);
+                    var inParams = _cachedGetGamingSysInfoParams ??= obj.GetMethodParameters(AcerWmi.GamingMethods.GetSystemInfo);
+                    return ReadSensor(ref obj, inParams, sensorId);
                 }
                 catch
                 {
@@ -458,8 +497,9 @@ namespace PreySense.Helpers
             }
         }
 
-        private int ReadSensor(ManagementObject obj, ManagementBaseObject inParams, ulong sensorId)
+        private int ReadSensor(ref ManagementObject? obj, ManagementBaseObject inParams, ulong sensorId)
         {
+            if (obj == null) return -1;
             long started = Stopwatch.GetTimestamp();
             try
             {
@@ -473,6 +513,7 @@ namespace PreySense.Helpers
             {
                 AppLogger.Error($"EC sensor 0x{sensorId:X} failed: {ex.Message}");
                 InvalidateCache();
+                obj = GetWmiObject();
             }
             finally
             {
@@ -501,19 +542,7 @@ namespace PreySense.Helpers
                     _lastKnownPowerMode = mode;
             }
             SyncWindowsPowerMode(mode);
-            if (TryGetPowerProfileWmi(out byte postMode) && postMode == mode)
-                AppLogger.Log($"[SetPowerMode-Diag] SUCCESS via WMI verified: mode=0x{mode:X2}");
-            else
-                AppLogger.Log($"[SetPowerMode-Diag] Command sent for 0x{mode:X2}; hardware readback pending (cached last-known mode).");
             return true;
-        }
-
-        public byte GetPowerProfile()
-        {
-            if (TryGetPowerProfile(out byte wmiMode))
-                return wmiMode;
-
-            return 0x01;
         }
 
         public bool TryGetPowerProfile(out byte mode)
@@ -589,13 +618,40 @@ namespace PreySense.Helpers
                 {
                     var obj = GetApgeObject();
                     if (obj == null) return null;
-                    using var inParams = obj.GetMethodParameters(method);
-                    string paramName = "uiInput";
-                    foreach (var prop in inParams.Properties.Cast<PropertyData>())
+
+                    ManagementBaseObject inParams;
+                    string paramName;
+                    if (string.Equals(method, AcerWmi.ApgeMethods.SetFunction, StringComparison.Ordinal))
                     {
-                        paramName = prop.Name;
-                        break;
+                        if (_cachedApgeSetParams == null)
+                        {
+                            _cachedApgeSetParams = obj.GetMethodParameters(method);
+                            _cachedApgeSetParamName = "uiInput";
+                            foreach (var prop in _cachedApgeSetParams.Properties.Cast<PropertyData>())
+                            {
+                                _cachedApgeSetParamName = prop.Name;
+                                break;
+                            }
+                        }
+                        inParams = _cachedApgeSetParams;
+                        paramName = _cachedApgeSetParamName!;
                     }
+                    else
+                    {
+                        if (_cachedApgeGetParams == null)
+                        {
+                            _cachedApgeGetParams = obj.GetMethodParameters(method);
+                            _cachedApgeGetParamName = "uiInput";
+                            foreach (var prop in _cachedApgeGetParams.Properties.Cast<PropertyData>())
+                            {
+                                _cachedApgeGetParamName = prop.Name;
+                                break;
+                            }
+                        }
+                        inParams = _cachedApgeGetParams;
+                        paramName = _cachedApgeGetParamName!;
+                    }
+
                     inParams[paramName] = input;
                     using var outParams = obj.InvokeMethod(method, inParams, null);
                     string outName = "uiOutput";
@@ -639,20 +695,6 @@ namespace PreySense.Helpers
             AppLogger.Log($"Keyboard LED backlight timeout: {(seconds > 0 ? $"{seconds}s" : "Always On (Disabled)")}");
         }
 
-        public bool GetBootSound()
-        {
-            var (success, result) = SendCommand(AcerWmi.GamingMethods.GetMiscSetting, 0x06ul);
-            if (!success) throw new InvalidOperationException("Boot sound: —.");
-            return result == 0x100ul;
-        }
-
-        public void SetBootSound(bool enabled)
-        {
-            ulong val = enabled ? 0x106ul : 0x06ul;
-            SendCommand(AcerWmi.GamingMethods.SetMiscSetting, val);
-            AppLogger.Log($"Boot animation and sound: {(enabled ? "Enabled" : "Disabled")}");
-        }
-
         public int GetUsbChargingLevel()
         {
             ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x04ul);
@@ -688,52 +730,6 @@ namespace PreySense.Helpers
             if (!SendApgeCommand(AcerWmi.ApgeMethods.SetFunction, EncodeUsbChargingLevel(percent)).HasValue)
                 throw new InvalidOperationException("USB power-off charging: —.");
             AppLogger.Log($"USB power-off charging cutoff: {percent}%");
-        }
-
-        public int GetBatteryMode()
-        {
-            lock (_lock)
-            {
-                try
-                {
-                    var obj = GetBatteryObject();
-                    if (obj == null) return -1;
-                    using var inParams = obj.GetMethodParameters(AcerWmi.BatteryMethods.GetHealthControlStatus);
-                    inParams["uBatteryNo"] = (byte)1;
-                    inParams["uFunctionQuery"] = (byte)1;
-                    inParams["uReserved"] = new byte[] { 0, 0 };
-                    
-                    using var outParams = obj.InvokeMethod(AcerWmi.BatteryMethods.GetHealthControlStatus, inParams, null);
-                    
-                    var status = outParams["uFunctionStatus"];
-                    if (status is byte[] bytes && bytes.Length > 0)
-                    {
-                        return bytes[0];
-                    }
-                    else if (status is IEnumerable<object> list)
-                    {
-                        var first = list.FirstOrDefault();
-                        if (first != null) return Convert.ToInt32(first);
-                    }
-                    else if (status is System.Collections.IEnumerable list2)
-                    {
-                        foreach (var val in list2)
-                        {
-                            return Convert.ToInt32(val);
-                        }
-                    }
-                    else if (status != null)
-                    {
-                        return Convert.ToInt32(status);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to get battery mode: {ex.Message}");
-                    InvalidateCache();
-                }
-                return -1;
-            }
         }
 
         public bool SetBatteryMode(int mode)
@@ -849,29 +845,11 @@ namespace PreySense.Helpers
 
         public void Dispose()
         {
-            if (_powerSourceWatcher != null)
-            {
-                _powerSourceWatcher.EventArrived -= OnAcerPowerEvent;
-                try { _powerSourceWatcher.Stop(); } catch { }
-                _powerSourceWatcher.Dispose();
-                _powerSourceWatcher = null;
-            }
-
-            lock (_lock)
-            {
-                _cachedObj?.Dispose();
-                _cachedObj = null;
-                _cachedApgeObj?.Dispose();
-                _cachedApgeObj = null;
-                _cachedBatteryObj?.Dispose();
-                _cachedBatteryObj = null;
-            }
+            InvalidateCache();
             if (_customEffects.IsValueCreated)
-                Effects.Dispose();
+                _customEffects.Value.Dispose();
             if (_enekRgbClient.IsValueCreated)
                 EnekRgbClient.Dispose();
-            if (_coverLogoHidClient.IsValueCreated)
-                CoverLogoHid.Dispose();
             if (_oemLighting.IsValueCreated)
                 OemLighting.Dispose();
         }

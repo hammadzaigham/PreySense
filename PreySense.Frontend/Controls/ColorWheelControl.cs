@@ -65,7 +65,25 @@ namespace PreySense.Frontend.Controls
             }
         }
 
-        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        private static readonly Pen ThumbOuterPen = CreateFrozenPen(Brushes.Black, ThumbOuterStroke);
+        private static readonly Pen ThumbInnerPen = CreateFrozenPen(Brushes.White, 1.5);
+
+        private static Pen CreateFrozenPen(Brush brush, double thickness)
+        {
+            var pen = new Pen(brush, thickness);
+            pen.Freeze();
+            return pen;
+        }
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RebuildWheel();
+
+        protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+        {
+            base.OnDpiChanged(oldDpi, newDpi);
+            RebuildWheel();
+        }
+
+        private void RebuildWheel()
         {
             int size = (int)Math.Min(ActualWidth, ActualHeight);
             if (size <= 10) return;
@@ -73,21 +91,26 @@ namespace PreySense.Frontend.Controls
             _center = new Point(ActualWidth / 2.0, ActualHeight / 2.0);
             _radius = Math.Max(0, Math.Min(ActualWidth, ActualHeight) / 2.0 - WheelInset);
 
-            RenderWheelBitmap((int)ActualWidth, (int)ActualHeight);
+            RenderWheelBitmap(ActualWidth, ActualHeight);
             InvalidateVisual();
         }
 
-        private void RenderWheelBitmap(int width, int height)
+        private void RenderWheelBitmap(double dipWidth, double dipHeight)
         {
-            if (width <= 0 || height <= 0 || _radius <= 0) return;
+            if (dipWidth <= 0 || dipHeight <= 0 || _radius <= 0) return;
+            var dpi = VisualTreeHelper.GetDpi(this);
+            double scaleX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
+            double scaleY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
+            int width = Math.Max(1, (int)Math.Round(dipWidth * scaleX));
+            int height = Math.Max(1, (int)Math.Round(dipHeight * scaleY));
 
-            _bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+            var bitmap = new WriteableBitmap(width, height, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Bgra32, null);
             int stride = width * 4;
             byte[] pixels = new byte[height * stride];
 
-            double cx = _center.X;
-            double cy = _center.Y;
-            double rad = _radius;
+            double cx = _center.X * scaleX;
+            double cy = _center.Y * scaleY;
+            double rad = _radius * Math.Min(scaleX, scaleY);
 
             for (int y = 0; y < height; y++)
             {
@@ -133,7 +156,9 @@ namespace PreySense.Frontend.Controls
                 }
             }
 
-            _bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+            bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+            if (bitmap.CanFreeze) bitmap.Freeze();
+            _bitmap = bitmap;
         }
 
         protected override void OnRender(DrawingContext dc)
@@ -149,9 +174,11 @@ namespace PreySense.Frontend.Controls
 
             Color thumbColor = _isDragging ? _previewColor : SelectedColor;
             Point thumbPos = GetPositionFromColor(thumbColor);
+            var thumbBrush = new SolidColorBrush(thumbColor);
+            thumbBrush.Freeze();
 
-            dc.DrawEllipse(new SolidColorBrush(thumbColor), new Pen(Brushes.Black, ThumbOuterStroke), thumbPos, ThumbRadius, ThumbRadius);
-            dc.DrawEllipse(null, new Pen(Brushes.White, 1.5), thumbPos, ThumbRadius, ThumbRadius);
+            dc.DrawEllipse(thumbBrush, ThumbOuterPen, thumbPos, ThumbRadius, ThumbRadius);
+            dc.DrawEllipse(null, ThumbInnerPen, thumbPos, ThumbRadius, ThumbRadius);
         }
 
         private Point GetPositionFromColor(Color c)

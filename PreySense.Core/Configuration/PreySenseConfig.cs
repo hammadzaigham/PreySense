@@ -42,14 +42,6 @@ namespace PreySense.Core.Configuration
         /// <summary>Per-mode custom fan curve settings.</summary>
         public FanConfig Fans { get; set; } = new();
 
-        /// <summary>Synchronize CPU and GPU fan speeds across custom curve stages / manual controls.</summary>
-        [JsonIgnore]
-        public bool SynchronizeFanSpeeds
-        {
-            get => Fans.SynchronizeFanSpeeds;
-            set => Fans.SynchronizeFanSpeeds = value;
-        }
-
         /// <summary>RGB Keyboard and Cover lighting configuration.</summary>
         public LightingConfig Lighting { get; set; } = new();
 
@@ -58,12 +50,33 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Opt-in game detection and executable-to-operating-mode profiles.</summary>
         public GamesConfig Games { get; set; } = new();
+
+        public PreySenseConfig Clone() => new()
+        {
+            AdditionalSettings = AdditionalSettings is not null ? new Dictionary<string, System.Text.Json.JsonElement>(AdditionalSettings) : null,
+            SchemaVersion = SchemaVersion,
+            General = General?.Clone()!,
+            Display = Display?.Clone()!,
+            Battery = Battery?.Clone()!,
+            Session = Session?.Clone()!,
+            Tuning = Tuning?.Clone()!,
+            Fans = Fans?.Clone()!,
+            Lighting = Lighting?.Clone()!,
+            Overlay = Overlay?.Clone()!,
+            Games = Games?.Clone()!
+        };
     }
 
     public sealed class GamesConfig
     {
         public bool Enabled { get; set; } = false;
         public List<GameProfile> Profiles { get; set; } = new();
+
+        public GamesConfig Clone() => new()
+        {
+            Enabled = Enabled,
+            Profiles = Profiles?.Select(p => p?.Copy()!).ToList()!
+        };
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ApplicationTheme>))]
@@ -85,12 +98,16 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Whether hardware tuning controls are enabled.</summary>
         public bool HardwareTuningEnabled { get; set; } = false;
+
+        public GeneralConfig Clone() => (GeneralConfig)MemberwiseClone();
     }
 
     public sealed class DisplayConfig
     {
         /// <summary>Automatically lower refresh rate when on battery.</summary>
         public bool AutoRefreshRate { get; set; } = false;
+
+        public DisplayConfig Clone() => (DisplayConfig)MemberwiseClone();
     }
 
     public sealed class BatteryConfig
@@ -103,6 +120,8 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Automatically engage Windows Energy Saver when on battery.</summary>
         public bool BatteryEnergySaver { get; set; } = false;
+
+        public BatteryConfig Clone() => (BatteryConfig)MemberwiseClone();
     }
 
     public sealed class SessionConfig
@@ -119,6 +138,8 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Preferred GPU mode index: 0 = Integrated, 1 = Dynamic/Optimus, 2 = Discrete.</summary>
         public int GpuModePreference { get; set; } = 1;
+
+        public SessionConfig Clone() => (SessionConfig)MemberwiseClone();
     }
 
     public sealed class TuningConfig
@@ -212,6 +233,29 @@ namespace PreySense.Core.Configuration
             GpuCoreClockOffsetMhz = 100,
             GpuMemoryClockOffsetMhz = 200
         };
+
+        public TuningConfig Clone() => new()
+        {
+            AdditionalSettings = AdditionalSettings is not null ? new Dictionary<string, System.Text.Json.JsonElement>(AdditionalSettings) : null,
+            ApplyProchotOffset = ApplyProchotOffset,
+            ProchotOffsetCelsius = ProchotOffsetCelsius,
+            EnableCpuPowerLimitControl = EnableCpuPowerLimitControl,
+            EnableGpuPowerLimitControl = EnableGpuPowerLimitControl,
+            EnableGpuOverclockingControl = EnableGpuOverclockingControl,
+            EnableCpuBoostTuningControl = EnableCpuBoostTuningControl,
+            FactoryProchotOffsetCelsius = FactoryProchotOffsetCelsius,
+            FactoryProchotOffsetLocked = FactoryProchotOffsetLocked,
+            FactoryTjMaxCelsius = FactoryTjMaxCelsius,
+            GpuBasePowerWatts = GpuBasePowerWatts,
+            FactoryStaticCpuPl1Watts = FactoryStaticCpuPl1Watts,
+            FactoryStaticCpuPl2Watts = FactoryStaticCpuPl2Watts,
+            FactoryDefaults = FactoryDefaults?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.Clone()!)!,
+            Quiet = Quiet?.Clone()!,
+            Eco = Eco?.Clone()!,
+            Balanced = Balanced?.Clone()!,
+            Performance = Performance?.Clone()!,
+            Turbo = Turbo?.Clone()!
+        };
     }
 
     public sealed class ModeTuningConfig
@@ -219,6 +263,15 @@ namespace PreySense.Core.Configuration
         /// <summary>Preserves unrecognized settings when a newer file is edited by this build.</summary>
         [JsonExtensionData]
         public Dictionary<string, System.Text.Json.JsonElement>? AdditionalSettings { get; set; }
+
+        public ModeTuningConfig Clone()
+        {
+            var copy = (ModeTuningConfig)MemberwiseClone();
+            copy.AdditionalSettings = AdditionalSettings is not null
+                ? new Dictionary<string, System.Text.Json.JsonElement>(AdditionalSettings)
+                : null;
+            return copy;
+        }
 
         [System.Text.Json.Serialization.JsonIgnore]
         public bool HasCpuLimitValues => CpuPl1Watts.HasValue && CpuPl2Watts.HasValue && TauSeconds.HasValue;
@@ -307,10 +360,6 @@ namespace PreySense.Core.Configuration
 
     public sealed class FanConfig
     {
-        /// <summary>Synchronize CPU and GPU fan speeds across custom curve stages / manual controls.</summary>
-        [JsonPropertyOrder(1)]
-        public bool SynchronizeFanSpeeds { get; set; } = true;
-
         /// <summary>Delay before accepting custom curve stage changes, shared by all modes and both fans.</summary>
         [JsonPropertyOrder(9)]
         public int ControlDelaySeconds { get; set; } = 0;
@@ -322,7 +371,6 @@ namespace PreySense.Core.Configuration
         /// <summary>GPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
         [JsonPropertyOrder(8)]
         public int GpuMaxRpm { get; set; } = 6400;
-        public bool HasMeasuredFanMaximums { get; set; }
 
         [JsonPropertyOrder(2)]
         public ModeFanCurveConfig Quiet { get; set; } = ModeFanCurveConfig.CreateDefaultQuiet();
@@ -334,6 +382,18 @@ namespace PreySense.Core.Configuration
         public ModeFanCurveConfig Performance { get; set; } = ModeFanCurveConfig.CreateDefaultPerformance();
         [JsonPropertyOrder(6)]
         public ModeFanCurveConfig Turbo { get; set; } = ModeFanCurveConfig.CreateDefaultTurbo();
+
+        public FanConfig Clone() => new()
+        {
+            ControlDelaySeconds = ControlDelaySeconds,
+            CpuMaxRpm = CpuMaxRpm,
+            GpuMaxRpm = GpuMaxRpm,
+            Quiet = Quiet?.Clone()!,
+            Eco = Eco?.Clone()!,
+            Balanced = Balanced?.Clone()!,
+            Performance = Performance?.Clone()!,
+            Turbo = Turbo?.Clone()!
+        };
     }
 
     /// <summary>Persisted fan stage: separate CPU/GPU trip °C and duties. No fall/RPM fields.</summary>
@@ -361,6 +421,8 @@ namespace PreySense.Core.Configuration
         public int GpuTargetRpm { get; set; }
 
         public FanStageConfig() { }
+
+        public FanStageConfig Clone() => (FanStageConfig)MemberwiseClone();
 
         public FanStageConfig(Mode.FanStage stage)
         {
@@ -438,6 +500,13 @@ namespace PreySense.Core.Configuration
             RampUpSeconds = profile.RampUpSeconds,
             Stages = profile.Stages.Select(s => new FanStageConfig(s)).ToArray()
         };
+
+        public ModeFanCurveConfig Clone() => new()
+        {
+            ControlMode = ControlMode,
+            RampUpSeconds = RampUpSeconds,
+            _stages = _stages?.Select(s => s?.Clone()!).ToArray()
+        };
     }
 
     public sealed class LightingConfig
@@ -448,6 +517,15 @@ namespace PreySense.Core.Configuration
         public KeyboardLightingConfig Keyboard { get; set; } = new();
         public CoverLightingConfig Cover { get; set; } = new();
         public Dictionary<string, DeviceLightingConfig> Devices { get; set; } = new();
+
+        public LightingConfig Clone() => new()
+        {
+            ModeBrightness = ModeBrightness,
+            PowerModeColors = PowerModeColors is not null ? new Dictionary<string, string>(PowerModeColors) : null!,
+            Keyboard = Keyboard?.Clone()!,
+            Cover = Cover?.Clone()!,
+            Devices = Devices?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.Clone()!)!
+        };
     }
 
     /// <summary>Explicit settings for a detected device; discovery never creates profiles.</summary>
@@ -469,6 +547,14 @@ namespace PreySense.Core.Configuration
         public Dictionary<string, string> PowerModeColors { get; set; } = new();
         /// <summary>When true (Mode Key / Turbo Key), follow the keyboard color and brightness.</summary>
         public bool SyncWithKeyboard { get; set; }
+
+        public DeviceLightingConfig Clone()
+        {
+            var copy = (DeviceLightingConfig)MemberwiseClone();
+            copy.LedColors = LedColors is not null ? new Dictionary<int, string>(LedColors) : null!;
+            copy.PowerModeColors = PowerModeColors is not null ? new Dictionary<string, string>(PowerModeColors) : null!;
+            return copy;
+        }
     }
 
     public sealed class KeyboardLightingConfig
@@ -487,6 +573,13 @@ namespace PreySense.Core.Configuration
         public string Zone4ColorHex { get; set; } = "#00E5FF";
         public string EffectTag { get; set; } = "MODE";
         public string PresetTheme { get; set; } = "Mode";
+
+        public KeyboardLightingConfig Clone()
+        {
+            var copy = (KeyboardLightingConfig)MemberwiseClone();
+            copy.PowerModeColors = PowerModeColors is not null ? new Dictionary<string, string>(PowerModeColors) : null!;
+            return copy;
+        }
     }
 
     public sealed class CoverLightingConfig
@@ -497,6 +590,8 @@ namespace PreySense.Core.Configuration
         public int Brightness { get; set; } = 100;
         public int Speed { get; set; } = 50;
         public bool SyncWithKeyboard { get; set; } = false;
+
+        public CoverLightingConfig Clone() => (CoverLightingConfig)MemberwiseClone();
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<OverlayTheme>))]
@@ -582,6 +677,13 @@ namespace PreySense.Core.Configuration
             new() { CpuMetric = "Memory", GpuMetric = "Memory", ShowGraph = false },
             new() { CpuMetric = "Memory Speed", GpuMetric = "Memory Speed", ShowGraph = false }
         };
+
+        public OverlayConfig Clone()
+        {
+            var copy = (OverlayConfig)MemberwiseClone();
+            copy.Slots = Slots?.Select(s => s?.Clone()!).ToList()!;
+            return copy;
+        }
     }
 
     public sealed class OverlaySlotConfig
@@ -594,5 +696,7 @@ namespace PreySense.Core.Configuration
 
         /// <summary>Whether graph visualization is enabled for this slot.</summary>
         public bool ShowGraph { get; set; } = false;
+
+        public OverlaySlotConfig Clone() => (OverlaySlotConfig)MemberwiseClone();
     }
 }

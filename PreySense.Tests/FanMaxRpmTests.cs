@@ -57,8 +57,8 @@ public class FanMaxRpmTests
             Assert.AreEqual(6000, profile.GpuMaxRpm);
             Assert.AreEqual(3500, profile.Stages[0].CpuTargetRpm);
             Assert.AreEqual(1500, profile.Stages[0].GpuTargetRpm);
-            Assert.AreEqual((50, 25, 0), new FanCurveFollower().Evaluate(40, 40, profile.Stages, synchronizeFanSpeeds: false));
-            Assert.AreEqual((100, 100, 1), new FanCurveFollower().Evaluate(80, 80, profile.Stages, synchronizeFanSpeeds: false));
+            Assert.AreEqual((50, 25, 0), new FanCurveFollower().Evaluate(40, 40, profile.Stages));
+            Assert.AreEqual((100, 100, 1), new FanCurveFollower().Evaluate(80, 80, profile.Stages));
             var copied = profile.Copy();
             copied.Normalize(1);
             Assert.AreEqual(7000, copied.Stages[1].CpuTargetRpm);

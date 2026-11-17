@@ -15,12 +15,10 @@ public sealed record OemUsbFeatureStep(byte[] Report, int DelayAfterMs);
 
 public static partial class OemUsbLightingProtocol
 {
-    private static readonly Lazy<Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>>> Modes = new(LoadModes);
-
     public static IReadOnlyList<OemUsbHardwareMode> GetSupportedModes(OemUsbKeyboardFamily family, ushort productId)
     {
         _ = GetLayout(family, productId);
-        return Modes.Value[family];
+        return Catalog.Value.Modes[family];
     }
 
     /// <summary>OEM mode metadata caps native brightness at 50. UI percentages map linearly into that range.</summary>
@@ -73,27 +71,6 @@ public static partial class OemUsbLightingProtocol
         return family == OemUsbKeyboardFamily.Darfon
             ? new[] { Step(Begin()), Step(Reset()), Step(Rgb()), Step(nativeMode, true) }
             : new[] { Step(Begin()), Step(Rgb()), Step(nativeMode, true) };
-    }
-
-    private static Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>> LoadModes()
-    {
-        using var stream = typeof(OemUsbLightingProtocol).Assembly.GetManifestResourceStream(
-            "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json.gz")!;
-        using var decoded = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
-        using var document = JsonDocument.Parse(decoded);
-        var modes = new Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>>();
-        foreach (var family in document.RootElement.GetProperty("Modes").EnumerateObject())
-        {
-            var list = family.Value.EnumerateArray().Select(m =>
-            {
-                int Number(string property) => m.GetProperty(property).GetInt32();
-                return new OemUsbHardwareMode((byte)Number("id"), m.GetProperty("name").GetString()!, (uint)Number("flags"),
-                    Number("speedMin"), Number("speedMax"), Number("brightnessMin"), Number("brightnessMax"),
-                    Number("defaultSpeed"), Number("defaultBrightness"), Number("defaultDirection"), Number("colorMode"));
-            }).ToArray();
-            modes.Add(Enum.Parse<OemUsbKeyboardFamily>(family.Name), Array.AsReadOnly(list));
-        }
-        return modes;
     }
 }
 

@@ -48,7 +48,7 @@ internal sealed class HidDeviceArrivalWatcher : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WmDeviceChange && wParam.ToInt32() is DbtDeviceArrival or DbtDeviceRemoveComplete && lParam != IntPtr.Zero)
+        if (msg == WmDeviceChange && wParam.ToInt64() is DbtDeviceArrival or DbtDeviceRemoveComplete && lParam != IntPtr.Zero)
         {
             int deviceType = Marshal.ReadInt32(lParam, 4);
             if (deviceType == DbtDevtypDeviceInterface)

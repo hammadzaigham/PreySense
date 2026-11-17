@@ -16,10 +16,10 @@ public sealed record OemUsbLightingTransfer(
 /// <summary>Pure packet construction recovered from OEM DLLs. Does not open or write hardware.</summary>
 public static partial class OemUsbLightingProtocol
 {
-    private static readonly Lazy<Dictionary<string, OemUsbKey[]>> Layouts = new(LoadLayouts);
+    private static readonly Lazy<(Dictionary<string, OemUsbKey[]> Layouts, Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>> Modes)> Catalog = new(LoadCatalog);
 
     public static bool IsKnownProduct(OemUsbKeyboardFamily family, ushort productId) =>
-        Layouts.Value.ContainsKey(LayoutId(family, productId));
+        Catalog.Value.Layouts.ContainsKey(LayoutId(family, productId));
 
     /// <summary>Keys whose named slots are actually transmitted by the OEM color path.</summary>
     public static IReadOnlyList<OemUsbKey> GetKeys(OemUsbKeyboardFamily family, ushort productId)
@@ -90,25 +90,39 @@ public static partial class OemUsbLightingProtocol
     };
 
     private static OemUsbKey[] GetLayout(OemUsbKeyboardFamily family, ushort productId) =>
-        Layouts.Value.TryGetValue(LayoutId(family, productId), out var keys) ? keys :
+        Catalog.Value.Layouts.TryGetValue(LayoutId(family, productId), out var keys) ? keys :
             throw new NotSupportedException($"No verified {family} layout for product {productId:X4}.");
 
     private static string LayoutId(OemUsbKeyboardFamily family, ushort productId) => $"{family}:{productId:x4}";
 
-    private static Dictionary<string, OemUsbKey[]> LoadLayouts()
+    private static (Dictionary<string, OemUsbKey[]> Layouts, Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>> Modes) LoadCatalog()
     {
         using var stream = typeof(OemUsbLightingProtocol).Assembly.GetManifestResourceStream(
             "PreySense.Core.Resources.Rgb.OemUsbKeyboardLayouts.json.gz")
             ?? throw new InvalidOperationException("Embedded OEM USB keyboard layouts are missing.");
         using var decoded = new System.IO.Compression.GZipStream(stream, System.IO.Compression.CompressionMode.Decompress);
         using var document = JsonDocument.Parse(decoded);
-        var result = new Dictionary<string, OemUsbKey[]>(StringComparer.Ordinal);
+        var layouts = new Dictionary<string, OemUsbKey[]>(StringComparer.Ordinal);
         static OemUsbKey[] ReadKeys(JsonElement array) => array.EnumerateArray().Select(k => new OemUsbKey(
             k.GetProperty("index").GetInt32(), k.GetProperty("name").GetString()!, k.GetProperty("slot").GetInt32())).ToArray();
-        result.Add("Acer:0117", ReadKeys(document.RootElement.GetProperty("Acer").GetProperty("keys")));
-        result.Add("Darfon:ba51", ReadKeys(document.RootElement.GetProperty("Darfon").GetProperty("keys")));
+        layouts.Add("Acer:0117", ReadKeys(document.RootElement.GetProperty("Acer").GetProperty("keys")));
+        layouts.Add("Darfon:ba51", ReadKeys(document.RootElement.GetProperty("Darfon").GetProperty("keys")));
         foreach (var product in document.RootElement.GetProperty("Sunrex").EnumerateObject())
-            result.Add($"Sunrex:{product.Name}", ReadKeys(product.Value));
-        return result;
+            layouts.Add($"Sunrex:{product.Name}", ReadKeys(product.Value));
+
+        var modes = new Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>>();
+        foreach (var family in document.RootElement.GetProperty("Modes").EnumerateObject())
+        {
+            var list = family.Value.EnumerateArray().Select(m =>
+            {
+                int Number(string property) => m.GetProperty(property).GetInt32();
+                return new OemUsbHardwareMode((byte)Number("id"), m.GetProperty("name").GetString()!, (uint)Number("flags"),
+                    Number("speedMin"), Number("speedMax"), Number("brightnessMin"), Number("brightnessMax"),
+                    Number("defaultSpeed"), Number("defaultBrightness"), Number("defaultDirection"), Number("colorMode"));
+            }).ToArray();
+            modes.Add(Enum.Parse<OemUsbKeyboardFamily>(family.Name), Array.AsReadOnly(list));
+        }
+
+        return (layouts, modes);
     }
 }
