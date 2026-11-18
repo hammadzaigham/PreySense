@@ -23,7 +23,6 @@ public class StartupSourceModeTests
                 cfg.Session.ActivePowerMode = 5;
                 cfg.Session.AcPowerMode = 4;
                 cfg.Session.BatteryPowerMode = 6;
-                cfg.Battery.BatteryEnergySaver = false;
                 cfg.Games.Enabled = false;
             });
             using var vm = new MainViewModel(new SourceHardware(source));

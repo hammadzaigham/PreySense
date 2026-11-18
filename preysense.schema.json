@@ -109,11 +109,6 @@
           "default": true,
           "description": "Acer 80% battery charge care limit toggle. Default true (80%).",
           "title": "Charge Limit Enabled"
-        },
-        "BatteryEnergySaver": {
-          "type": "boolean",
-          "description": "Automatic Windows energy saver toggle when on battery.",
-          "title": "Battery Energy Saver"
         }
       },
       "title": "Battery"

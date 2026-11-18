@@ -13,8 +13,6 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel
     {
-        private readonly Services.LatestBackgroundWorker<bool> _energySaverWorker =
-            new(PowerLimitController.SetEnergySaverOnBattery, (_, latest) => latest);
         private readonly object _modeSwitchLock = new();
         private readonly SemaphoreSlim _modeSwitchGate = new(1, 1);
         private volatile bool _modeSwitchStopping;
@@ -61,7 +59,6 @@ namespace PreySense.Frontend.ViewModels
 
         [ObservableProperty] private int _acPowerModeIndex = ProfileManager.SourceProfileIndex(0x01);
         [ObservableProperty] private int _batteryPowerModeIndex = ProfileManager.SourceProfileIndex(0x06);
-        [ObservableProperty] private bool _isBatteryEnergySaverEnabled;
 
         private bool _suppressPowerProfile;
 
@@ -466,15 +463,6 @@ namespace PreySense.Frontend.ViewModels
             PersistSessionSettings();
             if (_currentPowerSource == PowerSourceKind.Battery)
                 ApplyPowerProfileForSource(PowerSourceKind.Battery);
-        }
-
-        partial void OnIsBatteryEnergySaverEnabledChanged(bool value)
-        {
-            if (_suppressPowerProfile)
-                return;
-
-            PersistSessionSettings();
-            _ = _energySaverWorker.Submit(value);
         }
 
         private void NotifyModeSelectionsChanged()

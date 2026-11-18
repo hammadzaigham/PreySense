@@ -120,9 +120,6 @@
                                                          SelectedIndex="{Binding BatteryPowerModeIndex, Mode=TwoWay}"
                                                          DropdownWidth="160"/>
 
-                            <controls:SettingSwitchRow Title="Energy Saver on Battery"
-                                                      IsChecked="{Binding IsBatteryEnergySaverEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-
                             <controls:SettingDropdownRow Title="On AC"
                                                          ItemsSource="{Binding SourceProfileNames}"
                                                          SelectedIndex="{Binding AcPowerModeIndex, Mode=TwoWay}"

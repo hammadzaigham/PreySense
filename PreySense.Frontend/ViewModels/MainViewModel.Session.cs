@@ -72,8 +72,6 @@ namespace PreySense.Frontend.ViewModels
                 }
                 catch (Exception ex) { AppLogger.Log($"Startup power source unavailable: {ex.Message}"); }
 
-                IsBatteryEnergySaverEnabled = cfg.Battery.BatteryEnergySaver;
-
                 _suppressPowerProfile = false;
             }
             catch (Exception ex)
@@ -98,7 +96,6 @@ namespace PreySense.Frontend.ViewModels
                     cfg.General.AcerServicesDebloated = IsAcerServicesDebloated;
                     cfg.Session.AcPowerMode = ProfileManager.SourceProfileMode(AcPowerModeIndex);
                     cfg.Session.BatteryPowerMode = ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex);
-                    cfg.Battery.BatteryEnergySaver = IsBatteryEnergySaverEnabled;
                 });
             }
             catch (Exception ex)
@@ -175,8 +172,6 @@ namespace PreySense.Frontend.ViewModels
                     mode = source == PowerSourceKind.Battery
                         ? ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex)
                         : ProfileManager.SourceProfileMode(AcPowerModeIndex);
-                    if (IsBatteryEnergySaverEnabled)
-                        PowerLimitController.SetEnergySaverOnBattery(true);
 
                     if (!string.Equals(reason, "startup", StringComparison.OrdinalIgnoreCase))
                         ApplySavedLighting();

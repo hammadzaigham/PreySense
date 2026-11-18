@@ -366,7 +366,6 @@ namespace PreySense.Frontend.ViewModels
             _turboKeyWatcher.Dispose();
             _hidModeKeyWatcher.Dispose();
             _lightingDebouncer.Dispose();
-            _energySaverWorker.StopAsync().GetAwaiter().GetResult();
             if (_coverSyncFrameHooked && _hw is ProductionHardwareService hooked)
             {
                 hooked.LightingEngine.IdleStateChanged -= OnLightingEngineIdleStateChanged;

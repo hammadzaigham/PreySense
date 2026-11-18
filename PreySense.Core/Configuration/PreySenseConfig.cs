@@ -118,9 +118,6 @@ namespace PreySense.Core.Configuration
         /// <summary>80% battery charge limiter enabled.</summary>
         public bool ChargeLimitEnabled { get; set; } = true;
 
-        /// <summary>Automatically engage Windows Energy Saver when on battery.</summary>
-        public bool BatteryEnergySaver { get; set; } = false;
-
         public BatteryConfig Clone() => (BatteryConfig)MemberwiseClone();
     }
 
