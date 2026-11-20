@@ -77,6 +77,8 @@ namespace PreySense.Frontend.Views
         {
             if (e.PropertyName == nameof(MainViewModel.IsHardwareTuningEnabled) && IsLoaded)
                 LoadModeData();
+            else if (e.PropertyName == nameof(MainViewModel.GpuBasePowerWatts) && IsLoaded && sender is MainViewModel vm)
+                UpdateGpuOffsetLabels(vm);
             else if (e.PropertyName is nameof(MainViewModel.EnableCpuPowerLimitControl)
                 or nameof(MainViewModel.EnableGpuPowerLimitControl)
                 or nameof(MainViewModel.EnableGpuOverclockingControl)

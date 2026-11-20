@@ -107,6 +107,9 @@ namespace PreySense.Core.Configuration
         /// <summary>Automatically lower refresh rate when on battery.</summary>
         public bool AutoRefreshRate { get; set; } = false;
 
+        public bool? LcdOverdriveSupported { get; set; }
+        public bool LcdOverdriveEnabled { get; set; }
+
         public DisplayConfig Clone() => (DisplayConfig)MemberwiseClone();
     }
 

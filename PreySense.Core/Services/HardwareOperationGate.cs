@@ -9,6 +9,12 @@ public static class HardwareOperationGate
     public static IDisposable? TryEnterTelemetry(int timeoutMs = 0) =>
         Gate.Wait(timeoutMs) ? new Lease() : null;
 
+    public static async Task<IDisposable> EnterGpuBaselineCaptureAsync()
+    {
+        await Gate.WaitAsync().ConfigureAwait(false);
+        return new Lease();
+    }
+
     public static async Task<IDisposable> EnterDisplaySwitchAsync()
     {
         if (!await Gate.WaitAsync(TimeSpan.FromSeconds(5)))

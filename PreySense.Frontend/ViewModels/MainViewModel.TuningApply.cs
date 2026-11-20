@@ -202,7 +202,8 @@ public partial class MainViewModel
         if (!profile.HasValues)
             return _hw.SetPowerMode(mode) ? new(true, "Acer mode selected.")
                 : new(false, "Could not switch Acer mode.");
-        if (!_hw.SetPowerMode(mode))
+        // GPU profile writes stage the inactive target and activate it themselves.
+        if (!gpuRuntime.HasValue && gpuOffsets is null && !_hw.SetPowerMode(mode))
             return new(false, "Could not switch Acer mode.");
         return ApplyProfile(new(mode,
             profile.CpuPl1Watts ?? 0, profile.CpuPl2Watts ?? 0, profile.TauSeconds ?? 0,

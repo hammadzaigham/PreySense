@@ -90,6 +90,14 @@
           "type": "boolean",
           "description": "Automatic 60Hz switch on battery.",
           "title": "Auto Refresh Rate"
+        },
+        "LcdOverdriveSupported": {
+          "type": ["boolean", "null"],
+          "description": "Cached internal LCD overdrive capability. Null triggers detection on startup."
+        },
+        "LcdOverdriveEnabled": {
+          "type": "boolean",
+          "description": "Last verified LCD overdrive state."
         }
       },
       "title": "Display"

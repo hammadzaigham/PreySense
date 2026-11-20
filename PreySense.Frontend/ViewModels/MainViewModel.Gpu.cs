@@ -72,43 +72,6 @@ namespace PreySense.Frontend.ViewModels
         [ObservableProperty] private int _customTurboGpuWatts = 130;
         [ObservableProperty] private string _gpuStateDescription = "—";
         [ObservableProperty] private string _activeGpuPowerCeiling = "—";
-        private bool _gpuHardwareInitialized;
-
-        public void EnsureGpuHardwareInitialized()
-        {
-            if (_gpuHardwareInitialized)
-                return;
-
-            _gpuHardwareInitialized = true;
-            _ = Task.Run(InitializeGpuHardwareBackground);
-        }
-
-        private void InitializeGpuHardwareBackground()
-        {
-            try
-            {
-                int? baseline = ReadOrCaptureGpuBaseline();
-
-                if (_disposed)
-                    return;
-
-                _dispatcher.BeginInvoke(() =>
-                {
-                    if (_disposed)
-                        return;
-
-                    GpuBasePowerWatts = baseline;
-                    if (baseline.HasValue)
-                        GpuPowerTargetMin = baseline.Value;
-                    ActiveGpuPowerCeiling = "—";
-                });
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log($"[MainViewModel] Lazy GPU initialization error: {ex.Message}");
-            }
-        }
-
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsGpuOptimusActive))]
         [NotifyPropertyChangedFor(nameof(IsGpuAutoActive))]

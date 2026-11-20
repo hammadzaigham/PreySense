@@ -19,7 +19,7 @@ Identical saves leave the file untouched. Before skipping a write, the service c
 | Section | Purpose |
 | --- | --- |
 | `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`, `tr-TR`), theme, Acer-service preference and tuning enable flag. |
-| `Display` | Automatic refresh-rate preference. |
+| `Display` | Automatic refresh-rate preference, cached LCD overdrive support, and last verified overdrive state. Set `LcdOverdriveSupported` to `null` to detect support again on startup. |
 | `Battery` | Charge-limit and USB power-off charging preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |
 | `Tuning` | Optional global controls, per-mode user profiles and separately captured factory defaults. |

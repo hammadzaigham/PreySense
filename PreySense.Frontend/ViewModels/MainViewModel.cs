@@ -225,6 +225,8 @@ namespace PreySense.Frontend.ViewModels
             TauSeconds = TauForMode(ActivePowerMode);
 
             _ = InitializeTuningAndSessionAsync();
+            _ = InitializeLcdOverdriveAsync(_hw is MockHardwareService
+                ? null : PreySense.Core.Configuration.ConfigurationService.Instance);
             if (_hw is MockHardwareService)
                 InitializeMockHardwareDiscovery();
             else

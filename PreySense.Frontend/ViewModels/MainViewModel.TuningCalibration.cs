@@ -136,6 +136,8 @@ public partial class MainViewModel
         string? captureFailure = null;
         if (_hw is not MockHardwareService)
         {
+            await CaptureGpuBaselineOnceAsync();
+            if (_disposed) return;
             await RefreshProchotLockStateAsync();
             await CaptureMissingFactoryDefaultsAsync();
             if (!HasCompleteFactoryDefaults(TuningStore.GetCurrent().Tuning))
@@ -152,10 +154,6 @@ public partial class MainViewModel
     {
         if (CaptureTuningDefaults is not null) return CaptureTuningDefaults();
         int? gpuBaselineWatts = GpuBasePowerWatts;
-        if (!gpuBaselineWatts.HasValue)
-        {
-            gpuBaselineWatts = ReadOrCaptureGpuBaseline();
-        }
         var backend = CpuDriverRuntime.Backend ?? throw new InvalidOperationException(CpuDriverRuntime.Status);
         var calibration = new DriverFactoryCalibration(backend, backend);
         var profiles = calibration.Capture(gpuBaselineWatts, new TuningModeController(this));

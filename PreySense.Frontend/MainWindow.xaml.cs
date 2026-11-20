@@ -210,9 +210,6 @@ namespace PreySense.Frontend
 
         private void ModeSettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            if (DataContext is MainViewModel vm)
-                vm.EnsureGpuHardwareInitialized();
-
             ShowModeSettingsWindow();
         }
 

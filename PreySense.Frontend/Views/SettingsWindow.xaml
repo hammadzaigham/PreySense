@@ -69,6 +69,7 @@
                                                       SwitchWidth="92"
                                                       Command="{Binding ToggleBatteryLimitCommand}"/>
                             <controls:SettingSwitchRow Title="LCD Overdrive"
+                                                      Visibility="{Binding IsLcdOverdriveAvailable, Converter={StaticResource BoolToVis}}"
                                                       IsChecked="{Binding IsLcdOverdriveEnabled, Mode=OneWay}"
                                                       IsEnabled="{Binding CanChangeLcdOverdrive}"
                                                       Command="{Binding ToggleLcdOverdriveCommand}"/>

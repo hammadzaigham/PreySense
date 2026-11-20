@@ -48,11 +48,18 @@ public class GpuProfileTargetTests
         profile.ApplyGpuLimits = true;
         profile.GpuDeltaWatts = 255; profile.GpuDynamicBoostWatts = 25; profile.PlatformPowerOffsetWatts = 255;
         var vm = (MainViewModel)RuntimeHelpers.GetUninitializedObject(typeof(MainViewModel));
+        var hardware = new PreySense.Core.Services.MockHardwareService();
+        byte originalMode = hardware.CurrentPowerMode;
         typeof(MainViewModel).GetField("_hw", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(vm, new PreySense.Core.Services.MockHardwareService());
+            .SetValue(vm, hardware);
         vm.TuningConfigurationReader = () => cfg;
         MainViewModel.DriverTuningRequest? captured = null;
-        vm.DriverTuningExecutor = request => { captured = request; return new(true, "captured"); };
+        vm.DriverTuningExecutor = request =>
+        {
+            Assert.AreEqual(originalMode, hardware.CurrentPowerMode, "GPU tuning must stage the profile before selecting its mode.");
+            captured = request;
+            return new(true, "captured");
+        };
         Assert.IsTrue(vm.ApplySavedDriverTuning(mode).Success);
         Assert.IsNotNull(captured);
         Assert.AreEqual(new GpuPowerOffsets(255, 25, 255), captured.Value.GpuOffsets);

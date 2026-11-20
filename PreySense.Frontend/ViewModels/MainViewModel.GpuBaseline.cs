@@ -7,12 +7,10 @@ namespace PreySense.Frontend.ViewModels;
 
 public partial class MainViewModel
 {
-    private int? ReadOrCaptureGpuBaseline()
+    private static int? ReadOrCaptureGpuBaseline()
     {
         int? saved = GpuPowerBaseline.ReadWatts();
         if (saved.HasValue) return saved;
-        using var lease = HardwareOperationGate.TryEnterTelemetry();
-        if (lease == null || PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1) return null;
         try
         {
             int? detected = PreySense.Gpu.NvmlHelper.GetGpuDefaultPowerLimitWatts();
@@ -23,9 +21,13 @@ public partial class MainViewModel
 
     private async Task CaptureGpuBaselineOnceAsync()
     {
+        if (_disposed || GpuBasePowerWatts.HasValue) return;
         try
         {
+            using var lease = await HardwareOperationGate.EnterGpuBaselineCaptureAsync();
+            if (_disposed) return;
             int? baseline = await Task.Run(ReadOrCaptureGpuBaseline);
+            if (_disposed) return;
             if (baseline.HasValue)
             {
                 GpuBasePowerWatts = baseline.Value;
