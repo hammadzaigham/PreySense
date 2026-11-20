@@ -8,7 +8,7 @@ namespace PreySense.Frontend.ViewModels;
 public partial class MainViewModel
 {
     [Flags]
-    internal enum LightingWork { None = 0, Keyboard = 1, Cover = 2, Save = 4, Brightness = 8, Frame = 16 }
+    internal enum LightingWork { None = 0, Keyboard = 1, Cover = 2, Save = 4, Brightness = 8, Frame = 16, Timeout = 32 }
     internal sealed record LightingRequest(KeyboardLightingConfig Keyboard, CoverLightingConfig Cover, LightingWork Work,
         int? SavedKeyboardBrightness = null);
 
@@ -84,6 +84,7 @@ public partial class MainViewModel
         var sharedLighting = ConfigurationService.Instance.GetCurrent().Lighting;
         byte brightness = (byte)Math.Clamp(keyboardMode ? sharedLighting.ModeBrightness : keyboard.Brightness, 0, 100);
         bool fullKeyboard = request.Work.HasFlag(LightingWork.Keyboard);
+        bool brightnessOnly = request.Work.HasFlag(LightingWork.Brightness);
         if (fullKeyboard)
         {
             bool isMode = keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
@@ -131,9 +132,8 @@ public partial class MainViewModel
                         ColorTranslator.FromHtml(keyboard.Zone3ColorHex), ColorTranslator.FromHtml(keyboard.Zone4ColorHex), brightness);
                 }
             }
-            _hw.SetKbdBacklightTimeoutSeconds(keyboard.BacklightTimeoutSeconds);
         }
-        else if (request.Work.HasFlag(LightingWork.Brightness) && _hw is ProductionHardwareService prod)
+        else if (brightnessOnly && _hw is ProductionHardwareService prod)
         {
             // Fn brightness already changed firmware; only update the cached/software-effect state.
             prod.Wmi.NoteBrightness(brightness);
@@ -141,10 +141,12 @@ public partial class MainViewModel
         }
         bool dynFrame = request.Work.HasFlag(LightingWork.Frame)
             && keyboard.EffectTag.StartsWith("DYN:", StringComparison.Ordinal);
-        bool coverWrite = request.Work.HasFlag(LightingWork.Cover)
-            || ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness)) && cover.SyncWithKeyboard);
+        bool explicitCoverWrite = request.Work.HasFlag(LightingWork.Cover);
+        bool coverWrite = explicitCoverWrite
+            || ((fullKeyboard || brightnessOnly) && cover.SyncWithKeyboard);
         bool coverFrameWrite = dynFrame && cover.SyncWithKeyboard;
-        if ((coverWrite || coverFrameWrite) && _hw.IsCoverLightingAvailable)
+        bool wroteCover = (coverWrite || coverFrameWrite) && _hw.IsCoverLightingAvailable;
+        if (wroteCover)
         {
             bool syncKeyboardMode = cover.SyncWithKeyboard &&
                 (keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
@@ -165,12 +167,16 @@ public partial class MainViewModel
                 ToHidLogoSpeed(cover.SyncWithKeyboard ? keyboard.Speed : cover.Speed), coverEnabled);
         }
         // Mode Key frame sync must run even when Cover sync is off (idle-off included).
-        if ((fullKeyboard || request.Work.HasFlag(LightingWork.Brightness) || dynFrame)
-            && AnyModeKeySyncWithKeyboard())
-            ApplySyncedModeKeyDevices(keyboard);
+        bool wroteModeKey = (fullKeyboard || brightnessOnly || dynFrame)
+            && AnyModeKeySyncWithKeyboard() && ApplySyncedModeKeyDevices(keyboard);
+        // The keyboard and synced accessories can share a controller. Restore the
+        // timeout after their lighting writes so the configured idle duration wins.
+        if (fullKeyboard || request.Work.HasFlag(LightingWork.Timeout)
+            || (explicitCoverWrite && wroteCover) || (brightnessOnly && (wroteCover || wroteModeKey)))
+            TryApplyLightingTimeout(keyboard.BacklightTimeoutSeconds);
         if (request.Work.HasFlag(LightingWork.Save))
         {
-            var brightnessTargets = request.Work.HasFlag(LightingWork.Brightness)
+            var brightnessTargets = brightnessOnly
                 && _hw is IExtendedLightingHardware lighting
                     ? lighting.DiscoverLightingDevices().Where(d => d.Kind == "Keyboard").Select(d => d.Id).ToArray()
                     : Array.Empty<string>();
@@ -185,5 +191,11 @@ public partial class MainViewModel
                     if (config.Lighting.Devices.TryGetValue(id, out var saved)) saved.Brightness = keyboard.Brightness;
             });
         }
+    }
+
+    private void TryApplyLightingTimeout(int seconds)
+    {
+        try { _hw.SetKbdBacklightTimeoutSeconds(seconds); }
+        catch (Exception ex) { AppLogger.Log($"Keyboard lighting timeout could not be applied: {ex.Message}"); }
     }
 }

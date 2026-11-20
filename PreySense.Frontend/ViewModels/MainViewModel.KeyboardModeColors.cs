@@ -83,7 +83,8 @@ public partial class MainViewModel
             if (CoverLightingMode == 4 || (keyboardMode && IsCoverSyncWithKeyboard)) work |= LightingWork.Cover;
             if (work != LightingWork.None) await QueueLighting(work);
         }
-        if (!_disposed) await Task.Run(() => ReapplyExtendedModeLighting(includeOtherHotkeyProfiles: false));
+        if (!_disposed && await Task.Run(() => ReapplyExtendedModeLighting(includeOtherHotkeyProfiles: false)))
+            await QueueLighting(LightingWork.Timeout);
     }
 }
 

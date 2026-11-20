@@ -308,9 +308,12 @@ namespace PreySense.Frontend.Services
             _kbdTimeoutSeconds = Math.Max(0, seconds);
             bool softwareOwnsTimeout = _lightingEngine.IsValueCreated && LightingEngine.IsRunning && _kbdTimeoutSeconds > 0;
             // Animation frames reset the EC idle timer. While a software effect is running, keep the hardware timeout off.
-            _wmi.SetLedTimeoutSeconds(softwareOwnsTimeout ? 0 : _kbdTimeoutSeconds);
-            if (_lightingEngine.IsValueCreated)
-                LightingEngine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
+            try { _wmi.SetLedTimeoutSeconds(softwareOwnsTimeout ? 0 : _kbdTimeoutSeconds); }
+            finally
+            {
+                if (_lightingEngine.IsValueCreated)
+                    LightingEngine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
+            }
         }
 
         public int GetUsbChargingLevel() => _wmi.GetUsbChargingLevel();
