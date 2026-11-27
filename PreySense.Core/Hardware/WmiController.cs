@@ -221,6 +221,18 @@ namespace PreySense.Helpers
         public void AttachLightingEngine(CustomLightingEffectsEngine engine) =>
             _attachedEffects = engine ?? throw new ArgumentNullException(nameof(engine));
 
+        /// <summary>Raised after keyboard lighting was written successfully (the backlight is on again).</summary>
+        public event Action? KeyboardLightingWritten;
+
+        private void RaiseKeyboardLightingWritten()
+        {
+            try { KeyboardLightingWritten?.Invoke(); }
+            catch (Exception ex) { AppLogger.Error($"KeyboardLightingWritten handler failed: {ex.Message}"); }
+        }
+
+        /// <summary>Turns the keyboard backlight off without touching the cached lighting state.</summary>
+        public bool TurnOffKeyboardBacklight() => EnekRgbClient.IsAvailable && EnekRgbClient.TurnOffBacklight();
+
         public bool IsEnekRgbAvailable => EnekRgbClient.IsAvailable;
         public bool IsCoverLogoHidAvailable => AcerHidLightingCapabilities.GetSupportedTargets().Contains(0x83);
 
@@ -396,10 +408,12 @@ namespace PreySense.Helpers
         {
             byte scaledBrightness = (byte)Math.Clamp((int)_brightness, 0, 100);
 
-            if (EnekRgbClient.IsAvailable && EnekRgbClient.SetZoneColors(_zoneColors, scaledBrightness))
+            if ((EnekRgbClient.IsAvailable && EnekRgbClient.SetZoneColors(_zoneColors, scaledBrightness))
+                || OemLighting.ApplyKeyboardFallback(_zoneColors, scaledBrightness))
+            {
+                RaiseKeyboardLightingWritten();
                 return;
-
-            if (OemLighting.ApplyKeyboardFallback(_zoneColors, scaledBrightness)) return;
+            }
 
             AppLogger.Log("ApplyZoneLighting: no supported RGB transport is available.");
         }
@@ -436,11 +450,16 @@ namespace PreySense.Helpers
                 {
                     string modeName = mode >= 0 && mode < RgbProfile.UiModeNames.Length ? RgbProfile.UiModeNames[mode] : $"Unknown (0x{mode:X})";
                     AppLogger.Log($"Keyboard lighting mode set via ENEK5130 Direct HID: {modeName} (brightness={_brightness}, speed={_speed}, direction={_direction})");
+                    RaiseKeyboardLightingWritten();
                     return;
                 }
             }
 
-            if (OemLighting.ApplyKeyboardModeFallback(mode, effectColor, scaledBrightness, scaledSpeed, _direction)) return;
+            if (OemLighting.ApplyKeyboardModeFallback(mode, effectColor, scaledBrightness, scaledSpeed, _direction))
+            {
+                RaiseKeyboardLightingWritten();
+                return;
+            }
             AppLogger.Log($"ApplyLightingMode: no supported RGB transport is available (mode={mode}).");
         }
 
