@@ -121,6 +121,35 @@ public class ExtendedLightingEditorTests
     }
 
     [TestMethod]
+    public void DirectModeKeyEdit_RearmsFourZoneTimeoutAndSavesWhenWmiIsUnavailable()
+    {
+        string id = $"acer-hid-{Guid.NewGuid():N}-65";
+        var modeKey = new LightingDeviceInfo(id, "Mode Key", "Hotkey", [new(0, "LED")], [new(2, "Static")], "");
+        var keyboard = new LightingDeviceInfo("acer-hid-test-21", "Keyboard", "Keyboard",
+            [new(0, "Zone 1"), new(1, "Zone 2"), new(2, "Zone 3"), new(3, "Zone 4")], [new(2, "Static")], "");
+        var hardware = new FakeLightingHardware { Devices = [keyboard, modeKey], FailTimeoutWrite = true };
+        hardware.Release.Set();
+        var vm = Create(hardware);
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        try
+        {
+            store.Update(config => config.Lighting.Keyboard.BacklightTimeoutSeconds = 20);
+            vm.SelectedLightingDevice = modeKey;
+            vm.SelectedLightingDeviceMode = vm.LightingDeviceModes.Single(mode => mode.Value == 2);
+            vm.DeviceLightingColorHex = "#123456";
+            vm.ApplySelectedLightingDeviceAsync().WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+            Assert.AreEqual(20, hardware.TimeoutAfterDeviceWrite);
+            Assert.AreEqual("#123456", store.GetCurrent().Lighting.Devices[id].ColorHex);
+        }
+        finally
+        {
+            vm.StopExtendedLightingAsync().GetAwaiter().GetResult();
+            store.Save(original);
+        }
+    }
+
+    [TestMethod]
     public void LightBarStatic_SelectsFirstLedWithoutWritingAndEditsOnlyTheSelectedLed()
     {
         var hardware = new FakeLightingHardware();
@@ -420,12 +449,14 @@ public class ExtendedLightingEditorTests
         return vm;
     }
 
-    private sealed class FakeLightingHardware : MockHardwareService, IExtendedLightingHardware
+    private sealed class FakeLightingHardware : MockHardwareService, IHardwareService, IExtendedLightingHardware
     {
         public ManualResetEventSlim Entered { get; } = new();
         public ManualResetEventSlim Release { get; } = new();
         public bool Fail { get; init; }
         public bool DiscoveryFails { get; init; }
+        public bool FailTimeoutWrite { get; init; }
+        public int? TimeoutAfterDeviceWrite { get; private set; }
         public DeviceLightingConfig? Applied { get; private set; }
         public IReadOnlyList<LightingDeviceInfo> Devices { get; init; } = [];
         public Action? OnDiscover { get; init; }
@@ -440,6 +471,12 @@ public class ExtendedLightingEditorTests
             if (!Release.Wait(TimeSpan.FromSeconds(3))) throw new TimeoutException();
             if (Fail) throw new IOException("Simulated failure");
             Applied = settings;
+        }
+        void IHardwareService.SetKbdBacklightTimeoutSeconds(int seconds)
+        {
+            if (Applied != null) TimeoutAfterDeviceWrite = seconds;
+            if (FailTimeoutWrite) throw new InvalidOperationException("Timeout unavailable.");
+            SetKbdBacklightTimeoutSeconds(seconds);
         }
     }
 }

@@ -76,8 +76,7 @@ namespace PreySense.Frontend.ViewModels
         private bool _isSyncingRgbBrightness;
         private bool _isLoadingLighting;
         private bool _isApplyingLighting;
-        private bool _pendingKeyboardLighting;
-        private bool _pendingCoverLighting;
+        private LightingWork _pendingLightingWork;
         private Color[]? _pendingZonePreset;
         private string _selectedZonePreset = "Mode";
         public string SelectedZonePreset
@@ -206,7 +205,7 @@ namespace PreySense.Frontend.ViewModels
         partial void OnKbdTimeoutSecondsChanged(int value)
         {
             IsKbdBacklightTimeoutEnabled = value > 0;
-            ScheduleKeyboardLightingCommit();
+            ScheduleLightingCommit(LightingWork.Timeout);
         }
 
         partial void OnRgbSpeedChanged(int value)
@@ -545,19 +544,15 @@ namespace PreySense.Frontend.ViewModels
             ScheduleKeyboardLightingCommit();
         }
 
-        private void ScheduleKeyboardLightingCommit()
-        {
-            if (_disposed || _isRestoringSession || _isLoadingLighting || _isApplyingLighting)
-                return;
-            _pendingKeyboardLighting = true;
-            _lightingDebouncer.Debounce(FlushLightingCommits);
-        }
+        private void ScheduleKeyboardLightingCommit() => ScheduleLightingCommit(LightingWork.Keyboard);
 
-        private void ScheduleCoverLightingCommit()
+        private void ScheduleCoverLightingCommit() => ScheduleLightingCommit(LightingWork.Cover);
+
+        private void ScheduleLightingCommit(LightingWork work)
         {
             if (_disposed || _isRestoringSession || _isLoadingLighting || _isApplyingLighting)
                 return;
-            _pendingCoverLighting = true;
+            _pendingLightingWork |= work;
             _lightingDebouncer.Debounce(FlushLightingCommits);
         }
 
@@ -566,15 +561,10 @@ namespace PreySense.Frontend.ViewModels
             if (_disposed || _isRestoringSession || _isLoadingLighting || _isApplyingLighting)
                 return;
 
-            bool keyboard = _pendingKeyboardLighting;
-            bool cover = _pendingCoverLighting;
-            _pendingKeyboardLighting = false;
-            _pendingCoverLighting = false;
-            if (!keyboard && !cover)
-                return;
-
-            _ = QueueLighting((keyboard ? LightingWork.Keyboard : LightingWork.None)
-                | (cover ? LightingWork.Cover : LightingWork.None) | LightingWork.Save);
+            var work = _pendingLightingWork;
+            _pendingLightingWork = LightingWork.None;
+            if (work != LightingWork.None)
+                _ = QueueLighting(work | LightingWork.Save);
         }
 
         private int _startupLightingRan;

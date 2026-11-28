@@ -548,7 +548,7 @@ public partial class MainViewModel
         if (disableCoverSync && IsCoverSyncWithKeyboard)
         {
             _isApplyingLighting = true;
-            try { IsCoverSyncWithKeyboard = false; _pendingCoverLighting = false; }
+            try { IsCoverSyncWithKeyboard = false; _pendingLightingWork &= ~LightingWork.Cover; }
             finally { _isApplyingLighting = false; }
         }
         _extendedLightingWorker ??= new(
@@ -648,13 +648,14 @@ public partial class MainViewModel
         };
     }
 
-    private void ApplySyncedModeKeyDevices(KeyboardLightingConfig keyboard)
+    private bool ApplySyncedModeKeyDevices(KeyboardLightingConfig keyboard)
     {
-        if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
+        if (_disposed || _hw is not IExtendedLightingHardware hardware) return false;
         lock (ExtendedLightingWriteGate)
         {
             var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
             var profiles = lighting.Devices;
+            bool wroteSharedHid = false;
             // Discover() is a cached snapshot after the one-time startup probe (no HID re-scan).
             foreach (var device in hardware.DiscoverLightingDevices())
             {
@@ -669,12 +670,14 @@ public partial class MainViewModel
                     OemLightingController.Validate(settings);
                     hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode,
                         lighting.PowerModeColors, lighting.ModeBrightness));
+                    wroteSharedHid |= IsAcerHidLightingDevice(device.Id);
                 }
                 catch (Exception ex)
                 {
                     AppLogger.Log($"Mode Key sync with keyboard failed ({device.Name}): {ex.Message}");
                 }
             }
+            return wroteSharedHid;
         }
     }
 
@@ -752,14 +755,16 @@ public partial class MainViewModel
             var settings = JsonSerializer.Deserialize<DeviceLightingConfig>(request.SettingsJson)!;
             lock (ExtendedLightingWriteGate)
             {
+                var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
                 hardware.ApplyLightingDevice(request.DeviceId, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode,
-                    ConfigurationService.Instance.GetCurrent().Lighting.PowerModeColors,
-                        ConfigurationService.Instance.GetCurrent().Lighting.ModeBrightness));
+                    lighting.PowerModeColors, lighting.ModeBrightness));
                 ConfigurationService.Instance.Update(config =>
                 {
                     config.Lighting.Devices[request.DeviceId] = settings;
                     if (request.DisableCoverSync) config.Lighting.Cover.SyncWithKeyboard = false;
                 });
+                if (IsAcerHidLightingDevice(request.DeviceId) && UsesFourZoneKeyboardEditor(hardware.DiscoverLightingDevices()))
+                    TryApplyLightingTimeout(lighting.Keyboard.BacklightTimeoutSeconds);
             }
             _dispatcher.BeginInvoke(() => { if (!_disposed && SelectedLightingDevice?.Id == request.DeviceId) LightingDeviceStatus = "Lighting applied and saved."; });
         }
@@ -797,7 +802,7 @@ public partial class MainViewModel
         {
             await keyboardStartup.ConfigureAwait(false);
             if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
-            await Task.Run(() =>
+            bool wroteSharedHid = await Task.Run(() =>
             {
                 var devices = hardware.DiscoverLightingDevices();
                 lock (ExtendedLightingWriteGate)
@@ -805,19 +810,26 @@ public partial class MainViewModel
                     var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
                     var profiles = lighting.Devices;
                     bool useLegacyEditors = !devices.Any(device => device.HasNamedKeys);
+                    bool wroteAcerHid = false;
                     foreach (var device in devices)
                     {
-                        if (_disposed) return;
+                        if (_disposed) return false;
                         // The four-zone editor owns this keyboard through Lighting.Keyboard. An old
                         // device profile must not overwrite the settings just restored by that path.
                         if (useLegacyEditors && device is { Kind: "Keyboard", Leds.Count: 4 } && _hw.IsRgbAvailable) continue;
                         if (useLegacyEditors && IsLogoLightingKind(device) && _hw.IsCoverLightingAvailable) continue;
                         var settings = profiles.TryGetValue(device.Id, out var saved) ? saved : new DeviceLightingConfig();
-                        try { hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode, lighting.PowerModeColors, lighting.ModeBrightness)); }
+                        try
+                        {
+                            hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(settings, ActivePowerMode, lighting.PowerModeColors, lighting.ModeBrightness));
+                            wroteAcerHid |= IsAcerHidLightingDevice(device.Id);
+                        }
                         catch (Exception ex) { AppLogger.Log($"Saved device lighting unavailable ({device.Name}): {ex.Message}"); }
                     }
+                    return wroteAcerHid && useLegacyEditors && HasFourZoneKeyboard(devices);
                 }
             }).ConfigureAwait(false);
+            if (wroteSharedHid) await QueueLighting(LightingWork.Timeout).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -848,24 +860,35 @@ public partial class MainViewModel
                     if (_zoneHexColors != null) UpdateKeyboardForMode(ActivePowerMode);
                     return ApplySharedModePaletteAsync();
                 }).Task.Unwrap().ConfigureAwait(false);
-                if (!_disposed && revision == System.Threading.Volatile.Read(ref _modeLightingRestoreRevision))
-                    ReapplyExtendedModeLighting();
+                if (!_disposed && revision == System.Threading.Volatile.Read(ref _modeLightingRestoreRevision)
+                    && ReapplyExtendedModeLighting())
+                    await QueueLighting(LightingWork.Timeout).ConfigureAwait(false);
             }
             catch (Exception ex) { AppLogger.Log($"Lighting restore after mode switch failed: {ex.Message}"); }
         });
     }
 
-    internal void ReapplyExtendedModeLighting(bool includeOtherHotkeyProfiles = true)
+    private static bool IsAcerHidLightingDevice(string id) => id.StartsWith("acer-hid-", StringComparison.OrdinalIgnoreCase);
+
+    private bool UsesFourZoneKeyboardEditor(IReadOnlyList<LightingDeviceInfo> devices) =>
+        !devices.Any(device => device.HasNamedKeys) && HasFourZoneKeyboard(devices);
+
+    private bool HasFourZoneKeyboard(IReadOnlyList<LightingDeviceInfo> devices) =>
+        devices.Any(device => device is { Kind: "Keyboard", Leds.Count: 4 }) && _hw.IsRgbAvailable;
+
+    // Returns true if an Acer HID write can affect the four-zone keyboard's timeout.
+    internal bool ReapplyExtendedModeLighting(bool includeOtherHotkeyProfiles = true)
     {
-        if (_disposed || _hw is not IExtendedLightingHardware hardware) return;
+        if (_disposed || _hw is not IExtendedLightingHardware hardware) return false;
         lock (ExtendedLightingWriteGate)
         {
             var lighting = ConfigurationService.Instance.GetCurrent().Lighting;
             var devices = hardware.DiscoverLightingDevices();
             bool useLegacyEditors = !devices.Any(device => device.HasNamedKeys);
+            bool wroteAcerHid = false;
             foreach (var device in devices)
             {
-                if (_disposed) return;
+                if (_disposed) return false;
                 // Keep the same single authoritative profile as startup. A stale extended
                 // profile must not replace the four-zone or cover editor's current choice.
                 if (useLegacyEditors && device is { Kind: "Keyboard", Leds.Count: 4 } && _hw.IsRgbAvailable) continue;
@@ -883,9 +906,11 @@ public partial class MainViewModel
                     // Resolve for every write rather than caching color equality. This also gives
                     // every transport and fake the same explicit current-mode color.
                     hardware.ApplyLightingDevice(device.Id, ModeKeyLighting.ResolveForApply(apply, ActivePowerMode, lighting.PowerModeColors, lighting.ModeBrightness));
+                    wroteAcerHid |= IsAcerHidLightingDevice(device.Id);
                 }
                 catch (Exception ex) { AppLogger.Log($"Lighting restore after mode switch failed ({device.Name}): {ex.Message}"); }
             }
+            return wroteAcerHid && useLegacyEditors && HasFourZoneKeyboard(devices);
         }
     }
 }

@@ -152,16 +152,87 @@ public class LatestBackgroundWorkerTests
             worker.Submit(new(keyboard, cover, MainViewModel.LightingWork.Keyboard | MainViewModel.LightingWork.Cover))
                 .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             var calls = recorder.Calls.ToArray();
-            CollectionAssert.AreEqual(new[] { "SetRgbAllZones", "SetKbdBacklightTimeoutSeconds", "SetCoverLogoLighting" }, calls.Select(c => c.Name).ToArray());
+            CollectionAssert.AreEqual(new[] { "SetRgbAllZones", "SetCoverLogoLighting", "SetKbdBacklightTimeoutSeconds" }, calls.Select(c => c.Name).ToArray());
             Assert.IsTrue(calls.All(call => call.Thread != caller));
             Assert.AreEqual(ColorTranslator.FromHtml("#112233"), (Color)calls[0].Arguments[0]!);
             Assert.AreEqual(ColorTranslator.FromHtml("#4488CC"), (Color)calls[0].Arguments[3]!);
             Assert.AreEqual((byte)50, calls[0].Arguments[4], "Zones and their final brightness must use one hardware operation.");
-            Assert.AreEqual(60, calls[1].Arguments[0]);
-            Assert.AreEqual(ColorTranslator.FromHtml("#445566"), (Color)calls[2].Arguments[1]!);
-            Assert.AreEqual((byte)25, calls[2].Arguments[2]);
+            Assert.AreEqual(ColorTranslator.FromHtml("#445566"), (Color)calls[1].Arguments[1]!);
+            Assert.AreEqual((byte)25, calls[1].Arguments[2]);
+            Assert.AreEqual(60, calls[2].Arguments[0]);
         }
         finally { worker.StopAsync().GetAwaiter().GetResult(); }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void ReapplyingFourZoneColorRestoresTwentySecondTimeoutAfterSyncedAccessories()
+    {
+        var hardware = DispatchProxy.Create<IRecordingLightingHardware, LightingHardwareProxy>();
+        var recorder = (LightingHardwareProxy)hardware;
+        var vm = CreateLightingViewModel(hardware);
+        string id = $"acer-hid-{Guid.NewGuid():N}-65";
+        recorder.Devices = [new(id, "Mode Key", "Hotkey", [new(0, "LED")], [new(2, "Static")], "Test")];
+        var store = ConfigurationService.Instance;
+        try
+        {
+            store.Update(config => config.Lighting.Devices[id] = new() { SyncWithKeyboard = true });
+            var keyboard = new KeyboardLightingConfig
+            {
+                EffectTag = "HW:0", BacklightTimeoutSeconds = 20,
+                Zone1ColorHex = "#112233", Zone2ColorHex = "#224466", Zone3ColorHex = "#336699", Zone4ColorHex = "#4488CC"
+            };
+            var cover = new CoverLightingConfig { SyncWithKeyboard = true };
+            vm.ApplyLightingRequest(new(keyboard, cover, MainViewModel.LightingWork.Timeout));
+            CollectionAssert.AreEqual(new[] { "SetKbdBacklightTimeoutSeconds" }, recorder.Calls.Select(c => c.Name).ToArray());
+            Assert.AreEqual(20, recorder.Calls.Single().Arguments[0]);
+            recorder.Calls.Clear();
+
+            vm.ApplyLightingRequest(new(keyboard, cover, MainViewModel.LightingWork.Keyboard));
+            CollectionAssert.AreEqual(new[] { "SetRgbAllZones", "SetCoverLogoLighting", "ApplyLightingDevice", "SetKbdBacklightTimeoutSeconds" },
+                recorder.Calls.Select(c => c.Name).ToArray());
+            Assert.AreEqual(id, recorder.Calls.ToArray()[2].Arguments[0]);
+            Assert.AreEqual(20, recorder.Calls.Last().Arguments[0]);
+            recorder.Calls.Clear();
+
+            keyboard.EffectTag = "DYN:MatrixCascade";
+            vm.ApplyLightingRequest(new(keyboard, cover, MainViewModel.LightingWork.Frame));
+            CollectionAssert.AreEqual(new[] { "SetCoverLogoLighting", "ApplyLightingDevice" },
+                recorder.Calls.Select(c => c.Name).ToArray());
+        }
+        finally { store.Update(config => config.Lighting.Devices.Remove(id)); }
+    }
+
+    [TestMethod]
+    public void CoverColorChangeRestoresKeyboardTimeoutWithoutRepaintingKeyboard()
+    {
+        var hardware = DispatchProxy.Create<IHardwareService, LightingHardwareProxy>();
+        var recorder = (LightingHardwareProxy)hardware;
+        var vm = CreateLightingViewModel(hardware);
+        vm.ApplyLightingRequest(new(new() { BacklightTimeoutSeconds = 20 }, new(), MainViewModel.LightingWork.Cover));
+        CollectionAssert.AreEqual(new[] { "SetCoverLogoLighting", "SetKbdBacklightTimeoutSeconds" }, recorder.Calls.Select(c => c.Name).ToArray());
+        Assert.AreEqual(20, recorder.Calls.Last().Arguments[0]);
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void CoverSettingsAreSavedWhenFirmwareTimeoutWriteFails()
+    {
+        var hardware = DispatchProxy.Create<IHardwareService, LightingHardwareProxy>();
+        var recorder = (LightingHardwareProxy)hardware;
+        recorder.FailTimeoutWrite = true;
+        var store = ConfigurationService.Instance;
+        var original = store.GetCurrent();
+        try
+        {
+            var cover = new CoverLightingConfig { ColorHex = "#445566" };
+            CreateLightingViewModel(hardware).ApplyLightingRequest(new(new() { BacklightTimeoutSeconds = 20 },
+                cover, MainViewModel.LightingWork.Cover | MainViewModel.LightingWork.Save));
+            CollectionAssert.AreEqual(new[] { "SetCoverLogoLighting", "SetKbdBacklightTimeoutSeconds" },
+                recorder.Calls.Select(c => c.Name).ToArray());
+            Assert.AreEqual("#445566", store.GetCurrent().Lighting.Cover.ColorHex);
+        }
+        finally { store.Save(original); }
     }
 
     [TestMethod]
@@ -172,13 +243,13 @@ public class LatestBackgroundWorkerTests
         var worker = CreateLightingWorker(CreateLightingViewModel(hardware).ApplyLightingRequest);
         try
         {
-            await worker.Submit(new(new() { EffectTag = "HW:0", Brightness = 75 },
+            await worker.Submit(new(new() { EffectTag = "HW:0", Brightness = 75, BacklightTimeoutSeconds = 20 },
                 new() { Mode = 1, SyncWithKeyboard = true, ColorHex = "#445566", Brightness = 25 }, MainViewModel.LightingWork.Brightness))
                 .WaitAsync(TimeSpan.FromSeconds(5));
             var calls = recorder.Calls.ToArray();
-            Assert.HasCount(1, calls);
-            Assert.AreEqual("SetCoverLogoLighting", calls[0].Name);
+            CollectionAssert.AreEqual(new[] { "SetCoverLogoLighting", "SetKbdBacklightTimeoutSeconds" }, calls.Select(c => c.Name).ToArray());
             Assert.AreEqual((byte)75, calls[0].Arguments[2]);
+            Assert.AreEqual(20, calls[1].Arguments[0]);
         }
         finally { await worker.StopAsync(); }
     }
@@ -314,13 +385,20 @@ public class LatestBackgroundWorkerTests
     private static LatestBackgroundWorker<MainViewModel.LightingRequest> CreateLightingWorker(Action<MainViewModel.LightingRequest> execute) =>
         new(execute, MainViewModel.MergeLightingRequests);
 
+    public interface IRecordingLightingHardware : IHardwareService, IExtendedLightingHardware { }
+
     public class LightingHardwareProxy : DispatchProxy
     {
         public readonly ConcurrentQueue<(string Name, int Thread, object?[] Arguments)> Calls = new();
+        public IReadOnlyList<LightingDeviceInfo> Devices { get; set; } = [];
+        public bool FailTimeoutWrite { get; set; }
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
             if (method!.Name == "get_IsCoverLightingAvailable") return true;
+            if (method.Name == "DiscoverLightingDevices") return Devices;
             Calls.Enqueue((method!.Name, Environment.CurrentManagedThreadId, args?.ToArray() ?? []));
+            if (method.Name == "SetKbdBacklightTimeoutSeconds" && FailTimeoutWrite)
+                throw new InvalidOperationException("Timeout unavailable.");
             return method.ReturnType == typeof(void) ? null : method.ReturnType.IsValueType ? Activator.CreateInstance(method.ReturnType) : null;
         }
     }

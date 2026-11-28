@@ -15,6 +15,7 @@ namespace PreySense.Frontend.Services
         private readonly Lazy<CustomLightingEffectsEngine> _lightingEngine;
         private readonly Lazy<int?> _memorySpeed = new(ReadMemorySpeed);
         private int _kbdTimeoutSeconds;
+        private readonly HardwareKeyboardIdleTimeout? _hardwareIdleTimeout;
 
         public event EventHandler<byte>? PowerModeChanged;
 
@@ -47,6 +48,15 @@ namespace PreySense.Frontend.Services
             _ = LightingEngine;
             // Hardwired Acer targets: probe HID/EC once at process start, never again.
             _ = _wmi.OemLighting.Discover();
+            // Some models store the EC backlight timeout but never apply it to the ENE keyboard.
+            if (PreySense.Core.Hardware.AcerModel.RequiresSoftwareKeyboardIdleTimeout && _wmi.IsEnekRgbAvailable)
+            {
+                _hardwareIdleTimeout = new HardwareKeyboardIdleTimeout(
+                    _wmi.TurnOffKeyboardBacklight,
+                    _wmi.ApplyRgbState,
+                    () => _lightingEngine.IsValueCreated && LightingEngine.IsRunning);
+                _wmi.KeyboardLightingWritten += _hardwareIdleTimeout.NoteLightingWritten;
+            }
             TelemetryCoordinator.ConfigureMetricSampler(SampleTelemetrySnapshot);
         }
 
@@ -242,6 +252,8 @@ namespace PreySense.Frontend.Services
             // The view model already resolved the shared palette for the confirmed mode.
             // Reading firmware again here can return the previous mode during a transition.
             _wmi.OemLighting.Apply(deviceId, settings);
+            if (_hardwareIdleTimeout != null && _wmi.OemLighting.Discover().Any(d => d.Id == deviceId && d.Kind == "Keyboard"))
+                _hardwareIdleTimeout.NoteLightingWritten();
         }
 
         public void SetRgbStatic(byte zone, Color color)
@@ -308,9 +320,13 @@ namespace PreySense.Frontend.Services
             _kbdTimeoutSeconds = Math.Max(0, seconds);
             bool softwareOwnsTimeout = _lightingEngine.IsValueCreated && LightingEngine.IsRunning && _kbdTimeoutSeconds > 0;
             // Animation frames reset the EC idle timer. While a software effect is running, keep the hardware timeout off.
-            _wmi.SetLedTimeoutSeconds(softwareOwnsTimeout ? 0 : _kbdTimeoutSeconds);
-            if (_lightingEngine.IsValueCreated)
-                LightingEngine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
+            try { _wmi.SetLedTimeoutSeconds(softwareOwnsTimeout ? 0 : _kbdTimeoutSeconds); }
+            finally
+            {
+                if (_lightingEngine.IsValueCreated)
+                    LightingEngine.SetIdleTimeoutSeconds(_kbdTimeoutSeconds);
+                _hardwareIdleTimeout?.SetTimeoutSeconds(_kbdTimeoutSeconds);
+            }
         }
 
         public int GetUsbChargingLevel() => _wmi.GetUsbChargingLevel();
@@ -325,6 +341,11 @@ namespace PreySense.Frontend.Services
 
         public void Dispose()
         {
+            if (_hardwareIdleTimeout != null)
+            {
+                _wmi.KeyboardLightingWritten -= _hardwareIdleTimeout.NoteLightingWritten;
+                _hardwareIdleTimeout.Dispose();
+            }
             if (_lightingEngine.IsValueCreated)
                 _lightingEngine.Value.Dispose();
             _wmi.Dispose();
