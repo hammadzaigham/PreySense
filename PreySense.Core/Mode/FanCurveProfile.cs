@@ -13,7 +13,9 @@ public sealed class FanCurveProfile
     public int CpuMaxRpm { get; set; } = FanStage.CpuMaxRpm;
     public int GpuMaxRpm { get; set; } = FanStage.GpuMaxRpm;
     public FanControlMode ControlMode { get; set; } = FanControlMode.Auto;
-    public int RampUpSeconds { get; set; } = 2;
+    public bool UseSlider { get; set; }
+    public int ManualCpuDutyPercent { get; set; } = 0;
+    public int ManualGpuDutyPercent { get; set; } = 0;
     public FanStage[] Stages { get; set; } = DefaultRequestStages(1);
 
     /// <summary>Factory ZBJ-KQ EC 1.08 variant-0 stage tables (RPM targets, rise/fall °C).</summary>
@@ -40,7 +42,6 @@ public sealed class FanCurveProfile
     public static FanCurveProfile CreateDefault(byte mode) => new()
     {
         ControlMode = FanControlMode.Auto,
-        RampUpSeconds = 0,
         Stages = DefaultRequestStages(mode)
     };
 
@@ -48,7 +49,9 @@ public sealed class FanCurveProfile
     {
         CpuMaxRpm = CpuMaxRpm, GpuMaxRpm = GpuMaxRpm,
         ControlMode = ControlMode,
-        RampUpSeconds = RampUpSeconds,
+        UseSlider = UseSlider,
+        ManualCpuDutyPercent = ManualCpuDutyPercent,
+        ManualGpuDutyPercent = ManualGpuDutyPercent,
         Stages = Clone(Stages)
     };
 
@@ -56,10 +59,11 @@ public sealed class FanCurveProfile
 
     public void Normalize(byte mode)
     {
-        RampUpSeconds = Math.Clamp(RampUpSeconds, 0, 5);
         if (!Enum.IsDefined(ControlMode)) ControlMode = FanControlMode.Auto;
         CpuMaxRpm = Math.Clamp(CpuMaxRpm, 1, ushort.MaxValue);
         GpuMaxRpm = Math.Clamp(GpuMaxRpm, 1, ushort.MaxValue);
+        ManualCpuDutyPercent = Math.Clamp(ManualCpuDutyPercent, 0, 100);
+        ManualGpuDutyPercent = Math.Clamp(ManualGpuDutyPercent, 0, 100);
         Stages = NormalizeStages(Stages, mode, CpuMaxRpm, GpuMaxRpm);
     }
 
@@ -193,7 +197,9 @@ public static class FanCurveStorage
             profile.CpuMaxRpm = cfg.Fans.CpuMaxRpm;
             profile.GpuMaxRpm = cfg.Fans.GpuMaxRpm;
             profile.ControlMode = (FanControlMode)Math.Clamp(fanMode.ControlMode, 0, 2);
-            profile.RampUpSeconds = cfg.Fans.ControlDelaySeconds;
+            profile.UseSlider = fanMode.UseSlider;
+            profile.ManualCpuDutyPercent = fanMode.ManualCpuDutyPercent;
+            profile.ManualGpuDutyPercent = fanMode.ManualGpuDutyPercent;
             if (fanMode.Stages is { Length: > 0 } stages)
                 profile.Stages = stages.Select(stage => stage?.ToFanStage(profile.CpuMaxRpm, profile.GpuMaxRpm) ?? new FanStage
                 {
@@ -222,6 +228,9 @@ public static class FanCurveStorage
         {
             var fanMode = GetModeFanConfig(cfg, mode);
             fanMode.ControlMode = (int)saved.ControlMode;
+            fanMode.UseSlider = saved.UseSlider;
+            fanMode.ManualCpuDutyPercent = saved.ManualCpuDutyPercent;
+            fanMode.ManualGpuDutyPercent = saved.ManualGpuDutyPercent;
             fanMode.Stages = saved.Stages.Select(stage =>
                 new PreySense.Core.Configuration.FanStageConfig(stage)).ToArray();
         });

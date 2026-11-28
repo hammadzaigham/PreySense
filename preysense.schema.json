@@ -26,6 +26,10 @@
       "title": "Games",
       "properties": {
         "Enabled": { "type": "boolean", "default": false },
+        "ShowPerformanceModeControl": { "type": "boolean", "default": true },
+        "ShowCpuBoostControl": { "type": "boolean", "default": true },
+        "ShowCpuPowerLimitControl": { "type": "boolean", "default": true },
+        "ShowGpuPowerLimitControl": { "type": "boolean", "default": true },
         "Profiles": {
           "type": "array",
           "items": {
@@ -54,6 +58,7 @@
     "General": {
       "type": "object",
       "properties": {
+        "SkippedUpdateVersion": { "type": ["string", "null"] },
         "Language": {
           "type": "string",
           "description": "Supported UI language code (e.g., en-US, zh-CN, hi-IN, es-ES, fr-FR, tr-TR).",
@@ -63,17 +68,7 @@
           "type": ["string", "null"],
           "enum": ["Dark", "Light", "Glass", null],
           "title": "Theme",
-          "description": "Glass uses Windows 11 Desktop Acrylic with translucent controls. Null retains a legacy light preference; otherwise Dark is the default."
-        },
-        "LightTheme": {
-          "type": "boolean",
-          "description": "True for light UI theme, false for dark UI theme.",
-          "title": "Light Theme"
-        },
-        "AcerServicesDebloated": {
-          "type": "boolean",
-          "description": "True if Acer background services are stopped and disabled.",
-          "title": "Acer Services Debloated"
+          "description": "Glass uses Windows 11 Desktop Acrylic with translucent controls. Defaults to Dark when null."
         },
         "HardwareTuningEnabled": {
           "type": "boolean",
@@ -253,13 +248,6 @@
     "Fans": {
       "type": "object",
       "properties": {
-        "ControlDelaySeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 5,
-          "default": 0,
-          "description": "Global custom fan curve transition delay in seconds, shared across all modes and both fans."
-        },
         "CpuMaxRpm": {
           "type": "integer",
           "minimum": 1,
@@ -690,13 +678,6 @@
             2
           ],
           "title": "Control Mode"
-        },
-        "RampUpSeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 5,
-          "title": "Legacy Ramp Up Seconds",
-          "description": "Retained for compatibility; runtime uses Fans.ControlDelaySeconds instead."
         },
         "Stages": {
           "type": "array",

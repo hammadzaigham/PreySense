@@ -62,20 +62,49 @@ namespace PreySense.Frontend.Views
             finally { App.SuppressAutoHide = previousSuppression; }
         }
 
-        private void UsbCharging_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void BtnOpenFanSettings_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not ViewModels.MainViewModel vm) return;
+            bool previousSuppression = App.SuppressAutoHide;
+            App.SuppressAutoHide = true;
+            try
+            {
+                new FanSettingsWindow { Owner = this, DataContext = vm }.ShowDialog();
+            }
+            finally { App.SuppressAutoHide = previousSuppression; }
+        }
+
+        private void UsbCharging_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            UpdateUsbChargingLabel(e.NewValue);
+        }
+
+        private async void UsbCharging_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             UpdateUsbChargingLabel();
+            if (IsLoaded)
+                await CommitUsbChargingSafelyAsync();
         }
 
-        private void UpdateUsbChargingLabel()
+        private void UpdateUsbChargingLabel() => UpdateUsbChargingLabel(UsbChargingSlider.Value);
+
+        private void UpdateUsbChargingLabel(double value)
         {
-            UsbChargingSlider.ValueText = UsbChargingSlider.Value == 0
-                ? Services.LocalizationService.Translate("Disabled") : $"{UsbChargingSlider.Value:0}%";
+            UsbChargingSlider.ValueText = value == 0
+                ? Services.LocalizationService.Translate("Disabled") : $"{value:0}%";
         }
 
-        private async void UsbCharging_MouseReleased(object sender, MouseButtonEventArgs e) => await CommitUsbChargingAsync();
-        private async void UsbCharging_MouseCaptureLost(object sender, MouseEventArgs e) => await CommitUsbChargingAsync();
-        private async void UsbCharging_KeyReleased(object sender, KeyEventArgs e) => await CommitUsbChargingAsync();
+        private async System.Threading.Tasks.Task CommitUsbChargingSafelyAsync()
+        {
+            try
+            {
+                await CommitUsbChargingAsync();
+            }
+            catch (System.Exception ex)
+            {
+                PreySense.AppLogger.Error($"Could not apply USB charging cutoff: {ex}");
+            }
+        }
 
         private async System.Threading.Tasks.Task CommitUsbChargingAsync()
         {

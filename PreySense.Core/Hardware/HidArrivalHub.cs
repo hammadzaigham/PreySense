@@ -11,9 +11,6 @@ public static class HidArrivalHub
 {
     private static readonly object Gate = new();
     private static event Action? ArrivedHandlers;
-    private static int _generation;
-
-    public static int Generation => Volatile.Read(ref _generation);
 
     public static event Action Arrived
     {
@@ -23,7 +20,6 @@ public static class HidArrivalHub
 
     public static void NotifyArrived()
     {
-        Interlocked.Increment(ref _generation);
         Action? handlers;
         lock (Gate) handlers = ArrivedHandlers;
         if (handlers == null) return;

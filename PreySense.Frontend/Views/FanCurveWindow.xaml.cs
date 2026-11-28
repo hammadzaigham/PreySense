@@ -95,6 +95,7 @@ public partial class FanCurveWindow : Window
     {
         _profile.ControlMode = MaxOption.IsChecked == true ? FanControlMode.Max
             : CustomOption.IsChecked == true ? FanControlMode.Custom : FanControlMode.Auto;
+        _profile.UseSlider = Vm?.FanCustomUseSlider ?? _profile.UseSlider;
         _drafts[_mode] = _profile;
     }
 
@@ -106,6 +107,7 @@ public partial class FanCurveWindow : Window
         MaxOption.IsChecked = _profile.ControlMode == FanControlMode.Max;
         CustomOption.IsChecked = _profile.ControlMode == FanControlMode.Custom;
         Curve.SelectedIndex = -1;
+        SyncManualSlider();
         _loading = false;
         UpdateEditor();
         SyncCurve();
@@ -221,7 +223,7 @@ public partial class FanCurveWindow : Window
             RowTemp.IsEnabled = false;
             RowDuty.IsEnabled = false;
             RowTemp.Title = "Temp";
-            RowDuty.Title = LocalizationService.Format("{0} Cooling Boost", _gpu ? "GPU" : "CPU");
+            RowDuty.Title = LocalizationService.Format("{0} Fan Boost", _gpu ? "GPU" : "CPU");
             UpdateRpmEstimate();
             return;
         }
@@ -236,7 +238,7 @@ public partial class FanCurveWindow : Window
             ? _temperatureLabels[visible]
             : WpfFanCurveControl.MinCelsius;
         RowTemp.Title = $"{fan} Temp";
-        RowDuty.Title = LocalizationService.Format("{0} Cooling Boost", _gpu ? "GPU" : "CPU");
+        RowDuty.Title = LocalizationService.Format("{0} Fan Boost", _gpu ? "GPU" : "CPU");
         RowDuty.Minimum = 0;
         RowDuty.Maximum = 100;
         var (minTemp, maxTemp) = WpfFanCurveControl.TemperatureBounds(_temperatureLabels, visible);
@@ -323,10 +325,67 @@ public partial class FanCurveWindow : Window
     {
         if (CurveEditor == null) return;
         bool isCustom = CustomOption.IsChecked == true;
-        CurveEditor.IsEnabled = isCustom && !_applying;
-        CurveEditor.Opacity = isCustom ? 1.0 : 0.45;
+        bool useSlider = Vm?.FanCustomUseSlider ?? _profile.UseSlider;
+        if (CustomContent != null)
+            CustomContent.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+        if (SliderEditor != null)
+        {
+            SliderEditor.Visibility = isCustom && useSlider ? Visibility.Visible : Visibility.Collapsed;
+            SliderEditor.IsEnabled = isCustom && useSlider && !_applying;
+        }
+        CurveEditor.Visibility = isCustom && !useSlider ? Visibility.Visible : Visibility.Collapsed;
+        CurveEditor.IsEnabled = isCustom && !useSlider && !_applying;
         if (FooterPanel != null)
-            FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+            FooterPanel.Visibility = isCustom && !useSlider ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SyncManualSlider()
+    {
+        if (ManualDutySlider == null) return;
+        int duty = Math.Clamp(_gpu ? _profile.ManualGpuDutyPercent : _profile.ManualCpuDutyPercent, 0, 100);
+        ManualDutySlider.Value = duty;
+        UpdateManualSliderLabels(duty);
+    }
+
+    private void UpdateManualSliderLabels(int duty)
+    {
+        if (ManualSliderPercentText != null)
+            ManualSliderPercentText.Text = $"{duty}%";
+        if (ManualEstimatedRpmReading != null)
+        {
+            int maxRpm = _gpu ? (Vm?.FanGpuMaxRpm ?? _profile.GpuMaxRpm) : (Vm?.FanCpuMaxRpm ?? _profile.CpuMaxRpm);
+            int estimated = (int)Math.Round(duty / 100.0 * maxRpm);
+            ManualEstimatedRpmReading.Text = estimated.ToString();
+        }
+    }
+
+    private void ManualSlider_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        int duty = Math.Clamp((int)Math.Round(e.NewValue), 0, 100);
+        UpdateManualSliderLabels(duty);
+    }
+
+    private async void ManualSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        int duty = Math.Clamp((int)Math.Round(e.NewValue), 0, 100);
+        UpdateManualSliderLabels(duty);
+        if (_loading || _applying || CustomOption.IsChecked != true || Vm?.FanCustomUseSlider != true) return;
+        if (_gpu) _profile.ManualGpuDutyPercent = duty;
+        else _profile.ManualCpuDutyPercent = duty;
+        SaveDraft();
+        byte mode = _mode;
+        var draft = _profile;
+        var snapshot = draft.Copy();
+        try
+        {
+            await Vm.ApplyManualFanDutyAsync(mode, snapshot);
+            if (_drafts.TryGetValue(mode, out var current) && ReferenceEquals(current, draft)
+                && current.ControlMode == snapshot.ControlMode && current.UseSlider == snapshot.UseSlider
+                && current.ManualCpuDutyPercent == snapshot.ManualCpuDutyPercent
+                && current.ManualGpuDutyPercent == snapshot.ManualGpuDutyPercent)
+                _drafts.Remove(mode);
+        }
+        catch (Exception ex) { ReportFailure(ex); }
     }
 
     private void Profile_Changed(object sender, SelectionChangedEventArgs e)
@@ -344,6 +403,9 @@ public partial class FanCurveWindow : Window
         if (Curve == null) return;
         Curve.SelectedIndex = -1;
         _gpu = FanTabs.SelectedIndex == 1;
+        _loading = true;
+        SyncManualSlider();
+        _loading = false;
         SyncCurve();
     }
 

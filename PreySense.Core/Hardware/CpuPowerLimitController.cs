@@ -59,6 +59,21 @@ public sealed class CpuPowerLimitController
         bool MsrLocked,
         ulong RawMsrValue);
 
+    public readonly record struct MmioPowerLimitsSnapshot(
+        bool Success,
+        int Pl1Watts,
+        int Pl2Watts,
+        uint Pl1Mw,
+        uint Pl2Mw,
+        bool Pl1Enabled,
+        bool Pl2Enabled,
+        bool Pl1Clamped,
+        bool Pl2Clamped,
+        byte Pl1TauRaw,
+        bool MmioLocked,
+        uint RawReg1,
+        uint RawReg2);
+
     public readonly record struct CombinedTransactionResult(
         bool Success,
         bool MsrUpdated,
@@ -150,13 +165,25 @@ public sealed class CpuPowerLimitController
             return false;
         }
 
-        // 1. Read existing MSR values
         if (!_backend.ReadMsr(MSR_RAPL_POWER_UNIT, out ulong units) ||
             !_backend.ReadMsr(MSR_PKG_POWER_LIMIT, out ulong originalMsr))
         {
             status = "Could not read CPU power limits.";
             return false;
         }
+
+        return WriteMsrLimitsCore(
+            pl1Watts, pl2Watts, pl2Enable, tauSeconds, units, originalMsr,
+            out status, out rollbackAttempted, out rollbackSucceeded);
+    }
+
+    private bool WriteMsrLimitsCore(
+        int pl1Watts, int pl2Watts, bool pl2Enable, double tauSeconds,
+        ulong units, ulong originalMsr,
+        out string status, out bool rollbackAttempted, out bool rollbackSucceeded)
+    {
+        rollbackAttempted = false;
+        rollbackSucceeded = true;
 
         // 2. Check PL_LOCK bit 63
         if ((originalMsr & MSR_610_LOCK_BIT) != 0)
@@ -234,37 +261,57 @@ public sealed class CpuPowerLimitController
     }
 
     /// <summary>
-    /// Reads MMIO power limits directly from MCHBAR space if MCHBAR base address is provided.
+    /// Reads and parses current MMIO power limits from MCHBAR+0x59A0/0x59A4.
     /// </summary>
+    public MmioPowerLimitsSnapshot ReadMmioPowerLimits(ulong mchbarBase)
+    {
+        if (mchbarBase == 0 || !_backend.IsInitialized)
+            return default;
+
+        if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint reg1) ||
+            !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint reg2))
+        {
+            return default;
+        }
+
+        uint pl1Mw = (reg1 & MMIO_POWER_MASK) * MMIO_STEP_MW;
+        uint pl2Mw = (reg2 & MMIO_POWER_MASK) * MMIO_STEP_MW;
+        return new MmioPowerLimitsSnapshot(
+            Success: true,
+            Pl1Watts: (int)Math.Round(pl1Mw / 1000.0),
+            Pl2Watts: (int)Math.Round(pl2Mw / 1000.0),
+            Pl1Mw: pl1Mw,
+            Pl2Mw: pl2Mw,
+            Pl1Enabled: (reg1 & MMIO_ENABLE_BIT) != 0,
+            Pl2Enabled: (reg2 & MMIO_ENABLE_BIT) != 0,
+            Pl1Clamped: (reg1 & MMIO_CLAMP_BIT) != 0,
+            Pl2Clamped: (reg2 & MMIO_CLAMP_BIT) != 0,
+            Pl1TauRaw: (byte)((reg1 & MMIO_TIME_MASK) >> (int)MMIO_TIME_SHIFT),
+            MmioLocked: (reg2 & MMIO_PL_LOCK_BIT) != 0,
+            RawReg1: reg1,
+            RawReg2: reg2);
+    }
+
     public bool TryReadMmioPowerLimits(ulong mchbarBase, out uint pl1Mw, out uint pl2Mw, out bool isLocked) =>
         TryReadMmioPowerLimits(mchbarBase, out pl1Mw, out pl2Mw, out isLocked, out _);
 
     public bool TryReadMmioPowerLimits(
         ulong mchbarBase, out uint pl1Mw, out uint pl2Mw, out bool isLocked, out byte pl1TauEncoded)
     {
-        pl1Mw = 0;
-        pl2Mw = 0;
-        isLocked = false;
-        pl1TauEncoded = 0;
-
-        if (mchbarBase == 0 || !_backend.IsInitialized)
-            return false;
-
-        if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint reg1) ||
-            !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint reg2))
+        var snap = ReadMmioPowerLimits(mchbarBase);
+        if (!snap.Success)
         {
+            pl1Mw = 0;
+            pl2Mw = 0;
+            isLocked = false;
+            pl1TauEncoded = 0;
             return false;
         }
 
-        isLocked = (reg2 & MMIO_PL_LOCK_BIT) != 0;
-
-        // Units in MCHBAR: 1 unit = 1/8 Watt = 125 mW
-        uint pl1Raw = reg1 & MMIO_POWER_MASK;
-        uint pl2Raw = reg2 & MMIO_POWER_MASK;
-
-        pl1Mw = pl1Raw * MMIO_STEP_MW;
-        pl2Mw = pl2Raw * MMIO_STEP_MW;
-        pl1TauEncoded = (byte)((reg1 & MMIO_TIME_MASK) >> (int)MMIO_TIME_SHIFT);
+        pl1Mw = snap.Pl1Mw;
+        pl2Mw = snap.Pl2Mw;
+        isLocked = snap.MmioLocked;
+        pl1TauEncoded = snap.Pl1TauRaw;
         return true;
     }
 
@@ -274,10 +321,13 @@ public sealed class CpuPowerLimitController
     /// preserve clamp/lock/reserved bits, then verify readback.
     /// </summary>
     public bool TrySetMmioPowerLimits(ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, out string status) =>
-        TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out status, out _, out _);
+        TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, pl2Enable: true, out status, out _, out _);
+
+    public bool TrySetMmioPowerLimits(ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, bool pl2Enable, out string status) =>
+        TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, pl2Enable, out status, out _, out _);
 
     private bool TrySetMmioPowerLimits(
-        ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded,
+        ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, bool pl2Enable,
         out string status, out bool rollbackAttempted, out bool rollbackSucceeded)
     {
         rollbackAttempted = false;
@@ -303,19 +353,32 @@ public sealed class CpuPowerLimitController
             return false;
         }
 
+        if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint orig1) ||
+            !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint orig2))
+        {
+            status = "Could not read CPU power registers.";
+            return false;
+        }
+
+        return WriteMmioLimitsCore(
+            mchbarBase, pl1Mw, pl2Mw, tauEncoded, pl2Enable, orig1, orig2,
+            out status, out rollbackAttempted, out rollbackSucceeded);
+    }
+
+    private bool WriteMmioLimitsCore(
+        ulong mchbarBase, uint pl1Mw, uint pl2Mw, byte tauEncoded, bool pl2Enable,
+        uint orig1, uint orig2,
+        out string status, out bool rollbackAttempted, out bool rollbackSucceeded)
+    {
+        rollbackAttempted = false;
+        rollbackSucceeded = true;
+
         uint pl1Raw = pl1Mw / MMIO_STEP_MW;
         uint pl2Raw = pl2Mw / MMIO_STEP_MW;
 
         if (pl1Raw > MAX_15BIT_RAW_LIMIT || pl2Raw > MAX_15BIT_RAW_LIMIT)
         {
             status = $"CPU limits are too high (PL1={pl1Mw / 1000}W, PL2={pl2Mw / 1000}W).";
-            return false;
-        }
-
-        if (!_backend.ReadPhysicalDword(mchbarBase + MMIO_PL1_OFFSET, out uint orig1) ||
-            !_backend.ReadPhysicalDword(mchbarBase + MMIO_PL2_OFFSET, out uint orig2))
-        {
-            status = "Could not read CPU power registers.";
             return false;
         }
 
@@ -328,8 +391,8 @@ public sealed class CpuPowerLimitController
         // Acer CPWR Field at GMHB()+0x5000:
         //   0x9A0: PPL1 15, PL1E 1, CLP1 1, PL1T 7
         //   0x9A4: PPL2 15, PL2E 1, CLP2 1, PL2T 7
-        // PREYDEV set enable + power (+ PL1T); clamp bits were left alone.
-        uint new1 = orig1 & ~((MMIO_POWER_MASK) | MMIO_ENABLE_BIT | MMIO_TIME_MASK);
+        // Set PL1E, honor pl2Enable for PL2E, preserve clamp/lock/reserved bits; tauEncoded==0 preserves PL1T.
+        uint new1 = orig1 & ~(MMIO_POWER_MASK | MMIO_ENABLE_BIT | MMIO_TIME_MASK);
         new1 |= (pl1Raw & MMIO_POWER_MASK) | MMIO_ENABLE_BIT;
         if (tauEncoded != 0)
             new1 |= ((uint)tauEncoded & 0x7FU) << (int)MMIO_TIME_SHIFT;
@@ -337,7 +400,9 @@ public sealed class CpuPowerLimitController
             new1 |= orig1 & MMIO_TIME_MASK;
 
         uint new2 = orig2 & ~(MMIO_POWER_MASK | MMIO_ENABLE_BIT);
-        new2 |= (pl2Raw & MMIO_POWER_MASK) | MMIO_ENABLE_BIT;
+        new2 |= pl2Raw & MMIO_POWER_MASK;
+        if (pl2Enable)
+            new2 |= MMIO_ENABLE_BIT;
 
         if (!_backend.WritePhysicalDword(mchbarBase + MMIO_PL1_OFFSET, new1) ||
             !_backend.WritePhysicalDword(mchbarBase + MMIO_PL2_OFFSET, new2))
@@ -365,7 +430,7 @@ public sealed class CpuPowerLimitController
             && (verify1 & MMIO_ENABLE_BIT) != 0
             && (tauEncoded == 0 || ((verify1 & MMIO_TIME_MASK) >> (int)MMIO_TIME_SHIFT) == (tauEncoded & 0x7FU));
         bool match2 = (verify2 & MMIO_POWER_MASK) == pl2Raw
-            && (verify2 & MMIO_ENABLE_BIT) != 0;
+            && ((verify2 & MMIO_ENABLE_BIT) != 0) == pl2Enable;
         if (!match1 || !match2)
         {
             rollbackAttempted = true;
@@ -468,8 +533,10 @@ public sealed class CpuPowerLimitController
         }
 
         bool skipMsr = belowStaticFloor && !restoreMsrToFloor;
-        int msrPl1Watts = restoreMsrToFloor ? staticPl1FloorWatts!.Value : pl1Watts;
-        int msrPl2Watts = restoreMsrToFloor ? staticPl2FloorWatts!.Value : pl2Watts;
+        int msrPl1Watts = restoreMsrToFloor ? staticPl1FloorWatts!.Value
+            : staticPl1FloorWatts is int msrFloor1 ? Math.Max(pl1Watts, msrFloor1) : pl1Watts;
+        int msrPl2Watts = restoreMsrToFloor ? staticPl2FloorWatts!.Value
+            : staticPl2FloorWatts is int msrFloor2 ? Math.Max(pl2Watts, msrFloor2) : pl2Watts;
 
         if (!skipMsr && (origMsr & MSR_610_LOCK_BIT) != 0)
         {
@@ -529,7 +596,7 @@ public sealed class CpuPowerLimitController
         // 3. Apply MSR when raising above floors, or restoring floors on Reset.
         if (!skipMsr)
         {
-            if (!TrySetMsrPowerLimits(msrPl1Watts, msrPl2Watts, pl2Enable, tauSeconds, out string msrStatus, out bool msrRollbackAttempted, out bool msrRollbackSucceeded))
+            if (!WriteMsrLimitsCore(msrPl1Watts, msrPl2Watts, pl2Enable, tauSeconds, units, origMsr, out string msrStatus, out bool msrRollbackAttempted, out bool msrRollbackSucceeded))
             {
                 return new CombinedTransactionResult(
                     Success: false,
@@ -544,7 +611,7 @@ public sealed class CpuPowerLimitController
         // 4. If MMIO is configured, apply MMIO power limits
         if (mmioRequested)
         {
-            if (!TrySetMmioPowerLimits(mchbarBase, pl1Mw, pl2Mw, tauEncoded, out string mmioStatus, out bool mmioRollbackAttempted, out bool mmioRollbackSucceeded))
+            if (!WriteMmioLimitsCore(mchbarBase, pl1Mw, pl2Mw, tauEncoded, pl2Enable, origMmio1, origMmio2, out string mmioStatus, out bool mmioRollbackAttempted, out bool mmioRollbackSucceeded))
             {
                 // MMIO failed -> coordinated rollback: restore MSR when it was written
                 bool msrRollbackOk = skipMsr || RollbackMsrVerified(origMsr);

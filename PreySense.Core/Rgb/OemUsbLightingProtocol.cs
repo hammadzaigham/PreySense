@@ -16,7 +16,19 @@ public sealed record OemUsbLightingTransfer(
 /// <summary>Pure packet construction recovered from OEM DLLs. Does not open or write hardware.</summary>
 public static partial class OemUsbLightingProtocol
 {
+    private static readonly byte[] GammaTable = BuildGammaTable();
     private static readonly Lazy<(Dictionary<string, OemUsbKey[]> Layouts, Dictionary<OemUsbKeyboardFamily, IReadOnlyList<OemUsbHardwareMode>> Modes)> Catalog = new(LoadCatalog);
+
+    /// <summary>Applies a floored gamma 2.2 LED curve so low values (1..20) do not faintly glow, keeping 0 at 0 and 255 at 255.</summary>
+    public static byte ApplyLedGamma(byte value) => GammaTable[value];
+
+    private static byte[] BuildGammaTable()
+    {
+        var table = new byte[256];
+        for (var i = 0; i < table.Length; i++)
+            table[i] = (byte)Math.Floor(255 * Math.Pow(i / 255.0, 2.2) + 1e-9);
+        return table;
+    }
 
     public static bool IsKnownProduct(OemUsbKeyboardFamily family, ushort productId) =>
         Catalog.Value.Layouts.ContainsKey(LayoutId(family, productId));
@@ -44,9 +56,9 @@ public static partial class OemUsbLightingProtocol
                 continue;
             var offset = key.Slot * 4;
             var color = colors[key.Index];
-            frame[offset + 1] = color.R;
-            frame[offset + 2] = color.G;
-            frame[offset + 3] = color.B;
+            frame[offset + 1] = ApplyLedGamma(color.R);
+            frame[offset + 2] = ApplyLedGamma(color.G);
+            frame[offset + 3] = ApplyLedGamma(color.B);
         }
         return frame;
     }
@@ -65,12 +77,18 @@ public static partial class OemUsbLightingProtocol
             Array.Copy(frame, offset, report, 1, count);
             writes.Add(report);
         }
-        var delay = family == OemUsbKeyboardFamily.Sunrex ? 15 : 20;
+        // Chicony (Acer) synchronous WriteFile completes per packet on Windows, so 0 ms pacing avoids artificial frame lag.
+        var (edgeDelay, writeDelay) = family switch
+        {
+            OemUsbKeyboardFamily.Acer => (0, 0),
+            OemUsbKeyboardFamily.Sunrex => (15, 2),
+            _ => (20, 2)
+        };
         return new OemUsbLightingTransfer(
             [0, 0x12, 0, 0, 8, 0, 0, 0, 0xe5],
             writes.AsReadOnly(),
             [0, 8, 2, 0x33, 5, commitValue, 8, 1, unchecked((byte)~(0x4b + commitValue))],
-            delay, 2, delay);
+            edgeDelay, writeDelay, edgeDelay);
     }
 
     /// <summary>The OEM factory sends this output report once before color updates, then waits 2ms.</summary>
@@ -105,7 +123,10 @@ public static partial class OemUsbLightingProtocol
         var layouts = new Dictionary<string, OemUsbKey[]>(StringComparer.Ordinal);
         static OemUsbKey[] ReadKeys(JsonElement array) => array.EnumerateArray().Select(k => new OemUsbKey(
             k.GetProperty("index").GetInt32(), k.GetProperty("name").GetString()!, k.GetProperty("slot").GetInt32())).ToArray();
-        layouts.Add("Acer:0117", ReadKeys(document.RootElement.GetProperty("Acer").GetProperty("keys")));
+        var acerKeys = ReadKeys(document.RootElement.GetProperty("Acer").GetProperty("keys"));
+        layouts.Add("Acer:0117", acerKeys);
+        layouts.Add("Acer:011a", acerKeys);
+        layouts.Add("Acer:0119", acerKeys);
         layouts.Add("Darfon:ba51", ReadKeys(document.RootElement.GetProperty("Darfon").GetProperty("keys")));
         foreach (var product in document.RootElement.GetProperty("Sunrex").EnumerateObject())
             layouts.Add($"Sunrex:{product.Name}", ReadKeys(product.Value));

@@ -370,6 +370,13 @@ namespace PreySense.Frontend.Views
 			}
 	}
 
+	private void SliderHudScale_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (LabelHudScale == null) return;
+		int value = Math.Clamp((int)Math.Round(e.NewValue / 5.0) * 5, 50, 200);
+		LabelHudScale.Text = $"{value}%";
+	}
+
 	private void SliderHudScale_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
 		if (LabelHudScale == null)
@@ -388,6 +395,13 @@ namespace PreySense.Frontend.Views
 		{
 			SaveHudScale(value);
 		}
+	}
+
+	private void SliderOpacity_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (LabelOpacity == null) return;
+		int value = Math.Clamp((int)Math.Round(e.NewValue / 10.0) * 10, 0, 100);
+		LabelOpacity.Text = $"{value}%";
 	}
 
 	private void SliderOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -413,6 +427,13 @@ namespace PreySense.Frontend.Views
 	private void SaveHudScale(int value)
 	{
 		_ = QueueSetting("scale", () => AppConfig.Set("overlay_scale_percent", value));
+	}
+
+	private void SliderTextOpacity_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (LabelTextOpacity == null) return;
+		int value = Math.Clamp((int)Math.Round(e.NewValue / 10.0) * 10, 0, 100);
+		LabelTextOpacity.Text = $"{value}%";
 	}
 
 	private void SliderTextOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

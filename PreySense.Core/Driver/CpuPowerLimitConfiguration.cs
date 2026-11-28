@@ -53,9 +53,6 @@ namespace PreySense.Core.Driver
         public static int TauSecondsForIndex(int index) =>
             TauSliderSteps[Math.Clamp(index, 0, TauSliderSteps.Length - 1)];
 
-        public static byte EncodeTauSelection(int sliderValue) =>
-            sliderValue >= InfiniteTauSliderValue ? InfiniteTauEncodedValue : EncodeTauSeconds(sliderValue);
-
         public static string FormatTauSelection(int sliderValue) =>
             sliderValue <= 0 ? "Off"
             : sliderValue >= InfiniteTauSliderValue ? "∞"
@@ -86,12 +83,6 @@ namespace PreySense.Core.Driver
             return best;
         }
 
-        public static int DecodeTauSeconds(byte encoded)
-        {
-            int exponent = encoded & 0x1F;
-            int fraction = (encoded >> 5) & 0x03;
-            return (int)Math.Round(Math.Pow(2, exponent) * (1.0 + fraction / 4.0) * RaplTimeUnitSeconds);
-        }
         // Factory AC Hardware Constants from PHN16S-71 ERM4 EC Table (0xFE8004A0)
         // Quiet:    55W / 140W
         // Eco:      45W / 50W

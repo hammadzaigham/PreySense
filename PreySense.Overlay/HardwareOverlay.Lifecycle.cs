@@ -62,7 +62,7 @@ public partial class HardwareOverlay
     {
         ClearGraphHistory();
         var config = LoadDisplayConfiguration();
-        HardwareControl.ResetMetrics();
+        lock (_telemetryLock) HardwareControl.ResetMetrics();
         _active = true; _lastFgPid = 0; _hidden = false;
         _shownPid = 0; _classifiedPid = 0; _classifiedProcessName = null; _fgDesktop = false;
         _wasOwnWindow = false; _keepOverlayAfterUiHide = false;
@@ -94,32 +94,36 @@ public partial class HardwareOverlay
     {
         var config = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent().Overlay;
         var slots = config.Slots;
-        _columnCpu = slots.Select(slot => slot.CpuMetric).ToArray();
-        _columnGpu = slots.Select(slot => slot.GpuMetric).ToArray();
-        _columnGraphs = slots.Select(slot => slot.ShowGraph).ToArray();
-        var previousGraphs = _graphMetrics.ToHashSet();
-        _graphMetrics.Clear();
-        for (int i = 0; i < _columnCpu.Length; i++)
+        PreySense.Core.Services.TelemetryMetrics metrics;
+        lock (_telemetryLock)
         {
-            if (!_columnGraphs[i]) continue;
-            AddGraph(_columnCpu[i], false);
-            AddGraph(_columnGpu[i], true);
+            _columnCpu = slots.Select(slot => slot.CpuMetric).ToArray();
+            _columnGpu = slots.Select(slot => slot.GpuMetric).ToArray();
+            _columnGraphs = slots.Select(slot => slot.ShowGraph).ToArray();
+            var previousGraphs = _graphMetrics.ToHashSet();
+            _graphMetrics.Clear();
+            for (int i = 0; i < _columnCpu.Length; i++)
+            {
+                if (!_columnGraphs[i]) continue;
+                AddGraph(_columnCpu[i], false);
+                AddGraph(_columnGpu[i], true);
+            }
+            void AddGraph(string metric, bool gpu)
+            {
+                if (metric == "None") return;
+                if (metric == "Max Core Usage") metric = "Max Core";
+                var graph = (metric, gpu);
+                if (_graphMetrics.Contains(graph)) return;
+                _graphMetrics.Add(graph);
+                if (!previousGraphs.Contains(graph)) Array.Fill(HistoryFor(metric, gpu), float.NaN);
+            }
+            metrics = PreySense.Core.Services.TelemetryMetrics.None;
+            for (int i = 0; i < _columnCpu.Length; i++)
+                metrics |= PreySense.Core.Services.TelemetrySelection.Cpu(_columnCpu[i]) | PreySense.Core.Services.TelemetrySelection.Gpu(_columnGpu[i]);
+            _selectedMetrics = metrics;
+            _showFps = config.ShowFps;
         }
-        void AddGraph(string metric, bool gpu)
-        {
-            if (metric == "None") return;
-            if (metric == "Max Core Usage") metric = "Max Core";
-            var graph = (metric, gpu);
-            if (_graphMetrics.Contains(graph)) return;
-            _graphMetrics.Add(graph);
-            if (!previousGraphs.Contains(graph)) Array.Fill(HistoryFor(metric, gpu), float.NaN);
-        }
-        var metrics = PreySense.Core.Services.TelemetryMetrics.None;
-        for (int i = 0; i < _columnCpu.Length; i++)
-            metrics |= PreySense.Core.Services.TelemetrySelection.Cpu(_columnCpu[i]) | PreySense.Core.Services.TelemetrySelection.Gpu(_columnGpu[i]);
         PreySense.Core.Services.TelemetryCoordinator.SetOverlayMetrics(metrics);
-        _selectedMetrics = metrics;
-        _showFps = config.ShowFps;
         return config;
     }
 

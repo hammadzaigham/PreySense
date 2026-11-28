@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/hammadzaigham/PreySense/tree/main/docs
+    about: Setup guides, driver tuning, lighting support, and streaming control docs
+  - name: Lighting Device Compatibility
+    url: https://github.com/hammadzaigham/PreySense/blob/main/docs/lighting_devices.md
+    about: Check supported RGB keyboards, light bars, logos, and verification limits
+  - name: Releases
+    url: https://github.com/hammadzaigham/PreySense/releases
+    about: Download the latest PreySense release and read release notes

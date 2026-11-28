@@ -27,6 +27,7 @@ namespace PreySense.Frontend.ViewModels
         {
             void UpdateUi()
             {
+                _streamingCpuLimits = null;
                 ActivePowerMode = mode;
                 TauSeconds = TauForMode(mode);
                 UpdateModeName(mode);
@@ -234,10 +235,10 @@ namespace PreySense.Frontend.ViewModels
             _ => 0x01
         };
 
-        internal async Task ApplyModeSwitchAsync(byte mode, bool applyCustomLimits = true)
+        internal async Task<bool> ApplyModeSwitchAsync(byte mode, bool applyCustomLimits = true, bool waitForTransition = false)
         {
             CancelPendingModeSwitch();
-            if (!await TryEnterModeSwitchGateAsync()) return;
+            if (!await TryEnterModeSwitchGateAsync()) return false;
             try
             {
                 bool applied = await ApplyModeSwitchCoreAsync(mode, applyCustomLimits);
@@ -245,9 +246,10 @@ namespace PreySense.Frontend.ViewModels
                 {
                     if (applied)
                         _lastAppliedHardwareMode = mode;
-                    _pendingHardwareMode = 0xFF;
-                    _modeSwitchCooldownActive = false;
                 }
+                if (applied && waitForTransition)
+                    await Task.Delay(AcerOperatingModeTiming.TransitionDelay);
+                return applied;
             }
             finally { ExitModeSwitchGate(); }
         }

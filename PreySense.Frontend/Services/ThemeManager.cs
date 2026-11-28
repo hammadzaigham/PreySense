@@ -75,7 +75,7 @@ public static class ThemeManager
     }
 
     public static ApplicationTheme ResolveTheme(GeneralConfig general) =>
-        general.Theme ?? (general.LightTheme ? ApplicationTheme.Light : ApplicationTheme.Dark);
+        general.Theme ?? ApplicationTheme.Dark;
 
     public static void Apply(bool isLight, bool persist = true) =>
         Apply(isLight ? ApplicationTheme.Light : ApplicationTheme.Dark, persist);
@@ -167,7 +167,6 @@ public static class ThemeManager
             ConfigurationService.Instance.Update(cfg =>
             {
                 cfg.General.Theme = theme;
-                cfg.General.LightTheme = isLight;
             });
         }
         catch { }

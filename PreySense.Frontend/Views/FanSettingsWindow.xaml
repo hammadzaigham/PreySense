@@ -1,0 +1,48 @@
+<Window Style="{DynamicResource AppWindowRenderingStyle}" x:Class="PreySense.Frontend.Views.FanSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        Title="PreySense • Fan Settings"
+        Width="460"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFontFamily}"
+        ResizeMode="NoResize">
+
+    <Border Style="{DynamicResource AppWindowShellStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <controls:WindowTitleBar Grid.Row="0" Title="Fan Settings"/>
+
+            <StackPanel Grid.Row="1" Margin="{StaticResource WindowContentMargin}">
+                <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="0">
+                    <StackPanel>
+                        <controls:SettingSwitchRow Title="Custom Fan Control"
+                                                   IsChecked="{Binding FanCustomUseCurve, Mode=TwoWay}"
+                                                   OnText="Curve"
+                                                   OffText="Slider"
+                                                   SwitchWidth="110"/>
+                        <controls:SettingValueRow x:Name="RowCpuMaxRpm"
+                                                  Title="Max CPU Fan RPM"
+                                                  Minimum="1000"
+                                                  Maximum="10000"
+                                                  Unit="RPM"
+                                                  Value="{Binding FanCpuMaxRpm, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <controls:SettingValueRow x:Name="RowGpuMaxRpm"
+                                                  Title="Max GPU Fan RPM"
+                                                  Minimum="1000"
+                                                  Maximum="10000"
+                                                  Unit="RPM"
+                                                  Value="{Binding FanGpuMaxRpm, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

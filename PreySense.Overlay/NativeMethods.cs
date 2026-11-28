@@ -16,7 +16,6 @@ namespace PreySense.Overlay
         public const int SW_HIDE = 0;
 
         public const int GWL_EXSTYLE = -20;
-        public const int WS_EX_TRANSPARENT_FLAG = 0x00000020;
 
         public const int WM_NCDESTROY = 0x0082;
         public const int WM_SETCURSOR = 0x0020;
@@ -57,20 +56,6 @@ namespace PreySense.Overlay
             public byte BlendFlags;
             public byte SourceConstantAlpha;
             public byte AlphaFormat;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct MEMORYSTATUSEX
-        {
-            public uint dwLength;
-            public uint dwMemoryLoad;
-            public ulong ullTotalPhys;
-            public ulong ullAvailPhys;
-            public ulong ullTotalPageFile;
-            public ulong ullAvailPageFile;
-            public ulong ullTotalVirtual;
-            public ulong ullAvailVirtual;
-            public ulong ullAvailExtendedVirtual;
         }
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -123,12 +108,6 @@ namespace PreySense.Overlay
 
         [DllImport("gdi32.dll", SetLastError = true)]
         public static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool GetSystemTimes(out long lpIdleTime, out long lpKernelTime, out long lpUserTime);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
     }
 }

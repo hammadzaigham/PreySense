@@ -46,8 +46,8 @@ internal static partial class UiText
         Spanish["Reference variant 0; running firmware and variant are unverified."] = "Variante de referencia 0; firmware y variante activos sin verificar.";
         French["Reference variant 0; running firmware and variant are unverified."] = "Variante de référence 0 ; micrologiciel et variante actifs non vérifiés.";
         Turkish["Reference variant 0; running firmware and variant are unverified."] = "Referans varyantı 0; çalışan ürün yazılımı ve varyant doğrulanmadı.";
-        Chinese["Cooling Boost"] = "散热增强";
-        Chinese["{0} Cooling Boost"] = "{0} 散热增强";
+        Chinese["Fan Boost"] = "风扇增强";
+        Chinese["{0} Fan Boost"] = "{0} 风扇增强";
         Chinese["Estimated RPM"] = "预计 RPM";
         Chinese["Reference formula: 0% keeps the factory baseline; 100% uses the remaining speed headroom."] = "0% 保留出厂基准；100% 使用剩余转速余量。";
         Chinese["Estimate assumes rising temperature for this fan. The other sensor, hysteresis and firmware protection can change actual RPM."] = "估计假设此风扇温度正在上升。另一传感器、温度滞后和固件保护可能改变实际 RPM。";
@@ -55,8 +55,8 @@ internal static partial class UiText
         Chinese["Estimate source: bundled PHN16S-71 EC 1.08 fallback; not verified for this laptop."] = "估计来源：内置 PHN16S-71 EC 1.08 后备参考；未针对本机验证。";
         Chinese["Select a curve point."] = "请选择曲线点。";
         Chinese["Resolving estimate source..."] = "正在确定估计来源…";
-        Hindi["Cooling Boost"] = "कूलिंग बूस्ट";
-        Hindi["{0} Cooling Boost"] = "{0} कूलिंग बूस्ट";
+        Hindi["Fan Boost"] = "फ़ैन बूस्ट";
+        Hindi["{0} Fan Boost"] = "{0} फ़ैन बूस्ट";
         Hindi["Estimated RPM"] = "अनुमानित RPM";
         Hindi["Reference formula: 0% keeps the factory baseline; 100% uses the remaining speed headroom."] = "0% फ़ैक्टरी आधार बनाए रखता है; 100% गति की बची गुंजाइश का उपयोग करता है।";
         Hindi["Estimate assumes rising temperature for this fan. The other sensor, hysteresis and firmware protection can change actual RPM."] = "अनुमान इस पंखे के बढ़ते तापमान पर आधारित है। दूसरे सेंसर, हिस्टैरिसिस और फ़र्मवेयर सुरक्षा से वास्तविक RPM बदल सकता है।";
@@ -64,8 +64,8 @@ internal static partial class UiText
         Hindi["Estimate source: bundled PHN16S-71 EC 1.08 fallback; not verified for this laptop."] = "अनुमान स्रोत: अंतर्निहित PHN16S-71 EC 1.08 विकल्प; इस लैपटॉप के लिए सत्यापित नहीं।";
         Hindi["Select a curve point."] = "वक्र का एक बिंदु चुनें।";
         Hindi["Resolving estimate source..."] = "अनुमान का स्रोत खोजा जा रहा है…";
-        Spanish["Cooling Boost"] = "Refuerzo de refrigeración";
-        Spanish["{0} Cooling Boost"] = "Refuerzo de refrigeración de {0}";
+        Spanish["Fan Boost"] = "Refuerzo del ventilador";
+        Spanish["{0} Fan Boost"] = "Refuerzo del ventilador de {0}";
         Spanish["Estimated RPM"] = "RPM estimados";
         Spanish["Reference formula: 0% keeps the factory baseline; 100% uses the remaining speed headroom."] = "0% mantiene la base de fábrica; 100% utiliza todo el margen de velocidad restante.";
         Spanish["Estimate assumes rising temperature for this fan. The other sensor, hysteresis and firmware protection can change actual RPM."] = "La estimación supone una temperatura creciente para este ventilador. El otro sensor, la histéresis y la protección del firmware pueden cambiar los RPM reales.";
@@ -73,8 +73,8 @@ internal static partial class UiText
         Spanish["Estimate source: bundled PHN16S-71 EC 1.08 fallback; not verified for this laptop."] = "Fuente: referencia incluida PHN16S-71 EC 1.08; no verificada para este portátil.";
         Spanish["Select a curve point."] = "Selecciona un punto de la curva.";
         Spanish["Resolving estimate source..."] = "Buscando la fuente de estimación…";
-        French["Cooling Boost"] = "Renfort de refroidissement";
-        French["{0} Cooling Boost"] = "Renfort de refroidissement {0}";
+        French["Fan Boost"] = "Boost du ventilateur";
+        French["{0} Fan Boost"] = "Boost du ventilateur {0}";
         French["Estimated RPM"] = "RPM estimés";
         French["Reference formula: 0% keeps the factory baseline; 100% uses the remaining speed headroom."] = "0 % conserve la base d’usine ; 100 % utilise toute la marge de vitesse restante.";
         French["Estimate assumes rising temperature for this fan. The other sensor, hysteresis and firmware protection can change actual RPM."] = "L’estimation suppose une température croissante pour ce ventilateur. L’autre capteur, l’hystérésis et les protections du micrologiciel peuvent modifier les RPM réels.";
@@ -82,8 +82,8 @@ internal static partial class UiText
         French["Estimate source: bundled PHN16S-71 EC 1.08 fallback; not verified for this laptop."] = "Source : référence PHN16S-71 EC 1.08 intégrée ; non vérifiée pour cet ordinateur.";
         French["Select a curve point."] = "Sélectionnez un point de la courbe.";
         French["Resolving estimate source..."] = "Recherche de la source d’estimation…";
-        Turkish["Cooling Boost"] = "Soğutma artışı";
-        Turkish["{0} Cooling Boost"] = "{0} soğutma artışı";
+        Turkish["Fan Boost"] = "Fan artışı";
+        Turkish["{0} Fan Boost"] = "{0} fan artışı";
         Turkish["Estimated RPM"] = "Tahmini RPM";
         Turkish["Reference formula: 0% keeps the factory baseline; 100% uses the remaining speed headroom."] = "%0 fabrika temelini korur; %100 kalan hız payını kullanır.";
         Turkish["Estimate assumes rising temperature for this fan. The other sensor, hysteresis and firmware protection can change actual RPM."] = "Tahmin bu fanın sıcaklığının arttığını varsayar. Diğer sensör, histerezis ve ürün yazılımı koruması gerçek RPM değerini değiştirebilir.";
@@ -259,8 +259,8 @@ internal static partial class UiText
         Turkish["Fan RPM measurement failed: {0}"] = "Fan RPM ölçümü başarısız: {0}";
         foreach (var table in new[] { Chinese, Hindi, Spanish, French, Turkish })
         {
-            table["CPU Cooling Boost"] = string.Format(table["{0} Cooling Boost"], "CPU");
-            table["GPU Cooling Boost"] = string.Format(table["{0} Cooling Boost"], "GPU");
+            table["CPU Fan Boost"] = string.Format(table["{0} Fan Boost"], "CPU");
+            table["GPU Fan Boost"] = string.Format(table["{0} Fan Boost"], "GPU");
         }
     }
 }

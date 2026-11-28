@@ -76,6 +76,8 @@ public partial class HardwareOverlay
                     if (fgPid != _shownPid)
                         ResetFpsDisplayState();
                     _fps.TargetPid = fgPid;
+                    if (!desktopFg)
+                        _shownPid = fgPid;
                     _fgDesktop = desktopFg;
                 }
             }

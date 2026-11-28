@@ -20,20 +20,18 @@ public partial class MainViewModel
         {
             _lcdOverdriveStore = store;
             var cached = store?.GetCurrent().Display;
-            if (cached?.LcdOverdriveSupported is bool supported)
-            {
-                _lcdOverdriveAvailable = supported;
-                _lcdOverdriveEnabled = supported && cached.LcdOverdriveEnabled;
-                return;
-            }
-
             var state = await Task.Run(() =>
             {
-                bool available = _hw.TryGetLcdOverdrive(out bool enabled);
-                return (available, enabled);
+                bool available = _hw.TryGetLcdOverdrive(out bool actual);
+                if (available && cached?.LcdOverdriveSupported == true && actual != cached.LcdOverdriveEnabled)
+                {
+                    if (_hw.SetLcdOverdrive(cached.LcdOverdriveEnabled))
+                        available = _hw.TryGetLcdOverdrive(out actual);
+                }
+                return (available, actual);
             });
             _lcdOverdriveAvailable = state.available;
-            _lcdOverdriveEnabled = state.available && state.enabled;
+            _lcdOverdriveEnabled = state.available && state.actual;
             await SaveLcdOverdriveStateAsync();
         }
         catch { _lcdOverdriveAvailable = _lcdOverdriveEnabled = false; }
@@ -44,6 +42,41 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(IsLcdOverdriveEnabled));
             OnPropertyChanged(nameof(CanChangeLcdOverdrive));
         }
+    }
+
+    internal void ApplyPersistedLcdOverdrive()
+    {
+        try
+        {
+            var store = _lcdOverdriveStore ?? ConfigurationService.Instance;
+            var display = store.GetCurrent().Display;
+            if (!_hw.TryGetLcdOverdrive(out bool actual))
+            {
+                UpdateLcdOverdriveState(false, false);
+                return;
+            }
+
+            if (display.LcdOverdriveSupported == true)
+            {
+                if (actual != display.LcdOverdriveEnabled && _hw.SetLcdOverdrive(display.LcdOverdriveEnabled)
+                    && !_hw.TryGetLcdOverdrive(out actual))
+                {
+                    UpdateLcdOverdriveState(false, false);
+                    return;
+                }
+            }
+            else
+            {
+                store.Update(cfg =>
+                {
+                    cfg.Display.LcdOverdriveSupported = true;
+                    cfg.Display.LcdOverdriveEnabled = actual;
+                });
+            }
+
+            UpdateLcdOverdriveState(true, actual);
+        }
+        catch (Exception ex) { AppLogger.Error($"Could not apply persisted LCD overdrive state: {ex.Message}"); }
     }
 
     [RelayCommand]
@@ -59,13 +92,21 @@ public partial class MainViewModel
             {
                 bool written = _hw.SetLcdOverdrive(requested);
                 bool readable = _hw.TryGetLcdOverdrive(out bool actual);
-                return (success: written && readable && actual == requested, actual);
+                return (success: written && readable && actual == requested, readable, actual);
             });
-            _lcdOverdriveAvailable = result.success;
-            _lcdOverdriveEnabled = result.success && result.actual;
-            if (result.success) await SaveLcdOverdriveStateAsync();
+            if (result.readable)
+            {
+                _lcdOverdriveAvailable = true;
+                _lcdOverdriveEnabled = result.actual;
+                if (result.success) await SaveLcdOverdriveStateAsync();
+            }
+            else
+            {
+                _lcdOverdriveAvailable = false;
+                _lcdOverdriveEnabled = false;
+            }
         }
-        catch { _lcdOverdriveAvailable = _lcdOverdriveEnabled = false; }
+        catch { }
         finally
         {
             _lcdOverdriveBusy = false;
@@ -73,6 +114,23 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(IsLcdOverdriveEnabled));
             OnPropertyChanged(nameof(CanChangeLcdOverdrive));
         }
+    }
+
+    private void UpdateLcdOverdriveState(bool available, bool enabled)
+    {
+        void Apply()
+        {
+            _lcdOverdriveAvailable = available;
+            _lcdOverdriveEnabled = available && enabled;
+            OnPropertyChanged(nameof(IsLcdOverdriveAvailable));
+            OnPropertyChanged(nameof(IsLcdOverdriveEnabled));
+            OnPropertyChanged(nameof(CanChangeLcdOverdrive));
+        }
+
+        if (_dispatcher == null || _dispatcher.CheckAccess())
+            Apply();
+        else
+            _dispatcher.BeginInvoke(Apply);
     }
 
     private async Task SaveLcdOverdriveStateAsync()

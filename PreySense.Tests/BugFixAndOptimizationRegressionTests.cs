@@ -138,17 +138,6 @@ public class BugFixAndOptimizationRegressionTests
     }
 
     [TestMethod]
-    public void AcerServiceDebloater_IsAcerSystemPath_RequiresProgramFilesOrDriverStore()
-    {
-        Assert.IsFalse(AcerServiceDebloater.IsAcerSystemPath(@"C:\Users\Acer\AppData\Local\Discord\Update.exe"));
-        Assert.IsFalse(AcerServiceDebloater.IsAcerSystemPath(@"C:\Users\Predator\Projects\app.exe"));
-        Assert.IsTrue(AcerServiceDebloater.IsAcerSystemPath(@"C:\Windows\System32\DriverStore\FileRepository\predatorservice.inf_amd64_1234\PSAgent.exe"));
-        string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        if (!string.IsNullOrEmpty(pf))
-            Assert.IsTrue(AcerServiceDebloater.IsAcerSystemPath(Path.Combine(pf, "Acer", "PredatorSense Service", "PSService.exe")));
-    }
-
-    [TestMethod]
     public void FanStage_EnforceStrictlyIncreasing_HandlesHighClusterWithoutCollidingAt126()
     {
         int[] temps = [124, 125, 125, 126];

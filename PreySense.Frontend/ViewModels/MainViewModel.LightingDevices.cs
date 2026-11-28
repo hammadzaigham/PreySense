@@ -503,8 +503,14 @@ public partial class MainViewModel
                 ?? (device.Modes.Any(m => ModeKeyLighting.IsFollowMode(m.Value))
                     ? LightingDeviceModes.FirstOrDefault(m => ModeKeyLighting.IsFollowMode(m.Value)) : null)
                 ?? LightingDeviceModes.FirstOrDefault();
-            DeviceLightingBrightness = ModeKeyLighting.IsFollowMode(settings.Mode)
+            int brightness = ModeKeyLighting.IsFollowMode(settings.Mode)
                 ? lighting.ModeBrightness : settings.Brightness;
+            if (!ModeKeyLighting.IsFollowMode(settings.Mode) && !settings.SyncWithKeyboard
+                && _hw.TryGetLightingDeviceBrightness(device.Id) is int liveBrightness)
+            {
+                brightness = liveBrightness;
+            }
+            DeviceLightingBrightness = brightness;
             DeviceLightingSpeed = settings.Speed;
             DeviceLightingDirection = SelectedLightingDeviceMode?.ResolveDirection(settings.Direction) ?? 0;
             _deviceLightingNativeSpeed = settings.AnimationSpeedLevel;

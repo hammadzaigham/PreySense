@@ -70,11 +70,19 @@ namespace PreySense.Core.Configuration
     public sealed class GamesConfig
     {
         public bool Enabled { get; set; } = false;
+        public bool ShowPerformanceModeControl { get; set; } = true;
+        public bool ShowCpuBoostControl { get; set; } = true;
+        public bool ShowCpuPowerLimitControl { get; set; } = true;
+        public bool ShowGpuPowerLimitControl { get; set; } = true;
         public List<GameProfile> Profiles { get; set; } = new();
 
         public GamesConfig Clone() => new()
         {
             Enabled = Enabled,
+            ShowPerformanceModeControl = ShowPerformanceModeControl,
+            ShowCpuBoostControl = ShowCpuBoostControl,
+            ShowCpuPowerLimitControl = ShowCpuPowerLimitControl,
+            ShowGpuPowerLimitControl = ShowGpuPowerLimitControl,
             Profiles = Profiles?.Select(p => p?.Copy()!).ToList()!
         };
     }
@@ -87,17 +95,13 @@ namespace PreySense.Core.Configuration
         /// <summary>UI Language code (e.g., 'en-US', 'zh-CN', 'hi-IN', 'es-ES', 'fr-FR', 'tr-TR').</summary>
         public string Language { get; set; } = "en-US";
 
-        /// <summary>True for light theme, false for dark theme.</summary>
-        public bool LightTheme { get; set; } = false;
-
-        /// <summary>Selected appearance. Null retains a legacy light preference; otherwise the default is Dark.</summary>
+        /// <summary>Selected appearance. Defaults to Dark when null.</summary>
         public ApplicationTheme? Theme { get; set; }
-
-        /// <summary>Whether Acer OEM background services are debloated (stopped and disabled).</summary>
-        public bool AcerServicesDebloated { get; set; } = false;
 
         /// <summary>Whether hardware tuning controls are enabled.</summary>
         public bool HardwareTuningEnabled { get; set; } = false;
+
+        public string? SkippedUpdateVersion { get; set; }
 
         public GeneralConfig Clone() => (GeneralConfig)MemberwiseClone();
     }
@@ -360,12 +364,10 @@ namespace PreySense.Core.Configuration
 
     public sealed class FanConfig
     {
-        /// <summary>Delay before accepting custom curve stage changes, shared by all modes and both fans.</summary>
-        [JsonPropertyOrder(9)]
-        public int ControlDelaySeconds { get; set; } = 0;
-
         /// <summary>CPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
         [JsonPropertyOrder(7)]
+        public bool UseSlider { get; set; }
+
         public int CpuMaxRpm { get; set; } = 6400;
 
         /// <summary>GPU fan RPM corresponding to 100% duty; configurable per laptop.</summary>
@@ -385,7 +387,7 @@ namespace PreySense.Core.Configuration
 
         public FanConfig Clone() => new()
         {
-            ControlDelaySeconds = ControlDelaySeconds,
+            UseSlider = UseSlider,
             CpuMaxRpm = CpuMaxRpm,
             GpuMaxRpm = GpuMaxRpm,
             Quiet = Quiet?.Clone()!,
@@ -462,8 +464,11 @@ namespace PreySense.Core.Configuration
         /// <summary>Fan control mode: 0 = Auto, 1 = Max, 2 = Custom.</summary>
         public int ControlMode { get; set; } = 0;
 
-        /// <summary>Legacy per-mode value retained for file compatibility; runtime uses Fans.ControlDelaySeconds.</summary>
-        public int RampUpSeconds { get; set; } = 2;
+        public bool UseSlider { get; set; }
+
+        public int ManualCpuDutyPercent { get; set; } = 0;
+
+        public int ManualGpuDutyPercent { get; set; } = 0;
 
         private FanStageConfig[]? _stages;
 
@@ -497,14 +502,18 @@ namespace PreySense.Core.Configuration
         private static ModeFanCurveConfig FromProfile(FanCurveProfile profile) => new()
         {
             ControlMode = (int)profile.ControlMode,
-            RampUpSeconds = profile.RampUpSeconds,
+            UseSlider = profile.UseSlider,
+            ManualCpuDutyPercent = profile.ManualCpuDutyPercent,
+            ManualGpuDutyPercent = profile.ManualGpuDutyPercent,
             Stages = profile.Stages.Select(s => new FanStageConfig(s)).ToArray()
         };
 
         public ModeFanCurveConfig Clone() => new()
         {
             ControlMode = ControlMode,
-            RampUpSeconds = RampUpSeconds,
+            UseSlider = UseSlider,
+            ManualCpuDutyPercent = ManualCpuDutyPercent,
+            ManualGpuDutyPercent = ManualGpuDutyPercent,
             _stages = _stages?.Select(s => s?.Clone()!).ToArray()
         };
     }

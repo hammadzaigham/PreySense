@@ -38,16 +38,6 @@ namespace PreySense.Helpers
             public const string SetHealthControl = "SetBatteryHealthControl";
         }
 
-        public static class OperatingModes
-        {
-            public const byte Quiet = 0x00;
-            public const byte Silent = Quiet;
-            public const byte Balanced = 0x01;
-            public const byte Performance = 0x04;
-            public const byte Turbo = 0x05;
-            public const byte Eco = 0x06;
-        }
-
         public static class GpuMux
         {
             public const int Optimus = 0;

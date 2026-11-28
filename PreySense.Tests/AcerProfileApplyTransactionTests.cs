@@ -15,6 +15,9 @@ public class AcerProfileApplyTransactionTests
         public readonly List<string> Events = new();
         public bool FailNextWrite;
         public bool ModeReadable = true;
+        public int ElapsedMilliseconds;
+        public int MinimumModeInterval;
+        private int _lastModeChange;
         public bool ReadPhysicalByte(ulong address, out byte value) => Bytes.TryGetValue(address, out value);
         public bool WritePhysicalByte(ulong address, byte value)
         {
@@ -28,7 +31,14 @@ public class AcerProfileApplyTransactionTests
             mode = ModeReadable ? Mode : (byte)0;
             return ModeReadable;
         }
-        public bool SetAcerPowerMode(byte mode) { Mode = mode; Events.Add($"mode:{mode}"); return true; }
+        public bool SetAcerPowerMode(byte mode)
+        {
+            if (ElapsedMilliseconds - _lastModeChange < MinimumModeInterval) return false;
+            _lastModeChange = ElapsedMilliseconds;
+            Mode = mode;
+            Events.Add($"mode:{mode}");
+            return true;
+        }
         public void Dispose() { }
     }
 
@@ -128,7 +138,7 @@ public class AcerProfileApplyTransactionTests
     [TestMethod]
     [DataRow(5, false)]
     [DataRow(0, true)]
-    public void TransitionWait_OnlyFollowsAnIntermediateModeSwitch(int currentMode, bool needsWait)
+    public void TransitionWait_FollowsEveryModeSwitch(int currentMode, bool needsStaging)
     {
         var fake = new Fake { Mode = (byte)currentMode };
         SeedSignature(fake);
@@ -137,8 +147,33 @@ public class AcerProfileApplyTransactionTests
         var delays = new List<int>();
         var result = new AcerProfileApplyTransaction(fake, fake, delays.Add).Apply(0, 0, 0, 35);
         Assert.IsTrue(result.Success, result.Status);
-        Assert.AreEqual(needsWait, delays.Contains(AcerOperatingModeTiming.TransitionMilliseconds));
-        Assert.Contains(500, delays, "Post-write verification remains in place.");
+        Assert.AreEqual(needsStaging ? 2 : 1, delays.Count(ms => ms == AcerOperatingModeTiming.TransitionMilliseconds));
+    }
+
+    [TestMethod]
+    public void Apply_PerformanceThenTurbo_RespectsFirmwareSettleWindow()
+    {
+        int settle = AcerOperatingModeTiming.TransitionMilliseconds;
+        var fake = new Fake { Mode = 1, ElapsedMilliseconds = settle, MinimumModeInterval = settle };
+        SeedSignature(fake);
+        ulong performance = AcerProfileApplyTransaction.ProfileAddress(4);
+        ulong turbo = AcerProfileApplyTransaction.ProfileAddress(5);
+        foreach (ulong address in new[] { performance, turbo })
+        {
+            fake.Bytes[address] = 15;
+            fake.Bytes[address + 1] = 40;
+            fake.Bytes[address + 2] = 25;
+        }
+
+        var transaction = new AcerProfileApplyTransaction(fake, fake, ms => fake.ElapsedMilliseconds += ms);
+        var performanceResult = transaction.Apply(4, 30, 15, 20);
+        Assert.IsTrue(performanceResult.Success, performanceResult.Status);
+        var turboResult = transaction.Apply(5, 55, 25, 35);
+        Assert.IsTrue(turboResult.Success, turboResult.Status);
+
+        Assert.AreEqual((byte)5, fake.Mode);
+        Assert.AreEqual((byte)30, fake.Bytes[performance + 1]);
+        Assert.AreEqual((byte)55, fake.Bytes[turbo + 1]);
     }
 
     [TestMethod]

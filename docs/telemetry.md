@@ -14,7 +14,7 @@ hardware work. Explicit poll requests share the same rate limit.
 | Visible main window | CPU/GPU temperatures, both fan RPMs, and the primary display adapter |
 | Visible overlay | Only the CPU/GPU metric selected in each column |
 | Active Custom fan profile | CPU/GPU temperatures required by the curve |
-| Fan editor | None; edits saved curves without live sensor markers |
+| Visible fan editor | CPU/GPU temperatures and both fan RPMs while visible |
 | Hidden Auto/Max fan profiles | None |
 | Visible FPS selection | FPS, average frame time and target PID; no hardware sensors |
 
@@ -36,7 +36,7 @@ sources, then publishes one completed snapshot. Active Custom fan control and
 the visible main window and overlay consume it without further reads. The main
 window subscribes only while visible and removes its temperature/RPM demand when
 hidden. It displays N/A until a fresh sample arrives. Display refresh-rate status
-is not polled. The active display-GPU label comes from Windows display-adapter enumeration in the same cycle; it does not open a vendor GPU client. The fan editor requests no telemetry.
+is not polled. The active display-GPU label comes from Windows display-adapter enumeration in the same cycle; it does not open a vendor GPU client. The fan editor requests temperature and RPM telemetry only while visible.
 
 Before accessing the NVIDIA client, the sampler checks Windows-maintained device
 power data. An asleep adapter is not queried through NVAPI/NVML. Custom fans use

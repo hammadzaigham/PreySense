@@ -1,0 +1,96 @@
+name: Bug Report
+description: Report a bug, crash, or unexpected behavior in PreySense
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue with PreySense! Please fill out the details below so we can reproduce and diagnose it quickly.
+
+  - type: input
+    id: preysense_version
+    attributes:
+      label: PreySense Version
+      description: Version shown in Settings or the release tag you downloaded.
+      placeholder: "e.g. v3.1.3"
+    validations:
+      required: true
+
+  - type: input
+    id: laptop_model
+    attributes:
+      label: Laptop Model
+      description: Exact Acer Predator model name/SKU (e.g. from PredatorSense, msinfo32, or the bottom label).
+      placeholder: "e.g. PHN16S-71, PHN16-71, PHN16-73"
+    validations:
+      required: true
+
+  - type: input
+    id: windows_version
+    attributes:
+      label: Windows Version
+      description: Windows edition and OS build (run `winver` to check).
+      placeholder: "e.g. Windows 11 24H2 (Build 26100)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - Performance Modes / WMI
+        - CPU / GPU Power Tuning (PreySenseDriver)
+        - Fan Control
+        - Lighting (Keyboard / Logo / Light Bar / Mode Key)
+        - GPU Mode / Refresh Rate
+        - Telemetry Overlay
+        - Game Streaming Control
+        - UI / Tray / Startup / Settings
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Clear, numbered steps to trigger the issue.
+      placeholder: |
+        1. Launch PreySense as Administrator
+        2. Open '...'
+        3. Click '...'
+        4. Observe '...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: Expected vs. Actual Behavior
+      description: Describe what you expected to happen and what actually happened.
+      placeholder: |
+        **Expected:** ...
+        **Actual:** ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs_and_config
+    attributes:
+      label: Logs & Configuration
+      description: |
+        Attach or paste relevant lines from `%AppData%\PreySense\preysense.json` and logs (`debug.log` or files under `%AppData%\PreySense\`). Please redact any personal paths if needed.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight Checks
+      options:
+        - label: I am running PreySense as Administrator.
+        - label: Official Predator Sense is closed / not conflicting with PreySense.

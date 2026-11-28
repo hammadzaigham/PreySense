@@ -9,6 +9,8 @@ namespace PreySense.Rgb;
 [SupportedOSPlatform("windows")]
 public sealed partial class OemUsbLightingDevice : IDisposable
 {
+    private const string AcerMutexFormat = @"Global\ECHIDFeatureVID_{0:X4}&PID_{1:X4}";
+    private const ushort AcerVendorId = 0x04f2;
     private readonly object _gate = new();
     private readonly SafeFileHandle _handle;
     private bool _initialized;
@@ -76,6 +78,31 @@ public sealed partial class OemUsbLightingDevice : IDisposable
         return devices.AsReadOnly();
     }
 
+    public bool TryReadBrightness(out int brightness)
+    {
+        brightness = 0;
+        if (Family != OemUsbKeyboardFamily.Acer) return false;
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            try
+            {
+                using var _ = AcquireAcerMutex();
+                byte[] query = [0x00, 0x88, 0, 0, 0, 0, 0, 0, 0x77];
+                if (!HidD_SetFeature(_handle, query, query.Length)) return false;
+                byte[] response = new byte[9];
+                if (!HidD_GetFeature(_handle, response, response.Length)) return false;
+                if (response[1] != 0x88) return false;
+                int sum = 0;
+                for (int i = 1; i <= 7; i++) sum += response[i];
+                if ((byte)((0xFF - sum) & 0xFF) != response[8]) return false;
+                brightness = Math.Clamp(response[5] * 2, 0, 100);
+                return true;
+            }
+            catch { return false; }
+        }
+    }
+
     public bool ApplyColors(IReadOnlyList<Color> colors, byte brightness)
     {
         ArgumentNullException.ThrowIfNull(colors);
@@ -85,6 +112,7 @@ public sealed partial class OemUsbLightingDevice : IDisposable
             // Shared OEM Direct mode stores brightness at offset 0x44 and copies it into the commit report.
             var level = OemUsbLightingProtocol.MapBrightnessPercent(brightness);
             var transfer = OemUsbLightingProtocol.BuildTransfer(Family, ProductId, colors, (byte)level);
+            using var _ = AcquireAcerMutex();
             if (!_initialized)
             {
                 if (!WriteOutput(OemUsbLightingProtocol.BuildInitializationReport())) return false;
@@ -92,16 +120,49 @@ public sealed partial class OemUsbLightingDevice : IDisposable
                 _initialized = true;
             }
             if (!WriteFeature(transfer.BeginFeatureReport)) return false;
-            Thread.Sleep(transfer.BeforeBodyDelayMs);
+            if (transfer.BeforeBodyDelayMs > 0) Thread.Sleep(transfer.BeforeBodyDelayMs);
             foreach (var report in transfer.BodyWriteReports)
             {
                 if (!WriteOutput(report)) return false;
-                Thread.Sleep(transfer.BetweenWritesDelayMs);
+                if (transfer.BetweenWritesDelayMs > 0) Thread.Sleep(transfer.BetweenWritesDelayMs);
             }
-            Thread.Sleep(transfer.BeforeCommitDelayMs);
+            if (transfer.BeforeCommitDelayMs > 0) Thread.Sleep(transfer.BeforeCommitDelayMs);
             if (!WriteFeature(transfer.CommitFeatureReport)) return false;
             LastError = null;
             return true;
+        }
+    }
+
+    private IDisposable? AcquireAcerMutex()
+    {
+        if (Family != OemUsbKeyboardFamily.Acer) return null;
+        Mutex? mutex = null;
+        try
+        {
+            if (Mutex.TryOpenExisting(string.Format(AcerMutexFormat, AcerVendorId, ProductId), out mutex))
+            {
+                try
+                {
+                    if (mutex.WaitOne(1000)) return new AcerMutexReleaser(mutex);
+                }
+                catch (AbandonedMutexException)
+                {
+                    return new AcerMutexReleaser(mutex);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException) { }
+        mutex?.Dispose();
+        return null;
+    }
+
+    private sealed class AcerMutexReleaser(Mutex mutex) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { mutex.ReleaseMutex(); }
+            catch (ApplicationException) { }
+            finally { mutex.Dispose(); }
         }
     }
 
@@ -159,4 +220,7 @@ public sealed partial class OemUsbLightingDevice : IDisposable
     [DllImport("hid.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool HidD_SetFeature(SafeFileHandle handle, byte[] report, int length);
+    [DllImport("hid.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool HidD_GetFeature(SafeFileHandle handle, [Out] byte[] report, int length);
 }

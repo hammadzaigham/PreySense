@@ -15,6 +15,10 @@ namespace PreySense.Overlay
         private Bitmap? _cachedBitmap;
         private Graphics? _cachedGraphics;
 
+        protected virtual void BeforeUpdateLayeredWindow()
+        {
+        }
+
         protected virtual void PerformPaint(PaintEventArgs e)
         {
         }
@@ -27,6 +31,7 @@ namespace PreySense.Overlay
         private void UpdateLayeredWindow()
         {
             if (Handle == IntPtr.Zero) return;
+            BeforeUpdateLayeredWindow();
             lock (_paintLock)
             {
                 if (Handle == IntPtr.Zero || Size.Width <= 0 || Size.Height <= 0) return;

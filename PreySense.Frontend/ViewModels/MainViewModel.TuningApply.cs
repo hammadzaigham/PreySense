@@ -89,12 +89,9 @@ public partial class MainViewModel
         {
             try
             {
-                // Some firmwares accept Set but fail Get / return unknown bytes. Prefer a live
-                // WMI read, then last-known after a successful Set/Get, then the session UI mode.
-                if (owner._hw.TryGetPowerMode(out mode) && mode is 0 or 1 or 4 or 5 or 6)
-                    return true;
-                mode = owner.ActivePowerMode;
-                return mode is 0 or 1 or 4 or 5 or 6;
+                // Hardware can fall back to its last successful Set/Get. The UI mode
+                // may already be the requested mode while the EC is still on another.
+                return owner._hw.TryGetPowerMode(out mode) && mode is 0 or 1 or 4 or 5 or 6;
             }
             catch { mode = 0; return false; }
         }

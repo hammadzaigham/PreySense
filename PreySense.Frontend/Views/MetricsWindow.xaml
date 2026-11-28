@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        xmlns:services="clr-namespace:PreySense.Frontend.Services"
         mc:Ignorable="d"
         Title="PreySense • Overlay"
         Width="540"
@@ -57,7 +58,7 @@
                                     <TextBlock Text="HUD Scale" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
                                     <TextBlock x:Name="LabelHudScale" Text="100%" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider x:Name="SliderHudScale" Minimum="50" Maximum="200" Value="100" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,3,0,0" ValueChanged="SliderHudScale_ValueChanged"/>
+                                <Slider x:Name="SliderHudScale" Minimum="50" Maximum="200" Value="100" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,3,0,0" services:SliderDebounce.DraftValueChanged="SliderHudScale_DraftValueChanged" ValueChanged="SliderHudScale_ValueChanged"/>
                             </StackPanel>
                         </Grid>
 
@@ -68,7 +69,7 @@
                                     <TextBlock Text="Background Opacity" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
                                     <TextBlock x:Name="LabelOpacity" Text="50%" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider x:Name="SliderOpacity" Minimum="0" Maximum="100" Value="50" SmallChange="10" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="True" Margin="0,3,0,0" ValueChanged="SliderOpacity_ValueChanged"/>
+                                <Slider x:Name="SliderOpacity" Minimum="0" Maximum="100" Value="50" SmallChange="10" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="True" Margin="0,3,0,0" services:SliderDebounce.DraftValueChanged="SliderOpacity_DraftValueChanged" ValueChanged="SliderOpacity_ValueChanged"/>
                             </StackPanel>
                         </Grid>
 
@@ -79,7 +80,7 @@
                                     <TextBlock Text="Text Opacity" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"/>
                                     <TextBlock x:Name="LabelTextOpacity" Text="100%" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider x:Name="SliderTextOpacity" Minimum="0" Maximum="100" Value="100" SmallChange="10" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="True" Margin="0,3,0,0" ValueChanged="SliderTextOpacity_ValueChanged"/>
+                                <Slider x:Name="SliderTextOpacity" Minimum="0" Maximum="100" Value="100" SmallChange="10" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="True" Margin="0,3,0,0" services:SliderDebounce.DraftValueChanged="SliderTextOpacity_DraftValueChanged" ValueChanged="SliderTextOpacity_ValueChanged"/>
                             </StackPanel>
                         </Grid>
 

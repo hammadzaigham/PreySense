@@ -13,7 +13,14 @@ public partial class MainViewModel
     public double GameListHeight => 5 * 32 + 2;
     public IReadOnlyList<string> GameModeNames => ProfileManager.SourceProfileNames;
     public IReadOnlyList<string> GameCpuBoostNames => CpuBoostModeNames.Select(LocalizationService.Translate).ToArray();
-    [ObservableProperty] private bool _isGameModeEnabled;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FooterBottomRowColumns))]
+    private bool _isGameModeEnabled;
+    public int FooterBottomRowColumns => IsGameModeEnabled ? 3 : 2;
+    [ObservableProperty] private bool _showGamePerformanceModeControl = true;
+    [ObservableProperty] private bool _showGameCpuBoostControl = true;
+    [ObservableProperty] private bool _showGameCpuPowerLimitControl = true;
+    [ObservableProperty] private bool _showGameGpuPowerLimitControl = true;
     [ObservableProperty] private GameProfile? _selectedGameProfile;
     [ObservableProperty] private string _selectedGameModeName = "";
     [ObservableProperty] private bool _selectedGameEnabled = true;
@@ -32,6 +39,10 @@ public partial class MainViewModel
         if (_disposed || _gameModeReady) return;
         var saved = ConfigurationService.Instance.GetCurrent().Games ?? new();
         IsGameModeEnabled = saved.Enabled;
+        ShowGamePerformanceModeControl = saved.ShowPerformanceModeControl;
+        ShowGameCpuBoostControl = saved.ShowCpuBoostControl;
+        ShowGameCpuPowerLimitControl = saved.ShowCpuPowerLimitControl;
+        ShowGameGpuPowerLimitControl = saved.ShowGpuPowerLimitControl;
         foreach (var profile in saved.Profiles ?? [])
             if (profile != null && ProfileManager.IsSupportedMode(profile.PowerMode)) GameProfiles.Add(profile.Copy());
         SelectedGameProfile = GameProfiles.FirstOrDefault();
@@ -46,6 +57,26 @@ public partial class MainViewModel
         if (!_gameModeReady || _disposed) return;
         SaveGameProfiles();
         _ = UpdateGameWatcherAsync();
+    }
+
+    partial void OnShowGamePerformanceModeControlChanged(bool value)
+    {
+        if (_gameModeReady && !_disposed) SaveGameProfiles();
+    }
+
+    partial void OnShowGameCpuBoostControlChanged(bool value)
+    {
+        if (_gameModeReady && !_disposed) SaveGameProfiles();
+    }
+
+    partial void OnShowGameCpuPowerLimitControlChanged(bool value)
+    {
+        if (_gameModeReady && !_disposed) SaveGameProfiles();
+    }
+
+    partial void OnShowGameGpuPowerLimitControlChanged(bool value)
+    {
+        if (_gameModeReady && !_disposed) SaveGameProfiles();
     }
 
     private async Task UpdateGameWatcherAsync()
@@ -148,6 +179,10 @@ public partial class MainViewModel
     private void SaveGameProfiles() => ConfigurationService.Instance.Update(config => config.Games = new()
     {
         Enabled = IsGameModeEnabled,
+        ShowPerformanceModeControl = ShowGamePerformanceModeControl,
+        ShowCpuBoostControl = ShowGameCpuBoostControl,
+        ShowCpuPowerLimitControl = ShowGameCpuPowerLimitControl,
+        ShowGpuPowerLimitControl = ShowGameGpuPowerLimitControl,
         Profiles = GameProfiles.Select(profile => profile.Copy()).ToList()
     });
 

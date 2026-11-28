@@ -78,7 +78,7 @@ public partial class MainViewModel
         if (_disposed) return;
         var keyboard = request.Keyboard;
         var cover = request.Cover;
-        var color = ColorTranslator.FromHtml(keyboard.SelectedColorHex);
+        var color = ParseColorOrDefault(keyboard.SelectedColorHex);
         bool keyboardMode = keyboard.EffectTag.Equals("MODE", StringComparison.OrdinalIgnoreCase)
             || keyboard.EffectTag.Equals("HW:Mode", StringComparison.OrdinalIgnoreCase);
         var sharedLighting = ConfigurationService.Instance.GetCurrent().Lighting;
@@ -116,8 +116,8 @@ public partial class MainViewModel
                 var (z1, z2, z3, z4) = ModeKeyLighting.GetZoneColors(ActivePowerMode,
                     new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors });
                 _hw.SetRgbAllZones(
-                    ColorTranslator.FromHtml(z1), ColorTranslator.FromHtml(z2),
-                    ColorTranslator.FromHtml(z3), ColorTranslator.FromHtml(z4), brightness);
+                    ParseColorOrDefault(z1), ParseColorOrDefault(z2),
+                    ParseColorOrDefault(z3), ParseColorOrDefault(z4), brightness);
             }
             else if (!dynamic)
             {
@@ -128,8 +128,8 @@ public partial class MainViewModel
                 else
                 {
                     _hw.SetRgbAllZones(
-                        ColorTranslator.FromHtml(keyboard.Zone1ColorHex), ColorTranslator.FromHtml(keyboard.Zone2ColorHex),
-                        ColorTranslator.FromHtml(keyboard.Zone3ColorHex), ColorTranslator.FromHtml(keyboard.Zone4ColorHex), brightness);
+                        ParseColorOrDefault(keyboard.Zone1ColorHex), ParseColorOrDefault(keyboard.Zone2ColorHex),
+                        ParseColorOrDefault(keyboard.Zone3ColorHex), ParseColorOrDefault(keyboard.Zone4ColorHex), brightness);
                 }
             }
         }
@@ -157,10 +157,10 @@ public partial class MainViewModel
                 ? SyncedCoverModeFromKeyboardEffect(keyboard.EffectTag)
                 : cover.Mode == 4 ? 1 : cover.Mode;
             var coverColor = syncKeyboardMode
-                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
+                ? ParseColorOrDefault(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
                 : cover.Mode == 4
-                ? ColorTranslator.FromHtml(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
-                : ColorTranslator.FromHtml(cover.ColorHex);
+                ? ParseColorOrDefault(ModeKeyLighting.ColorFor(new DeviceLightingConfig { PowerModeColors = sharedLighting.PowerModeColors }, ActivePowerMode))
+                : ParseColorOrDefault(cover.ColorHex);
             _hw.SetCoverLogoLighting(mode, coverColor,
                 (byte)Math.Clamp(syncKeyboardMode || cover.Mode == 4 ? sharedLighting.ModeBrightness
                     : cover.SyncWithKeyboard ? brightness : cover.Brightness, 0, 100),

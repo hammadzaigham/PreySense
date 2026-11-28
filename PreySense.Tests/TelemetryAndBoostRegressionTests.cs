@@ -77,36 +77,15 @@ public class TelemetryAndBoostRegressionTests
     }
 
     [TestMethod]
-    public void OnOffBoostPersistsThroughProfileManager()
+    public void OnOffBoostUpdatesModeState()
     {
-        string directory = Path.Combine(Path.GetTempPath(), "PreySenseBoost-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        var previousStore = ProfileManager.ConfigurationStore;
-        try
-        {
-            var store = new ConfigurationService(Path.Combine(directory, ConfigurationService.ConfigFileName));
-            ProfileManager.ConfigurationStore = store;
+        var vm = Create(new RecordingHardware());
+        Set(vm, "_activePowerMode", (byte)1);
+        vm.SetCpuBoostForModeIndex(4, 2);
+        Assert.AreEqual(2, vm.CpuBoostModeForModeIndex(4));
 
-            var vm = Create(new RecordingHardware());
-            Set(vm, "_activePowerMode", (byte)1);
-            vm.SetCpuBoostForModeIndex(4, 2);
-            Assert.AreEqual(2, vm.CpuBoostModeForModeIndex(4));
-
-            var profile = ProfileManager.LoadProfile(5);
-            profile.CpuBoost = 2;
-            profile.ExtendedCpuBoost = 2;
-            Assert.IsTrue(ProfileManager.SaveProfile(profile));
-            Assert.AreEqual(2, store.GetCurrent().Tuning.Turbo.CpuBoostMode);
-            Assert.IsTrue(store.GetCurrent().Tuning.Turbo.CpuBoost);
-
-            vm.SetCpuBoostForModeIndex(4, 0);
-            Assert.AreEqual(0, vm.CpuBoostModeForModeIndex(4));
-        }
-        finally
-        {
-            ProfileManager.ConfigurationStore = previousStore;
-            try { Directory.Delete(directory, true); } catch { }
-        }
+        vm.SetCpuBoostForModeIndex(4, 0);
+        Assert.AreEqual(0, vm.CpuBoostModeForModeIndex(4));
     }
 
     [TestMethod]

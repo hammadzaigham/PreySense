@@ -80,16 +80,6 @@ public static class ModeKeyLighting
         return result;
     }
 
-    public static Dictionary<string, string> EnsureDefaults(IReadOnlyDictionary<string, string>? stored)
-    {
-        var colors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var slot in Slots)
-            colors[Key(slot.PowerMode)] = slot.DefaultHex;
-        foreach (var pair in OnlyCustomOverrides(stored))
-            colors[pair.Key] = pair.Value;
-        return colors;
-    }
-
     /// <summary>Keyboard Mode uses the same defaults and override rules as the Mode Key.</summary>
     public static (string Z1, string Z2, string Z3, string Z4) GetZoneColors(byte powerMode, DeviceLightingConfig? settings = null)
     {

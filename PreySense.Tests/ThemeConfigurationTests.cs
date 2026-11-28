@@ -8,18 +8,18 @@ namespace PreySense.Tests;
 public class ThemeConfigurationTests
 {
     [TestMethod]
-    public void Glass_RoundTripsByNameAndOverridesOldLightPreference()
+    public void Glass_RoundTripsByName()
     {
-        var json = JsonSerializer.Serialize(new GeneralConfig { Theme = ApplicationTheme.Glass, LightTheme = true });
+        var json = JsonSerializer.Serialize(new GeneralConfig { Theme = ApplicationTheme.Glass });
         StringAssert.Contains(json, "\"Theme\":\"Glass\"");
         Assert.AreEqual(ApplicationTheme.Glass, ThemeManager.ResolveTheme(JsonSerializer.Deserialize<GeneralConfig>(json)!));
     }
 
     [TestMethod]
-    public void ExistingPreferences_KeepTheirAppearanceWhenThemeIsAbsent()
+    public void ResolveTheme_DefaultsToDarkWhenThemeIsNull()
     {
         Assert.AreEqual(ApplicationTheme.Dark, ThemeManager.ResolveTheme(new()));
-        Assert.AreEqual(ApplicationTheme.Light, ThemeManager.ResolveTheme(new() { LightTheme = true }));
-        Assert.AreEqual(ApplicationTheme.Glass, ThemeManager.ResolveTheme(new() { LightTheme = true, Theme = ApplicationTheme.Glass }));
+        Assert.AreEqual(ApplicationTheme.Light, ThemeManager.ResolveTheme(new() { Theme = ApplicationTheme.Light }));
+        Assert.AreEqual(ApplicationTheme.Glass, ThemeManager.ResolveTheme(new() { Theme = ApplicationTheme.Glass }));
     }
 }

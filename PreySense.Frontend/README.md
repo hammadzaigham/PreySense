@@ -9,7 +9,7 @@ WPF shell (`assembly name PreySense`). Hardware logic belongs in `PreySense.Core
 - `ViewModels/MainViewModel.*.cs`: state and commands, split by feature (`PowerModes`, `Fans`, `Gpu`, `Lighting`, `Display`, `Session`, `Services`, `Theme`, `Tuning`).
 - `Services/`: UI-facing adapters (`ProductionHardwareService`, tray, overlay bridge, startup task, keyboard hook).
 - `Styles/Colors.xaml`: semantic color tokens. Views must not introduce theme colors directly.
-- `Styles/Typography.xaml`, `Cards.xaml`, `Controls.xaml`, `Spacing.xaml`: reusable presentation.
+- `Styles/Typography.xaml`, `Controls.xaml`, `Spacing.xaml`: reusable presentation.
 
 ## UI conventions
 

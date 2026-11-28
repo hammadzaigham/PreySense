@@ -1,20 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=mscorlib">
-  <Thickness x:Key="SpacingXs">4</Thickness>
-  <Thickness x:Key="SpacingSm">8</Thickness>
-  <Thickness x:Key="SpacingMd">12</Thickness>
-  <Thickness x:Key="SpacingLg">16</Thickness>
-  <Thickness x:Key="SpacingXl">24</Thickness>
-  <Thickness x:Key="MarginSectionBottom">0,0,0,12</Thickness>
-  <Thickness x:Key="MarginControlBottom">0,0,0,8</Thickness>
-  <Thickness x:Key="MarginItemHorizontal">4,0,4,0</Thickness>
   <Thickness x:Key="SelectedControlBorderThickness">2</Thickness>
   <Thickness x:Key="MainSectionMargin">0,0,0,8</Thickness>
   <Thickness x:Key="WindowContentMargin">14,10,14,8</Thickness>
   <Thickness x:Key="WindowFooterMargin">14,10,14,16</Thickness>
-  <CornerRadius x:Key="RadiusSmall">4</CornerRadius>
-  <CornerRadius x:Key="RadiusMedium">8</CornerRadius>
-  <CornerRadius x:Key="RadiusCard">10</CornerRadius>
-  <CornerRadius x:Key="RadiusPill">999</CornerRadius>
 </ResourceDictionary>
 

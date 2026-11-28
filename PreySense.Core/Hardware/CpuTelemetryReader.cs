@@ -64,12 +64,6 @@ public sealed class CpuTelemetryReader : IDisposable
     public bool IsInitialized => _backend.IsInitialized;
 
     /// <summary>
-    /// Topology-aware core classification map.
-    /// Index = logical processor index; Value = true if Efficiency (E) core, false if Performance (P) core.
-    /// </summary>
-    public IReadOnlyList<bool> ECoreMap => _isECore;
-
-    /// <summary>
     /// Number of logical processors detected in the system topology.
     /// </summary>
     public int ProcessorCount => _isECore.Length;
@@ -90,7 +84,7 @@ public sealed class CpuTelemetryReader : IDisposable
     {
         _backend = backend ?? throw new ArgumentNullException(nameof(backend));
 
-        _isECore = customECoreMap ?? BuildECoreMap(Environment.ProcessorCount);
+        _isECore = customECoreMap ?? PreySense.Core.Services.CpuUsageMonitor.BuildECoreMap(Environment.ProcessorCount);
         _perProcessorState = new ProcessorFrequencyState?[Math.Max(1, _isECore.Length)];
 
         if (explicitReferenceClockMhz.HasValue && explicitReferenceClockMhz.Value > 0)
@@ -478,87 +472,6 @@ public sealed class CpuTelemetryReader : IDisposable
                 includeEffective && hasEfficiencySample ? efficiencyEffectiveMaximum : null
             );
         }
-    }
-
-    private const int RelationProcessorCore = 0;
-
-    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetLogicalProcessorInformationEx(
-        int relationshipType,
-        IntPtr buffer,
-        ref uint returnedLength);
-
-    private static bool[] BuildECoreMap(int logicalCount)
-    {
-        var isECore = new bool[Math.Max(0, logicalCount)];
-        if (logicalCount <= 0 || !OperatingSystem.IsWindows())
-            return isECore;
-
-        try
-        {
-            uint length = 0;
-            GetLogicalProcessorInformationEx(RelationProcessorCore, IntPtr.Zero, ref length);
-            if (length == 0)
-                return Array.Empty<bool>();
-
-            IntPtr buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal((int)length);
-            try
-            {
-                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, buffer, ref length))
-                    return Array.Empty<bool>();
-
-                byte minClass = byte.MaxValue;
-                byte maxClass = 0;
-                var cores = new List<(byte Efficiency, ushort Group, ulong Mask)>();
-                int offset = 0;
-                while (offset + 32 <= (int)length)
-                {
-                    int size = System.Runtime.InteropServices.Marshal.ReadInt32(buffer, offset + 4);
-                    if (size < 32)
-                        break;
-
-                    byte efficiency = System.Runtime.InteropServices.Marshal.ReadByte(buffer, offset + 9);
-                    ushort groupCount = (ushort)System.Runtime.InteropServices.Marshal.ReadInt16(buffer, offset + 30);
-                    int maskOffset = offset + 32;
-                    for (int g = 0; g < groupCount && maskOffset + 16 <= offset + size; g++)
-                    {
-                        ulong mask = (ulong)System.Runtime.InteropServices.Marshal.ReadInt64(buffer, maskOffset);
-                        ushort group = (ushort)System.Runtime.InteropServices.Marshal.ReadInt16(buffer, maskOffset + 8);
-                        cores.Add((efficiency, group, mask));
-                        if (efficiency < minClass) minClass = efficiency;
-                        if (efficiency > maxClass) maxClass = efficiency;
-                        maskOffset += 16;
-                    }
-
-                    offset += size;
-                }
-
-                if (minClass == maxClass)
-                    return isECore;
-
-                foreach (var core in cores)
-                {
-                    if (core.Efficiency != minClass || core.Group != 0)
-                        continue;
-
-                    for (int bit = 0; bit < 64 && bit < logicalCount; bit++)
-                    {
-                        if ((core.Mask & (1UL << bit)) != 0)
-                            isECore[bit] = true;
-                    }
-                }
-            }
-            finally
-            {
-                System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
-            }
-        }
-        catch
-        {
-            return Array.Empty<bool>();
-        }
-
-        return isECore;
     }
 
     public void Dispose()

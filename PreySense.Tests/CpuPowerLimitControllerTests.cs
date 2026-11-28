@@ -117,6 +117,70 @@ public class CpuPowerLimitControllerTests
     }
 
     [TestMethod]
+    public void CombinedTransaction_HonorsPl2DisableInBothMsrAndMmioWithoutRedundantReads()
+    {
+        const ulong mchbar = 0xFED10000UL;
+        var backend = new MockCpuDriverBackend();
+        backend.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits();
+        backend.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = 0x0000800000008000UL;
+        backend.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] = CpuPowerLimitController.MMIO_ENABLE_BIT | CpuPowerLimitController.MMIO_CLAMP_BIT | (45U * 8U);
+        backend.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] = CpuPowerLimitController.MMIO_ENABLE_BIT | CpuPowerLimitController.MMIO_CLAMP_BIT | (85U * 8U);
+
+        var controller = new CpuPowerLimitController(backend);
+        var result = controller.ExecuteCombinedTransaction(mchbar, 55, 115, pl2Enable: false, tauSeconds: 28);
+
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsTrue(result.MsrUpdated);
+        Assert.IsTrue(result.MmioUpdated);
+        Assert.AreEqual(3, backend.ReadMsrCallCount); // initial unit + initial msr + post-write verify
+        Assert.AreEqual(4, backend.ReadPhysicalCallCount); // initial pl1/pl2 + post-write verify pl1/pl2
+
+        var msr = controller.ReadMsrPowerLimits();
+        Assert.IsTrue(msr.Success);
+        Assert.AreEqual(55, msr.Pl1Watts);
+        Assert.AreEqual(115, msr.Pl2Watts);
+        Assert.IsTrue(msr.Pl1Enabled);
+        Assert.IsFalse(msr.Pl2Enabled);
+
+        var mmio = controller.ReadMmioPowerLimits(mchbar);
+        Assert.IsTrue(mmio.Success);
+        Assert.AreEqual(55, mmio.Pl1Watts);
+        Assert.AreEqual(115, mmio.Pl2Watts);
+        Assert.IsTrue(mmio.Pl1Enabled);
+        Assert.IsFalse(mmio.Pl2Enabled);
+        Assert.IsTrue(mmio.Pl1Clamped);
+        Assert.IsTrue(mmio.Pl2Clamped);
+    }
+
+    [TestMethod]
+    public void CombinedTransaction_RaisingOneLimitAboveFloorKeepsOtherMsrLimitAtFloor()
+    {
+        const ulong mchbar = 0xFED10000UL;
+        var backend = new MockCpuDriverBackend();
+        backend.MsrRegisters[CpuPowerLimitController.MSR_RAPL_POWER_UNIT] = MakeUnits();
+        backend.MsrRegisters[CpuPowerLimitController.MSR_PKG_POWER_LIMIT] = 0x0000800000008000UL;
+        backend.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL1_OFFSET] = CpuPowerLimitController.MMIO_ENABLE_BIT | (55U * 8U);
+        backend.PhysicalDwords[mchbar + CpuPowerLimitController.MMIO_PL2_OFFSET] = CpuPowerLimitController.MMIO_ENABLE_BIT | (140U * 8U);
+
+        var controller = new CpuPowerLimitController(backend);
+        var result = controller.ExecuteCombinedTransaction(
+            mchbar, pl1Watts: 75, pl2Watts: 110, pl2Enable: true, tauSeconds: 28,
+            staticPl1FloorWatts: 55, staticPl2FloorWatts: 140);
+
+        Assert.IsTrue(result.Success, result.Status);
+        Assert.IsTrue(result.MsrUpdated);
+        Assert.IsTrue(result.MmioUpdated);
+
+        var msr = controller.ReadMsrPowerLimits();
+        Assert.AreEqual(75, msr.Pl1Watts);
+        Assert.AreEqual(140, msr.Pl2Watts);
+
+        var mmio = controller.ReadMmioPowerLimits(mchbar);
+        Assert.AreEqual(75, mmio.Pl1Watts);
+        Assert.AreEqual(110, mmio.Pl2Watts);
+    }
+
+    [TestMethod]
     public void CombinedLimits_RejectOverflowBeforeReadingOrWritingHardware()
     {
         var backend = new MockCpuDriverBackend();

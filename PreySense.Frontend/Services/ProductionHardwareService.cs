@@ -62,6 +62,13 @@ namespace PreySense.Frontend.Services
 
         public PowerSourceKind GetPowerSource() => _wmi.ReadPowerSource();
 
+        public (PowerSourceKind Source, int? BatteryPercent) GetPowerStatus()
+        {
+            if (!_wmi.TryGetPowerStatus(out bool onAc, out float percent))
+                return (PowerSourceKind.Unknown, null);
+            return (_wmi.ReadPowerSource(onAc), float.IsNaN(percent) ? null : (int)percent);
+        }
+
         private TelemetrySnapshot SampleTelemetrySnapshot(TelemetryMetrics requested, bool fanOnly) =>
             TelemetryCollector.Read(requested, this, fanOnly);
 
@@ -245,6 +252,8 @@ namespace PreySense.Frontend.Services
         public bool IsRgbAvailable => _wmi.IsEnekRgbAvailable || _wmi.OemLighting.HasKeyboard;
         public System.Collections.Generic.IReadOnlyList<LightingDeviceInfo> DiscoverLightingDevices(bool refresh = false) =>
             _wmi.OemLighting.Discover(refresh: refresh);
+        public int? TryGetLightingDeviceBrightness(string deviceId) =>
+            _wmi.OemLighting.TryGetDeviceBrightness(deviceId);
         public void ApplyLightingDevice(string deviceId, PreySense.Core.Configuration.DeviceLightingConfig settings)
         {
             if (_wmi.OemLighting.Discover().Any(d => d.Id == deviceId && d.Kind == "Keyboard") && _lightingEngine.IsValueCreated)

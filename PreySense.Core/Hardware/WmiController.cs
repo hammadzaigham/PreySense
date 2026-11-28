@@ -51,13 +51,9 @@ namespace PreySense.Helpers
             Color.FromArgb(0, 150, 255) 
         };
 
-        public byte LastR => _lastR;
-        public byte LastG => _lastG;
-        public byte LastB => _lastB;
         public byte Brightness => _brightness;
         public byte Speed => _speed;
         public byte Direction => _direction;
-        public int LastRgbMode => _lastMode;
         public Color[] ZoneColors => _zoneColors;
 
         private static ManagementObject? FirstOrDefaultAndDisposeRest(ManagementObjectSearcher searcher)
@@ -236,8 +232,6 @@ namespace PreySense.Helpers
         public bool IsEnekRgbAvailable => EnekRgbClient.IsAvailable;
         public bool IsCoverLogoHidAvailable => AcerHidLightingCapabilities.GetSupportedTargets().Contains(0x83);
 
-        public EnekRgbClient EnekRgb => EnekRgbClient;
-
         public WmiController()
         {
             _customEffects = new Lazy<CustomLightingEffectsEngine>(() => new CustomLightingEffectsEngine(this), true);
@@ -305,17 +299,6 @@ namespace PreySense.Helpers
             ApplyLightingMode(mode);
         }
 
-        public void SetCachedRgbState(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction, Color[] colors)
-        {
-            _lastMode = mode;
-            _lastR = r; _lastG = g; _lastB = b;
-            _brightness = brightness;
-            _speed = speed;
-            _direction = direction;
-            if (colors != null && colors.Length >= 4)
-                _zoneColors = colors;
-        }
-
         public void ApplyRgbState()
         {
             if (_lastMode == 0)
@@ -353,23 +336,6 @@ namespace PreySense.Helpers
         {
             _speed = speed;
             ApplyLightingMode(_lastMode);
-        }
-
-        public void SetDirection(byte direction)
-        {
-            _direction = direction;
-            ApplyLightingMode(_lastMode);
-        }
-
-        public void SetStaticColor(byte r, byte g, byte b, byte brightness)
-        {
-            _lastR = r; _lastG = g; _lastB = b;
-            _brightness = (byte)Math.Clamp((int)brightness, 0, 100);
-            _lastMode = 0;
-            Color c = Color.FromArgb(r, g, b);
-            for (int i = 0; i < 4; i++)
-                _zoneColors[i] = c;
-            ApplyZoneLighting();
         }
 
         public void SetLogoLighting(int mode, byte r, byte g, byte b, byte brightness, byte speed, bool enabled = true)
@@ -693,18 +659,6 @@ namespace PreySense.Helpers
         }
 
 
-
-        public bool GetLedTimeout()
-        {
-            ulong? status = SendApgeCommand(AcerWmi.ApgeMethods.GetFunction, 0x88401ul);
-            if (!status.HasValue) throw new InvalidOperationException("Keyboard timeout: —.");
-            return status != 0x80000ul && status != 0;
-        }
-
-        public void SetLedTimeout(bool enabled)
-        {
-            SetLedTimeoutSeconds(enabled ? 30 : 0);
-        }
 
         public void SetLedTimeoutSeconds(int seconds)
         {

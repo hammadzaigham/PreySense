@@ -157,30 +157,6 @@ namespace PreySense.Frontend.ViewModels
                 initialConfig = PreySense.Core.Configuration.ConfigurationService.Instance.GetCurrent();
                 var cfg = initialConfig;
                 _isHardwareTuningEnabled = HasCompleteFactoryDefaults(cfg.Tuning);
-
-                // JSON preference paints the UI immediately; reconcile against live
-                // SCM state so a default `false` does not hide an already-debloated machine.
-                IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
-                DebloaterStatusText = IsAcerServicesDebloated
-                    ? "Acer OEM Services: Stopped & Disabled (~400MB Saved)"
-                    : "Acer OEM Services: Active";
-                _ = Task.Run(() =>
-                {
-                    bool acerDisabled = AcerServiceDebloater.AreAllServicesDisabled();
-                    _dispatcher.InvokeAsync(() =>
-                    {
-                        if (_disposed)
-                            return;
-                        if (IsAcerServicesDebloated != acerDisabled)
-                        {
-                            IsAcerServicesDebloated = acerDisabled;
-                            DebloaterStatusText = acerDisabled
-                                ? "Acer OEM Services: Stopped & Disabled (~400MB Saved)"
-                                : "Acer OEM Services: Active";
-                            try { AcerServiceDebloater.SaveState(acerDisabled); } catch { }
-                        }
-                    });
-                });
             }
             catch
             {
@@ -252,40 +228,48 @@ namespace PreySense.Frontend.ViewModels
         private async Task InitializeHardwareDiscoveryAsync()
         {
             int revision = Volatile.Read(ref _gpuDisplayRevision);
-            var result = await Task.Run(() =>
+            var gpuTask = Task.Run(() =>
             {
                 DdsStatus? liveDdsStatus = null;
                 bool? biosDiscrete = null;
+                try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
+                if (biosDiscrete != true)
+                {
+                    try
+                    {
+                        using var gpuLease = HardwareOperationGate.TryEnterTelemetry();
+                        if (gpuLease != null && _hw.IsDdsAvailable)
+                            liveDdsStatus = _hw.GetDdsStatus();
+                    }
+                    catch { }
+                }
+                return (liveDdsStatus, biosDiscrete);
+            });
+            var refreshTask = Task.Run(() =>
+            {
                 System.Collections.Generic.List<int>? rates = null;
                 int refreshRate = 0;
-                try
-                {
-                    using var gpuLease = HardwareOperationGate.TryEnterTelemetry();
-                    if (gpuLease != null && _hw.IsDdsAvailable)
-                    {
-                        liveDdsStatus = _hw.GetDdsStatus();
-                    }
-                }
-                catch { }
-                try { biosDiscrete = _hw.IsBiosDiscreteGpuActive; } catch { }
                 try
                 {
                     rates = _hw.GetSupportedRefreshRates();
                     refreshRate = _hw.GetDisplayRefreshRate();
                 }
                 catch { }
-                return (liveDdsStatus, biosDiscrete, rates, refreshRate);
+                return (rates, refreshRate);
             });
+            await Task.WhenAll(gpuTask, refreshTask);
+            var gpu = await gpuTask;
+            var refresh = await refreshTask;
 
             if (_disposed) return;
             await _dispatcher.InvokeAsync(() =>
             {
                 if (_disposed || revision != Volatile.Read(ref _gpuDisplayRevision)) return;
-                if (result.biosDiscrete.HasValue)
-                    IsBiosDiscreteGpuActive = result.biosDiscrete.Value;
+                if (gpu.biosDiscrete.HasValue)
+                    IsBiosDiscreteGpuActive = gpu.biosDiscrete.Value;
                 if (IsBiosDiscreteGpuActive) GpuMuxModeName = "dGPU Only";
-                else ApplyDdsStatus(result.liveDdsStatus);
-                ApplyRefreshRateOptions(result.rates, result.refreshRate);
+                else ApplyDdsStatus(gpu.liveDdsStatus);
+                ApplyRefreshRateOptions(refresh.rates, refresh.refreshRate);
             });
 
         }
@@ -340,8 +324,6 @@ namespace PreySense.Frontend.ViewModels
         public void Dispose()
         {
             if (_disposed) return;
-            // Drain the last queued fan edit before session persistence and hardware teardown.
-            _fanSettingsWorker?.StopAsync(drainPending: true).GetAwaiter().GetResult();
             // Save before the disposed guard suppresses persistence; lighting is drained below.
             StopGameMode();
             PersistSessionSettings(includeLighting: false);

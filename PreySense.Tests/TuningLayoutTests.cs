@@ -12,7 +12,7 @@ public class TuningLayoutTests
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "PreySense.slnx"))) root = root.Parent;
         Assert.IsNotNull(root);
         var document = XDocument.Load(Path.Combine(root.FullName, "PreySense.Frontend", "Views", "TuningSettingsWindow.xaml"));
-        var toggle = document.Descendants().Single(e => (string?)e.Attribute("Title") == "Enable GPU Power Limit Control");
+        var toggle = document.Descendants().Single(e => (string?)e.Attribute("Title") == "Show GPU Power Limit Control");
         Assert.AreEqual("{Binding IsGpuProfileTuningAvailable}", (string?)toggle.Attribute("IsEnabled"));
     }
 

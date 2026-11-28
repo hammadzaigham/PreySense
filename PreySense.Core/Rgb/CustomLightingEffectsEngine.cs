@@ -122,19 +122,6 @@ namespace PreySense.Rgb
             }
         }
 
-        public void SetParameters(byte brightness, int speed, Color activeBrush)
-        {
-            lock (_lock)
-            {
-                _brightness = Math.Clamp(brightness, (byte)0, (byte)100);
-                _speed = Math.Clamp(speed, 0, 100);
-                if (!activeBrush.IsEmpty)
-                {
-                    _activeBrushColor = activeBrush;
-                }
-            }
-        }
-
         public void SetSpeed(byte speed)
         {
             lock (_lock)

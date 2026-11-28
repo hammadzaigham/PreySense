@@ -29,6 +29,10 @@ namespace PreySense.Frontend.Controls
             DependencyProperty.Register(nameof(SelectedHex), typeof(string), typeof(ColorWheelControl),
                 new FrameworkPropertyMetadata("#00E5FF", FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
 
+        public static readonly DependencyProperty DraftHexProperty =
+            DependencyProperty.Register(nameof(DraftHex), typeof(string), typeof(ColorWheelControl),
+                new PropertyMetadata("#00E5FF"));
+
         public Color SelectedColor
         {
             get => (Color)GetValue(SelectedColorProperty);
@@ -41,8 +45,15 @@ namespace PreySense.Frontend.Controls
             set => SetValue(SelectedHexProperty, value);
         }
 
+        public string DraftHex
+        {
+            get => (string)GetValue(DraftHexProperty);
+            private set => SetValue(DraftHexProperty, value);
+        }
+
         public event EventHandler<Color>? ColorChanged;
         public event EventHandler<Color>? ColorPicked;
+        public event EventHandler<Color>? DraftColorChanged;
 
         static ColorWheelControl()
         {
@@ -60,7 +71,9 @@ namespace PreySense.Frontend.Controls
         {
             if (d is ColorWheelControl wheel && e.NewValue is Color c)
             {
-                wheel.SelectedHex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+                string hex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+                wheel.SelectedHex = hex;
+                wheel.DraftHex = hex;
                 wheel.ColorChanged?.Invoke(wheel, c);
             }
         }
@@ -247,6 +260,8 @@ namespace PreySense.Frontend.Controls
             Color color = ColorFromHsv(hue, sat, 1.0);
 
             _previewColor = color;
+            DraftHex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            DraftColorChanged?.Invoke(this, color);
             InvalidateVisual();
 
             if (commit)

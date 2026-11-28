@@ -20,6 +20,131 @@ public static class KeyboardLayoutGeometry
     public static IReadOnlyList<KeyboardKeyPlacement> Build(IEnumerable<LightingLedInfo> keys)
     {
         var source = keys.ToArray();
+        return IsPh1671Layout(source) ? BuildPh1671(source) : BuildGeneric(source);
+    }
+
+    private static bool IsPh1671Layout(LightingLedInfo[] source)
+    {
+        if (source.Length < 90) return false;
+        var names = new HashSet<string>(source.Select(k => Normalize(k.Name)), StringComparer.OrdinalIgnoreCase);
+        return names.Contains("PREDATORSENSE")
+            && names.Contains("NUMLOCK")
+            && names.Contains("VOLUMEDOWN")
+            && names.Contains("RIGHTARROW");
+    }
+
+    private static IReadOnlyList<KeyboardKeyPlacement> BuildPh1671(LightingLedInfo[] source)
+    {
+        // Measured PH16-71 coordinates from RaptorSense PhysicalLayout, scaled so a standard 52x52 keycap is 36x36.
+        const double scale = 36.0 / 52.0;
+        const double pitch = 64.3;
+        const double keyW = 52, smallW = 46, fW = 45, rowH = 52, fRowH = 34;
+        const double fRow = 0, row1 = 48, row2 = 114, row3 = 180, row4 = 246, row5 = 312;
+        double[] numpadX = [967, 1025, 1082, 1139];
+
+        var positions = new Dictionary<string, (double X, double Y, double W, double H, string Label)>(StringComparer.OrdinalIgnoreCase);
+        void Add(string key, double x, double y, double width, double height, string? label = null) =>
+            positions[key] = (x * scale, y * scale, width * scale, height * scale, label ?? key);
+        void Run(string[] keys, double startX, double y, Func<string, string>? labelFor = null)
+        {
+            for (int i = 0; i < keys.Length; i++)
+                Add(keys[i], startX + i * pitch, y, keyW, rowH, labelFor?.Invoke(keys[i]) ?? keys[i]);
+        }
+
+        // F-row: Esc + three 4-key F-groups + PrtSc/Ins/Del + 4 media/power keys above numpad.
+        (string Key, string Label)[] fRowKeys =
+        [
+            ("ESCAPE", "Esc"), ("F1", "F1"), ("F2", "F2"), ("F3", "F3"), ("F4", "F4"),
+            ("F5", "F5"), ("F6", "F6"), ("F7", "F7"), ("F8", "F8"),
+            ("F9", "F9"), ("F10", "F10"), ("F11", "F11"), ("F12", "F12"),
+            ("PRINTSCREEN", "PrtSc"), ("INSERT", "Ins"), ("DELETE", "Del"),
+        ];
+        double[] fX = [0, 69, 126, 183, 240, 309, 366, 423, 480, 549, 606, 663, 720, 789, 846, 903];
+        for (int i = 0; i < fRowKeys.Length; i++)
+            Add(fRowKeys[i].Key, fX[i], fRow, i == 0 ? 47 : fW, fRowH, fRowKeys[i].Label);
+
+        (string Key, string Label)[] mediaKeys = [("VOLUMEDOWN", "⏮"), ("VOLUMEUP", "⏯"), ("MUTE", "⏭"), ("POWER", "⏻")];
+        for (int i = 0; i < mediaKeys.Length; i++)
+            Add(mediaKeys[i].Key, numpadX[i], fRow, fW, fRowH, mediaKeys[i].Label);
+
+        static string CapLabel(string key) => key switch
+        {
+            "`" => "~\n`", "-" => "_\n-", "=" => "+\n=", "[" => "{\n[", "]" => "}\n]", "\\" => "|\n\\",
+            ";" => ":\n;", "'" => "\"\n'", "," => "<\n,", "." => ">\n.", "/" => "?\n/",
+            _ => key
+        };
+
+        // Number row
+        Add("`", 0, row1, 50, rowH, CapLabel("`"));
+        Run(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="], 57, row1, CapLabel);
+        Add("BACKSPACE", 828, row1, 117, rowH, "Backspace");
+
+        // Top letter row
+        Add("TAB", 0, row2, 75, rowH, "Tab");
+        Run(["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]"], 87, row2, CapLabel);
+        Add("\\", 859, row2, 86, rowH, CapLabel("\\"));
+
+        // Home row
+        Add("CAPSLOCK", 0, row3, 87, rowH, "Caps Lock");
+        Run(["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'"], 97, row3, CapLabel);
+        Add("ENTER", 805, row3, 140, rowH, "Enter");
+
+        // Bottom letter row
+        Add("LEFTSHIFT", 0, row4, 117, rowH, "Shift");
+        Run(["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"], 129, row4, CapLabel);
+        Add("RIGHTSHIFT", 773, row4, 112, rowH, "Shift");
+        Add("UPARROW", 897, row4, 50, rowH, "▲");
+
+        // Space row: right arrow sits under the first numpad column.
+        Run(["LEFTCONTROL", "LEFTFN", "LEFTWINDOWS", "LEFTALT"], 0, row5, k => k switch
+        {
+            "LEFTCONTROL" => "Ctrl", "LEFTFN" => "Fn", "LEFTWINDOWS" => "Win", "LEFTALT" => "Alt", _ => k
+        });
+        Add("SPACE", 257, row5, 312, rowH, "Space");
+        Run(["RIGHTALT", "OPTION"], 580, row5, k => k == "RIGHTALT" ? "Alt" : "Menu");
+        Add("RIGHTCONTROL", 709, row5, 110, rowH, "Ctrl");
+        Add("LEFTARROW", 832, row5, 50, rowH, "◀");
+        Add("DOWNARROW", 897, row5, 50, rowH, "▼");
+        Add("RIGHTARROW", 961, row5, 50, rowH, "▶");
+
+        // Numpad
+        (string Key, string Label)[][] numpad =
+        [
+            [("PREDATORSENSE", "P"), ("NUMLOCK", "Num"), ("NUM/", "/"), ("NUM*", "*")],
+            [("NUM7", "7"), ("NUM8", "8"), ("NUM9", "9"), ("NUM-", "-")],
+            [("NUM4", "4"), ("NUM5", "5"), ("NUM6", "6"), ("NUM+", "+")],
+            [("NUM1", "1"), ("NUM2", "2"), ("NUM3", "3")],
+        ];
+        double[] numpadY = [row1, row2, row3, row4];
+        for (int row = 0; row < numpad.Length; row++)
+            for (int col = 0; col < numpad[row].Length; col++)
+                Add(numpad[row][col].Key, numpadX[col], numpadY[row], smallW, rowH, numpad[row][col].Label);
+        Add("NUMENTER", numpadX[3], row4, smallW, row5 + rowH - row4, "Enter");
+        Add("NUM0", numpadX[1], row5, smallW, rowH, "0");
+        Add("NUM.", numpadX[2], row5, smallW, rowH, ".");
+
+        var result = new List<KeyboardKeyPlacement>(source.Length);
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        double extraX = 0, extraY = 6.6;
+        foreach (var key in source)
+        {
+            string name = Normalize(key.Name);
+            if (positions.TryGetValue(name, out var position) && used.Add(name))
+            {
+                result.Add(new(key.Index, key.Name, position.Label, new Rect(position.X, position.Y, position.W, position.H)));
+            }
+            else
+            {
+                result.Add(new(key.Index, key.Name, key.Name, new Rect(extraX * 40, extraY * 40, 56, 36)));
+                extraX += 1.5;
+                if (extraX > 21) { extraX = 0; extraY += 1.1; }
+            }
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<KeyboardKeyPlacement> BuildGeneric(LightingLedInfo[] source)
+    {
         bool numberPad = source.Any(k => Normalize(k.Name).StartsWith("NUM", StringComparison.Ordinal));
         var positions = new Dictionary<string, (double X, double Y, double W, double H, string Label)>(StringComparer.OrdinalIgnoreCase);
         void Add(string key, double x, double y, double width = 1, double height = 1, string? label = null) =>
@@ -124,6 +249,10 @@ public sealed class RgbKeyboardLayout : FrameworkElement
         new FrameworkPropertyMetadata("#00E5FF", FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty UseIndividualColorsProperty = DependencyProperty.Register(nameof(UseIndividualColors), typeof(bool), typeof(RgbKeyboardLayout),
         new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault | FrameworkPropertyMetadataOptions.AffectsRender));
+    public static readonly DependencyProperty IsPaintModeProperty = DependencyProperty.Register(nameof(IsPaintMode), typeof(bool), typeof(RgbKeyboardLayout),
+        new FrameworkPropertyMetadata(false));
+    public static readonly DependencyProperty PaintColorHexProperty = DependencyProperty.Register(nameof(PaintColorHex), typeof(string), typeof(RgbKeyboardLayout),
+        new FrameworkPropertyMetadata(null));
     public IEnumerable<LightingLedEditor>? KeysSource { get => (IEnumerable<LightingLedEditor>?)GetValue(KeysSourceProperty); set => SetValue(KeysSourceProperty, value); }
     public LightingLedEditor? SelectedKey { get => (LightingLedEditor?)GetValue(SelectedKeyProperty); set => SetValue(SelectedKeyProperty, value); }
     public IList<LightingLedEditor>? SelectedKeys { get => (IList<LightingLedEditor>?)GetValue(SelectedKeysProperty); set => SetValue(SelectedKeysProperty, value); }
@@ -131,11 +260,14 @@ public sealed class RgbKeyboardLayout : FrameworkElement
     private IList<LightingLedEditor> Selection => SelectedKeys ?? _localSelection;
     private Point? _dragStart;
     private bool _dragging, _additiveDrag;
+    private bool? _paintErase;
     private Rect? _selectionRectangle;
     private LightingLedEditor[] _selectionBeforeDrag = Array.Empty<LightingLedEditor>();
     private int? _anchor;
     public string CommonColorHex { get => (string)GetValue(CommonColorHexProperty); set => SetValue(CommonColorHexProperty, value); }
     public bool UseIndividualColors { get => (bool)GetValue(UseIndividualColorsProperty); set => SetValue(UseIndividualColorsProperty, value); }
+    public bool IsPaintMode { get => (bool)GetValue(IsPaintModeProperty); set => SetValue(IsPaintModeProperty, value); }
+    public string? PaintColorHex { get => (string?)GetValue(PaintColorHexProperty); set => SetValue(PaintColorHexProperty, value); }
     private readonly List<LightingLedEditor> _keys = new();
     private IReadOnlyList<KeyboardKeyPlacement> _placements = Array.Empty<KeyboardKeyPlacement>();
     private bool _listening;
@@ -246,8 +378,9 @@ public sealed class RgbKeyboardLayout : FrameworkElement
             dc.DrawRoundedRectangle(GetBrush(tint), selected ? _cachedAccentPen2 : null, placement.Bounds, 4, 4);
             var strip = new Rect(placement.Bounds.X + 4, placement.Bounds.Bottom - 5, Math.Max(1, placement.Bounds.Width - 8), 2);
             dc.DrawRoundedRectangle(GetBrush(rgb), null, strip, 1, 1);
+            double fontSize = placement.Bounds.Height < 26 || placement.Label.Contains('\n') || placement.Label.Length > 5 ? 9 : 11;
             var text = new FormattedText(placement.Label, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, CachedTypeface,
-                placement.Label.Length > 5 ? 9 : 11, foreground, dpi)
+                fontSize, foreground, dpi)
                 { MaxTextWidth = Math.Max(1, placement.Bounds.Width - 6), Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
             dc.DrawText(text, new Point(placement.Bounds.X + 3, placement.Bounds.Y + (placement.Bounds.Height - text.Height) / 2 - 1));
         }
@@ -259,8 +392,16 @@ public sealed class RgbKeyboardLayout : FrameworkElement
     {
         base.OnMouseLeftButtonDown(e);
         var point = e.GetPosition(this);
-        var hit = _placements.FirstOrDefault(p => p.Bounds.Contains(point));
         Focus();
+        if (IsPaintMode)
+        {
+            _paintErase = false;
+            CaptureMouse();
+            PaintKeyAt(point, erase: false);
+            e.Handled = true;
+            return;
+        }
+        var hit = _placements.FirstOrDefault(p => p.Bounds.Contains(point));
         bool control = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         _selectionBeforeDrag = Selection.ToArray();
@@ -270,6 +411,45 @@ public sealed class RgbKeyboardLayout : FrameworkElement
         if (hit != null) SelectKeyByIndex(hit.Index, control, shift);
         else if (!_additiveDrag) { Selection.Clear(); SetCurrentValue(SelectedKeyProperty, null); }
         InvalidateVisual(); e.Handled = true;
+    }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonDown(e);
+        if (!IsPaintMode) return;
+        Focus();
+        _paintErase = true;
+        CaptureMouse();
+        PaintKeyAt(e.GetPosition(this), erase: true);
+        e.Handled = true;
+    }
+
+    internal LightingLedEditor? PaintKeyAt(Point point, bool erase)
+    {
+        var hit = _placements.FirstOrDefault(p => p.Bounds.Contains(point));
+        if (hit == null) return null;
+        var editor = _keys.FirstOrDefault(k => k.Index == hit.Index);
+        if (editor == null) return null;
+
+        string targetColor = erase ? "#000000" : ResolvePaintColorHex();
+        if (!UseIndividualColors)
+        {
+            foreach (var item in _keys) item.ColorHex = CommonColorHex;
+            SetCurrentValue(UseIndividualColorsProperty, true);
+        }
+        if (!string.Equals(editor.ColorHex, targetColor, StringComparison.OrdinalIgnoreCase))
+            editor.ColorHex = targetColor;
+        SetCurrentValue(SelectedKeyProperty, editor);
+        AutomationProperties.SetName(this, "Keyboard: " + hit.Name);
+        InvalidateVisual();
+        return editor;
+    }
+
+    private string ResolvePaintColorHex()
+    {
+        if (!string.IsNullOrWhiteSpace(PaintColorHex)) return PaintColorHex;
+        if (!string.IsNullOrWhiteSpace(SelectedKey?.ColorHex)) return SelectedKey.ColorHex;
+        return string.IsNullOrWhiteSpace(CommonColorHex) ? "#00E5FF" : CommonColorHex;
     }
     internal void SelectKeyByIndex(int index, bool control = false, bool shift = false)
     {
@@ -344,6 +524,18 @@ public sealed class RgbKeyboardLayout : FrameworkElement
     {
         base.OnMouseMove(e);
         var point = e.GetPosition(this);
+        if (IsPaintMode && _paintErase is bool erase)
+        {
+            bool pressed = erase ? e.RightButton == MouseButtonState.Pressed : e.LeftButton == MouseButtonState.Pressed;
+            if (pressed)
+            {
+                PaintKeyAt(point, erase);
+                return;
+            }
+            _paintErase = null;
+            ReleaseMouseCapture();
+            return;
+        }
         if (_dragStart is Point start && e.LeftButton == MouseButtonState.Pressed)
         {
             if (!_dragging && (point - start).Length < 5) return;
@@ -367,13 +559,31 @@ public sealed class RgbKeyboardLayout : FrameworkElement
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
+        if (_paintErase == false)
+        {
+            _paintErase = null;
+            ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
         if (_dragStart == null) return;
         _dragStart = null; _dragging = false; _selectionRectangle = null;
         ReleaseMouseCapture(); InvalidateVisual(); e.Handled = true;
     }
+
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonUp(e);
+        if (_paintErase != true) return;
+        _paintErase = null;
+        ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
         base.OnLostMouseCapture(e);
+        _paintErase = null;
         _dragStart = null; _dragging = false; _selectionRectangle = null; InvalidateVisual();
     }
 }

@@ -5,21 +5,13 @@
   <Double x:Key="FontSizeBody" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
   <Double x:Key="FontSizeControl" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">11</Double>
   <!-- Aliases kept so existing DynamicResource keys stay valid. -->
-  <Double x:Key="FontSizeSectionTitle" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeTitle" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeTelemetry" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
   <Double x:Key="FontSizeTile" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeCaption" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">12</Double>
-  <Double x:Key="FontSizeSmall" xmlns="clr-namespace:System;assembly=System.Private.CoreLib">11</Double>
   <Style x:Key="BodyTextStyle" TargetType="{x:Type TextBlock}">
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
     <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
     <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
-  <Style x:Key="CaptionTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource BodyTextStyle}">
-    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
   </Style>
   <Style x:Key="OriginalSectionTitleStyle" TargetType="{x:Type TextBlock}">
     <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />

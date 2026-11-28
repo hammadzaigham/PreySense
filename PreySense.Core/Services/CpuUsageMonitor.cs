@@ -426,7 +426,7 @@ public static class CpuUsageMonitor
         return _cachedSnapshot;
     }
 
-    private static bool[] BuildECoreMap(int logicalCount)
+    internal static bool[] BuildECoreMap(int logicalCount)
     {
         var isECore = new bool[Math.Max(0, logicalCount)];
         if (logicalCount <= 0)

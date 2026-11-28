@@ -36,8 +36,7 @@ namespace PreySense.Frontend.Views
             App.Current?.Dispatcher?.InvokeAsync(() =>
             {
                 _currentToast ??= new ModeToastWindow();
-                var (icon, borderBrushKey) = GetModeAppearance(mode);
-                _currentToast.Display(modeName, icon, borderBrushKey);
+                _currentToast.Display(modeName, GetModeAppearance(mode));
             });
         }
 
@@ -69,7 +68,7 @@ namespace PreySense.Frontend.Views
             base.OnClosed(e);
         }
 
-        private void Display(string modeName, string iconPath, string borderBrushKey)
+        private void Display(string modeName, string iconPath)
         {
             long generation = ++_displayGeneration;
             _hideTimer.Stop();
@@ -137,14 +136,14 @@ namespace PreySense.Frontend.Views
             Top = workBottom - ActualHeight - (BottomOffsetPhysicalPixels / scale);
         }
 
-        private static (string Icon, string BorderBrushKey) GetModeAppearance(byte mode) => mode switch
+        private static string GetModeAppearance(byte mode) => mode switch
         {
-            0x00 => (ModeIconData.Quiet, "ModeQuietBrush"),
-            0x01 => (ModeIconData.Balanced, "ModeBalancedBrush"),
-            0x04 => (ModeIconData.Performance, "ModePerformanceBrush"),
-            0x05 => (ModeIconData.Turbo, "ModeTurboBrush"),
-            0x06 => (ModeIconData.Eco, "ModeEcoBrush"),
-            _ => (ModeIconData.Balanced, "AccentBrush")
+            0x00 => ModeIconData.Quiet,
+            0x01 => ModeIconData.Balanced,
+            0x04 => ModeIconData.Performance,
+            0x05 => ModeIconData.Turbo,
+            0x06 => ModeIconData.Eco,
+            _ => ModeIconData.Balanced
         };
 
         [StructLayout(LayoutKind.Sequential)]

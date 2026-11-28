@@ -55,6 +55,30 @@ public class FanModeRuntimeTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
+    public void StreamingCustomFollowsSavedCurveEvenWithDesktopSliderEnabled()
+    {
+        var store = PreySense.Core.Configuration.ConfigurationService.Instance;
+        bool original = store.GetCurrent().Fans.UseSlider;
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        try
+        {
+            store.Update(cfg => cfg.Fans.UseSlider = true);
+            var restore = typeof(MainViewModel).GetMethod("RestoreFanMode", BindingFlags.NonPublic | BindingFlags.Instance,
+                [typeof(FanControlMode?), typeof(bool)])!;
+            restore.Invoke(vm, [FanControlMode.Custom, true]);
+            Assert.AreEqual(FanControllerState.Settling, vm.GetFanControlDiagnostics().State);
+            Assert.IsTrue(store.GetCurrent().Fans.UseSlider);
+        }
+        finally
+        {
+            Run(vm, "DisposeFanTelemetry");
+            store.Update(cfg => cfg.Fans.UseSlider = original);
+        }
+    }
+
+    [TestMethod]
     public void DiagnosticsDistinguishRequestsFromUnavailableTemperatureAndFailure()
     {
         var hardware = new RecordingFans();
@@ -129,6 +153,28 @@ public class FanModeRuntimeTests
         CollectionAssert.AreEqual(new[] { "mode:1", "curve:40/50", "mode:0" }, hardware.Calls);
         Assert.IsNull(vm.AppliedGpuFanPercent);
     }
+    [TestMethod]
+    public void TemporaryStreamingDutyOverridesBothFansUntilItsOwnerReleasesIt()
+    {
+        var hardware = new RecordingFans();
+        var vm = Create(hardware);
+        Select(vm, FanControlMode.Auto);
+        var owner = Guid.NewGuid();
+
+        Run(vm, "ApplyStreamingFanDutyLocked", owner, 65);
+        Run(vm, "ProcessFanCurves", hardware.GetCurrentTelemetry());
+        Run(vm, "ReleaseStreamingFanDuty", Guid.NewGuid());
+        Assert.AreEqual(FanControllerState.ManualDuty, vm.GetFanControlDiagnostics().State);
+        Assert.AreEqual(65, vm.AppliedCpuFanPercent);
+        Assert.AreEqual(65, vm.AppliedGpuFanPercent);
+        CollectionAssert.AreEqual(new[] { "curve:65/65" }, hardware.Calls);
+
+        Run(vm, "ReleaseStreamingFanDuty", owner);
+        Assert.AreEqual(FanControllerState.FirmwareAuto, vm.GetFanControlDiagnostics().State);
+        Assert.IsNull(vm.AppliedCpuFanPercent);
+        CollectionAssert.AreEqual(new[] { "curve:65/65", "mode:0" }, hardware.Calls);
+    }
+
     [TestMethod]
     public void CustomTargetsSupportIndependentCpuAndGpuFanSpeeds()
     {

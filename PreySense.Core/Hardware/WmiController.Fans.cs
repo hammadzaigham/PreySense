@@ -17,8 +17,6 @@ public partial class WmiController
         return SendCommand(AcerWmi.GamingMethods.SetFanBehavior, value).success;
     }
 
-    public static int ScalePercentToWmi(int percent) => EcFanPolicy.ClampDuty(percent);
-
     public void InvalidateFanTargets()
     {
         lock (_lock) { _lastSetFanMode = -1; }

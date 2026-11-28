@@ -15,36 +15,6 @@
         ResizeMode="NoResize">
 
     <Window.Resources>
-        <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter"/>
-        <Style x:Key="HexTextBoxStyle" TargetType="{x:Type TextBox}">
-            <Setter Property="Background" Value="{DynamicResource ButtonMainBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderSecondBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
-            <Setter Property="Padding" Value="4,2"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type TextBox}">
-                        <Border x:Name="border"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3">
-                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BorderMainBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
         <Style x:Key="LightingDeviceTabStyle" TargetType="{x:Type RadioButton}">
           <Setter Property="Background" Value="{DynamicResource ButtonRaisedBgBrush}" />
           <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -162,9 +132,20 @@
                                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-controls-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="Backlight Timeout" Style="{StaticResource OriginalSectionTitleStyle}"/>
                             </StackPanel>
-                            <TextBlock Text="{Binding KbdTimeoutDisplay}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding Value, ElementName=SliderKbdTimeout, StringFormat='{}{0:0}s'}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Value, ElementName=SliderKbdTimeout}" Value="0">
+                                                <Setter Property="Text" Value="OFF"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </Grid>
-                        <Slider Minimum="0" Maximum="120" SmallChange="10" LargeChange="30" IsSnapToTickEnabled="True" TickFrequency="10"
+                        <Slider x:Name="SliderKbdTimeout" Minimum="0" Maximum="120" SmallChange="10" LargeChange="30" IsSnapToTickEnabled="True" TickFrequency="10"
                                 Value="{Binding KbdTimeoutSeconds, Mode=TwoWay, Delay=150}"
                                 Style="{StaticResource ReferenceBatterySliderStyle}"/>
                     </StackPanel>
@@ -209,9 +190,9 @@
                                 <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
                             </StackPanel>
-                            <TextBlock Text="{Binding RgbBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding Value, ElementName=SliderRgbBrightness, StringFormat='{}{0:0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                         </Grid>
-                        <Slider Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay, Delay=150}"
+                        <Slider x:Name="SliderRgbBrightness" Minimum="0" Maximum="100" Value="{Binding RgbBrightness, Mode=TwoWay, Delay=150}"
                                 SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
                                 IsMoveToPointEnabled="True"/>
                     </StackPanel>
@@ -250,7 +231,6 @@
                                           HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}"
                                           SelectionChanged="ComboPresetStatic_SelectionChanged">
                                     <ComboBoxItem Content="Custom" Tag="Custom"/>
-                                    <ComboBoxItem Content="Mode" Tag="Mode"/>
                                     <ComboBoxItem Content="Predator" Tag="Predator"/>
                                     <ComboBoxItem Content="Cyberpunk" Tag="Cyberpunk"/>
                                     <ComboBoxItem Content="Fire &amp; Ice" Tag="FireIce"/>
@@ -267,8 +247,8 @@
                                     <ComboBoxItem Content="Dracula" Tag="Dracula"/>
                                     <ComboBoxItem Content="Neon Haze" Tag="NeonHaze"/>
                                     <ComboBoxItem Content="Deep Space" Tag="DeepSpace"/>
-                                    <ComboBoxItem Content="Inferno" Tag="Inferno"/>
                                     <ComboBoxItem Content="Cyber Storm" Tag="CyberStorm"/>
+                                    <ComboBoxItem Content="Royal" Tag="Royal"/>
                                 </ComboBox>
                             </Grid>
 
@@ -291,12 +271,13 @@
                             <!-- Centered Color Wheel & Editable Hex Color Textbox -->
                             <StackPanel HorizontalAlignment="Center" Margin="0,6,0,6">
                                 <controls:ColorWheelControl x:Name="ColorWheel" Width="140" Height="140" HorizontalAlignment="Center"
+                                                            DraftColorChanged="ColorWheel_DraftColorChanged"
                                                             ColorChanged="ColorWheel_ColorChanged"/>
 
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding SelectedHexColor, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding DraftHex, ElementName=ColorWheel, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextHexColorInput" Text="{Binding SelectedHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -352,9 +333,9 @@
                                         <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="Animation Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding KeyboardAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding Value, ElementName=SliderKbdAnimSpeed, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider Grid.Row="1" Minimum="1" Maximum="10" Value="{Binding KeyboardAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
+                                <Slider x:Name="SliderKbdAnimSpeed" Grid.Row="1" Minimum="1" Maximum="10" Value="{Binding KeyboardAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
@@ -402,9 +383,9 @@
                                         <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="Animation Speed" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding RgbSpeed}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding Value, ElementName=SliderRgbSpeed, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                 </Grid>
-                                <Slider Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay, Delay=150}"
+                                <Slider x:Name="SliderRgbSpeed" Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding RgbSpeed, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,0"/>
                             </Grid>
                         </StackPanel>
@@ -467,9 +448,9 @@
                                     <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding CoverBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding Value, ElementName=SliderCoverBrightness, StringFormat='{}{0:0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
-                            <Slider Minimum="0" Maximum="100" Value="{Binding CoverBrightness, Mode=TwoWay, Delay=150}"
+                            <Slider x:Name="SliderCoverBrightness" Minimum="0" Maximum="100" Value="{Binding CoverBrightness, Mode=TwoWay, Delay=150}"
                                     SmallChange="1" LargeChange="5" TickFrequency="1" IsSnapToTickEnabled="True"
                                     IsMoveToPointEnabled="True"/>
                         </StackPanel>
@@ -538,12 +519,13 @@
                             <!-- Centered Color Wheel & Editable Hex Textbox for Logo -->
                             <StackPanel HorizontalAlignment="Center" Margin="0,6,0,6">
                                 <controls:ColorWheelControl x:Name="CoverColorWheel" Width="140" Height="140" HorizontalAlignment="Center"
+                                                            DraftColorChanged="CoverColorWheel_DraftColorChanged"
                                                             ColorChanged="CoverColorWheel_ColorChanged"/>
 
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,10,0,0">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding CoverHexColor, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            Background="{Binding DraftHex, ElementName=CoverColorWheel, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBox x:Name="TextCoverHexColorInput" Text="{Binding CoverHexColor, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center"
@@ -562,10 +544,10 @@
                                     <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Animation Speed" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding LogoAnimationSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding Value, ElementName=SliderLogoAnimSpeed, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
                             <Grid Margin="0,0,0,2">
-                                <Slider Minimum="1" Maximum="5" Value="{Binding LogoAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
+                                <Slider x:Name="SliderLogoAnimSpeed" Minimum="1" Maximum="5" Value="{Binding LogoAnimationSpeedLevel, Mode=TwoWay, Delay=150}"
                                         SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0"/>
                             </Grid>
                         </StackPanel>
@@ -621,9 +603,9 @@
                                     <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-brightness-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Brightness" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding DeviceLightingBrightness, StringFormat='{}{0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding Value, ElementName=SliderDeviceBrightness, StringFormat='{}{0:0}%'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
-                            <Slider Minimum="0" Maximum="100"
+                            <Slider x:Name="SliderDeviceBrightness" Minimum="0" Maximum="100"
                                     SmallChange="{Binding DeviceLightingBrightnessStep}"
                                     LargeChange="{Binding DeviceLightingBrightnessStep}"
                                     TickFrequency="{Binding DeviceLightingBrightnessStep}"
@@ -641,9 +623,9 @@
                                     <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-animation-32.png" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Animation Speed" Style="{StaticResource OriginalSectionTitleStyle}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding DeviceLightingSpeedLevel}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="{Binding Value, ElementName=SliderDeviceSpeed, StringFormat='{}{0:0}'}" HorizontalAlignment="Right" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                             </Grid>
-                            <Slider Minimum="{Binding DeviceLightingSpeedMinimum}" Maximum="{Binding DeviceLightingSpeedMaximum}"
+                            <Slider x:Name="SliderDeviceSpeed" Minimum="{Binding DeviceLightingSpeedMinimum}" Maximum="{Binding DeviceLightingSpeedMaximum}"
                                     SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
                                     Value="{Binding DeviceLightingSpeedLevel, Delay=150}"/>
                         </StackPanel>
@@ -668,15 +650,16 @@
 
                             <StackPanel HorizontalAlignment="Center" Margin="0,2,0,6"
                                         Visibility="{Binding ShowDeviceColorFields, Converter={StaticResource BoolToVis}}">
-                                <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
+                                <controls:ColorWheelControl x:Name="DeviceColorWheel" Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
                                     Visibility="{Binding ShowDeviceColorWheel, Converter={StaticResource BoolToVis}}"
+                                    DraftColorChanged="DeviceColorWheel_DraftColorChanged"
                                     SelectedColor="{Binding DeviceLightingColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
                                             Visibility="{Binding ShowDeviceColorWheel, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                            Background="{Binding DeviceLightingColorHex, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding DeviceLightingColorHex, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
+                                            Background="{Binding DraftHex, ElementName=DeviceColorWheel, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="TextDeviceHexColorInput" Text="{Binding DeviceLightingColorHex, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                              Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
                                              FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
                                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
@@ -684,9 +667,12 @@
                             </StackPanel>
 
                             <StackPanel Visibility="{Binding ShowKeyboardLayout, Converter={StaticResource BoolToVis}}">
+                                <controls:SettingSwitchRow x:Name="SwitchPaintOnDrag" Title="Paint on Drag" Margin="0,0,0,6"/>
                                 <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center">
                                     <controls:RgbKeyboardLayout KeysSource="{Binding LightingLedEditors}"
                                         CommonColorHex="{Binding DeviceLightingColorHex}" UseIndividualColors="{Binding DeviceLightingIndividualColors}"
+                                        IsPaintMode="{Binding IsChecked, ElementName=SwitchPaintOnDrag}"
+                                        PaintColorHex="{Binding SelectedLightingKey.ColorHex}"
                                         SelectedKeys="{Binding SelectedLightingKeys}"
                                         SelectedKey="{Binding SelectedLightingKey, Mode=TwoWay}"/>
                                 </Viewbox>
@@ -699,12 +685,13 @@
                             <StackPanel Visibility="{Binding ShowIndividualLightingEditors, Converter={StaticResource BoolToVis}}">
                                 <controls:ColorWheelControl x:Name="IndividualLightingColorWheel" Width="160" Height="160" HorizontalAlignment="Center" Margin="0,16,0,10"
                                     ColorPicked="DeviceKeyColor_Picked"
+                                    DraftColorChanged="IndividualLightingColorWheel_DraftColorChanged"
                                     IsEnabled="{Binding HasSelectedLightingKey}"
                                     SelectedColor="{Binding SelectedLightingKey.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                                             IsEnabled="{Binding HasSelectedLightingKey}" Margin="0,0,0,8">
                                     <TextBlock Text="Color:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <TextBox Width="90" Height="26" Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
+                                    <TextBox x:Name="TextIndividualHexColorInput" Width="90" Height="26" Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
                                              Text="{Binding SelectedLightingKey.ColorHex, UpdateSourceTrigger=LostFocus}"
                                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
                                 </StackPanel>

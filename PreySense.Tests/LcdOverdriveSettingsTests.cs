@@ -31,7 +31,7 @@ public class LcdOverdriveSettingsTests
     }
 
     [TestMethod]
-    public async Task SupportedPanelReflectsReadbackAndDisablesAfterFailedVerification()
+    public async Task SupportedPanelReflectsReadbackAndStaysAvailableAfterFailedVerification()
     {
         var panel = new Panel { Available = true };
         var vm = Create(panel);
@@ -43,15 +43,19 @@ public class LcdOverdriveSettingsTests
         Assert.AreEqual(1, panel.Writes);
         panel.IgnoreWrites = true;
         await vm.ToggleLcdOverdriveCommand.ExecuteAsync(null);
-        Assert.IsFalse(vm.CanChangeLcdOverdrive);
+        Assert.IsTrue(vm.IsLcdOverdriveAvailable);
+        Assert.IsTrue(vm.CanChangeLcdOverdrive);
+        Assert.IsTrue(vm.IsLcdOverdriveEnabled);
+        panel.IgnoreWrites = false;
         await vm.ToggleLcdOverdriveCommand.ExecuteAsync(null);
-        Assert.AreEqual(2, panel.Writes);
+        Assert.IsFalse(vm.IsLcdOverdriveEnabled);
+        Assert.AreEqual(3, panel.Writes);
     }
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task StartupReusesSavedCapabilityAndLastVerifiedState(bool supported)
+    public async Task StartupReconcilesCapabilityAndAppliesPersistedState(bool supported)
     {
         string path = Path.Combine(Path.GetTempPath(), $"PreySense-Lcd-{Guid.NewGuid():N}.json");
         try
@@ -65,12 +69,23 @@ public class LcdOverdriveSettingsTests
 
             var store = new ConfigurationService(path);
             Assert.AreEqual(supported, store.GetCurrent().Display.LcdOverdriveSupported);
-            var nextPanel = new Panel();
+            var nextPanel = new Panel { Available = supported, Enabled = false };
             var nextVm = Create(nextPanel);
             await nextVm.InitializeLcdOverdriveAsync(store);
-            Assert.AreEqual(0, nextPanel.Reads);
+            Assert.AreEqual(supported ? 2 : 1, nextPanel.Reads);
+            Assert.AreEqual(supported ? 1 : 0, nextPanel.Writes);
             Assert.AreEqual(supported, nextVm.IsLcdOverdriveAvailable);
             Assert.AreEqual(supported, nextVm.IsLcdOverdriveEnabled);
+            Assert.AreEqual(supported, nextPanel.Enabled);
+
+            if (supported)
+            {
+                nextPanel.Enabled = false;
+                nextVm.ApplyPersistedLcdOverdrive();
+                Assert.IsTrue(nextVm.IsLcdOverdriveAvailable);
+                Assert.IsTrue(nextVm.IsLcdOverdriveEnabled);
+                Assert.IsTrue(nextPanel.Enabled);
+            }
         }
         finally { File.Delete(path); }
     }

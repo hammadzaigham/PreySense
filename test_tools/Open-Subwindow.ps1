@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Programmatically opens and inspects subwindows in PreySense (Advanced, Lighting, Metrics, Fans, Settings).
 .PARAMETER Window
@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('Settings', 'Advanced', 'Tuning', 'Lighting', 'Keyboard', 'Metrics', 'Fans', 'FanCurve')]
+    [ValidateSet('Settings', 'Advanced', 'Tuning', 'Lighting', 'Keyboard', 'Metrics', 'Fans', 'FanCurve', 'Games')]
     [string]$Window,
 
     [switch]$Capture,
@@ -33,6 +33,7 @@ $autoIdMap = @{
     'Metrics'  = 'BtnNavMetrics'
     'Fans'     = 'BtnNavFans'
     'FanCurve' = 'BtnNavFans'
+    'Games'    = 'BtnNavGames'
 }
 
 $targetAutoId = $autoIdMap[$Window]

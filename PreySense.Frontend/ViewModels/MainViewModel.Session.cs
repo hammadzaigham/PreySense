@@ -49,7 +49,6 @@ namespace PreySense.Frontend.ViewModels
                 IsAutoRefreshRateEnabled = cfg.Display.AutoRefreshRate;
                 IsBatteryLimitEnabled = cfg.Battery.ChargeLimitEnabled;
                 _usbChargingCutoffPercent = cfg.Battery.UsbPowerOffChargingCutoffPercent;
-                IsAcerServicesDebloated = cfg.General.AcerServicesDebloated;
 
                 if (cfg.Session.AcPowerMode is 0 or 1 or 4 or 5 or 6)
                     AcPowerModeIndex = ProfileManager.SourceProfileIndex(cfg.Session.AcPowerMode);
@@ -93,7 +92,6 @@ namespace PreySense.Frontend.ViewModels
                     cfg.Session.ActivePowerMode = (byte)ActivePowerMode;
                     cfg.Display.AutoRefreshRate = IsAutoRefreshRateEnabled;
                     cfg.Battery.ChargeLimitEnabled = IsBatteryLimitEnabled;
-                    cfg.General.AcerServicesDebloated = IsAcerServicesDebloated;
                     cfg.Session.AcPowerMode = ProfileManager.SourceProfileMode(AcPowerModeIndex);
                     cfg.Session.BatteryPowerMode = ProfileManager.BatterySourceProfileModeOrDefault(BatteryPowerModeIndex);
                 });
@@ -112,9 +110,9 @@ namespace PreySense.Frontend.ViewModels
         {
             await _applicationReady.Task;
             if (_disposed) return;
-            _ = ApplyStartupLightingAsync();
-            if (_disposed) return;
             await RestoreSessionSettingsAsync("startup");
+            if (_disposed) return;
+            _ = ApplyStartupLightingAsync();
             await _dispatcher.InvokeAsync(InitializeGameMode);
             if (_disposed)
                 return;
@@ -241,6 +239,7 @@ namespace PreySense.Frontend.ViewModels
             try { ApplyUsbChargingCutoff(_usbChargingCutoffPercent); }
             catch (Exception ex) { failures.Add(ex.Message); }
             _hw.SetKbdBacklightTimeoutSeconds(KbdTimeoutSeconds);
+            ApplyPersistedLcdOverdrive();
             string warning = string.Join("; ", failures);
             if (failures.Count > 0) AppLogger.Log("Settings restore partial: " + warning);
             return warning;

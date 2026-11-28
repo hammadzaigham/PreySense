@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        xmlns:services="clr-namespace:PreySense.Frontend.Services"
         mc:Ignorable="d"
         Title="PreySense &#x2022; Tuning"
         Width="500"
@@ -129,7 +130,7 @@
                                                 <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
                                                 <TextBlock x:Name="LabelTau" Text="" Style="{DynamicResource SettingValueStyle}"/>
                                             </Grid>
-                                            <Slider x:Name="SliderTau" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="SliderTau_ValueChanged"/>
+                                            <Slider x:Name="SliderTau" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,0" services:SliderDebounce.DraftValueChanged="SliderTau_ValueChanged" ValueChanged="SliderTau_ValueChanged"/>
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
@@ -160,11 +161,13 @@
                                         ValueText="—" Minimum="0" Maximum="500" Margin="0,4,0,8"
                                         SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True"
                                         AutomationProperties.AutomationId="GpuCoreClockOffset"
+                                        services:SliderDebounce.DraftValueChanged="GpuClockOffset_ValueChanged"
                                         ValueChanged="GpuClockOffset_ValueChanged"/>
                                     <controls:SettingSliderRow x:Name="RowGpuMemoryClock" Title="Memory Clock Offset"
                                         ValueText="—" Minimum="0" Maximum="0" Margin="0,4,0,8"
                                         SmallChange="100" LargeChange="100" TickFrequency="100" IsSnapToTickEnabled="True"
                                         AutomationProperties.AutomationId="GpuMemoryClockOffset"
+                                        services:SliderDebounce.DraftValueChanged="GpuClockOffset_ValueChanged"
                                         ValueChanged="GpuClockOffset_ValueChanged"/>
                                 </StackPanel>
                             </StackPanel>
@@ -205,21 +208,21 @@
                                             <TextBlock Text="Delta" Style="{DynamicResource SettingLabelStyle}"/>
                                             <TextBlock x:Name="LabelGpuDelta" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
-                                        <Slider x:Name="SliderGpuDelta" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDeltaValue" AutomationProperties.Name="GPU Delta" ValueChanged="GpuOffsets_ValueChanged"/>
+                                        <Slider x:Name="SliderGpuDelta" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDeltaValue" AutomationProperties.Name="GPU Delta" services:SliderDebounce.DraftValueChanged="GpuOffsets_ValueChanged" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
                                         <Grid>
                                             <TextBlock Text="Dynamic Boost" Style="{DynamicResource SettingLabelStyle}"/>
                                             <TextBlock x:Name="LabelGpuDynamicBoost" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
-                                        <Slider x:Name="SliderGpuDynamicBoost" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDynamicBoostValue" AutomationProperties.Name="GPU Dynamic Boost" ValueChanged="GpuOffsets_ValueChanged"/>
+                                        <Slider x:Name="SliderGpuDynamicBoost" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModeGpuDynamicBoostValue" AutomationProperties.Name="GPU Dynamic Boost" services:SliderDebounce.DraftValueChanged="GpuOffsets_ValueChanged" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                     <StackPanel Margin="{StaticResource StandardRowMargin}">
                                         <Grid>
                                             <TextBlock Text="Platform Power Limit Offset" Style="{DynamicResource SettingLabelStyle}"/>
                                             <TextBlock x:Name="LabelPlatformPowerOffset" Style="{DynamicResource SettingValueStyle}"/>
                                         </Grid>
-                                        <Slider x:Name="SliderPlatformPowerOffset" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModePlatformPowerOffsetValue" AutomationProperties.Name="Platform Power Limit Offset" ValueChanged="GpuOffsets_ValueChanged"/>
+                                        <Slider x:Name="SliderPlatformPowerOffset" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" AutomationProperties.AutomationId="ModePlatformPowerOffsetValue" AutomationProperties.Name="Platform Power Limit Offset" services:SliderDebounce.DraftValueChanged="GpuOffsets_ValueChanged" ValueChanged="GpuOffsets_ValueChanged"/>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>

@@ -62,8 +62,8 @@ public class LocalizationTests
 
             LocalizationService.SetLanguage("zh-CN", persist: false);
             Assert.AreEqual("退出", LocalizationService.Translate("Quit"));
-            Assert.AreEqual("电池充电限制", LocalizationService.Translate("Battery Limit"));
-            Assert.AreEqual("混合", LocalizationService.Translate("Hybrid"));
+            Assert.AreEqual("电池充电限制", LocalizationService.Translate("Battery Charge Limit"));
+            Assert.AreEqual("Optimus", LocalizationService.Translate("Optimus"));
             Assert.AreEqual("关闭", LocalizationService.Translate("Off"));
             Assert.AreEqual("无", LocalizationService.Translate("None"));
             Assert.AreEqual("PreySense • 灯光", LocalizationService.Translate("PreySense • Lighting"));
@@ -73,25 +73,25 @@ public class LocalizationTests
 
             LocalizationService.SetLanguage("hi-IN", persist: false);
             Assert.AreEqual("बाहर निकलें", LocalizationService.Translate("Quit"));
-            Assert.AreNotEqual("Quit", LocalizationService.Translate("Battery Limit"));
+            Assert.AreNotEqual("Quit", LocalizationService.Translate("Battery Charge Limit"));
             Assert.AreEqual(2, LocalizationService.LanguageIndex);
 
             LocalizationService.SetLanguage("es-ES", persist: false);
             Assert.AreEqual("Salir", LocalizationService.Translate("Quit"));
-            Assert.AreEqual("Límite de batería", LocalizationService.Translate("Battery Limit"));
+            Assert.AreEqual("Límite de carga de batería", LocalizationService.Translate("Battery Charge Limit"));
             Assert.AreEqual("¿Restablecer Equilibrado a los ajustes de fábrica y aplicarlos ahora?",
                 LocalizationService.Format("Reset {0} to factory power settings and apply them now?", LocalizationService.Translate("Balanced")));
             Assert.AreEqual(3, LocalizationService.LanguageIndex);
 
             LocalizationService.SetLanguage("fr-FR", persist: false);
             Assert.AreEqual("Quitter", LocalizationService.Translate("Quit"));
-            Assert.AreEqual("Limite de batterie", LocalizationService.Translate("Battery Limit"));
+            Assert.AreEqual("Limite de charge de batterie", LocalizationService.Translate("Battery Charge Limit"));
             Assert.AreEqual("PreySense • Éclairage", LocalizationService.Translate("PreySense • Lighting"));
             Assert.AreEqual(4, LocalizationService.LanguageIndex);
 
             LocalizationService.SetLanguage("tr-TR", persist: false);
             Assert.AreEqual("Çıkış", LocalizationService.Translate("Quit"));
-            Assert.AreEqual("Pil Sınırı", LocalizationService.Translate("Battery Limit"));
+            Assert.AreEqual("Pil Şarj Sınırı", LocalizationService.Translate("Battery Charge Limit"));
             Assert.AreEqual("PreySense • Aydınlatma", LocalizationService.Translate("PreySense • Lighting"));
             Assert.AreEqual(5, LocalizationService.LanguageIndex);
 

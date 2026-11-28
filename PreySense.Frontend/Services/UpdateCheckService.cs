@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
+using PreySense.Core.Configuration;
 using PreySense.Helpers;
 
 namespace PreySense.Frontend.Services
@@ -45,6 +46,9 @@ namespace PreySense.Frontend.Services
                 {
                     return;
                 }
+                var settings = ConfigurationService.Instance;
+                if (Version.TryParse(settings.GetCurrent().General.SkippedUpdateVersion, out var skipped) && latest <= skipped)
+                    return;
 
                 string releaseUrl = ReleasesUrl;
                 if (doc.RootElement.TryGetProperty("html_url", out var htmlUrl) &&
@@ -61,10 +65,10 @@ namespace PreySense.Frontend.Services
                 if (app?.Dispatcher == null || app.Dispatcher.HasShutdownStarted)
                     return;
 
-                bool openDownload = await app.Dispatcher.InvokeAsync(() =>
+                bool? openDownload = await app.Dispatcher.InvokeAsync(() =>
                 {
                     if (app.MainWindow is not { IsVisible: true } owner)
-                        return false;
+                        return (bool?)null;
 
                     var dialog = new Views.CustomModalDialog
                     {
@@ -73,14 +77,16 @@ namespace PreySense.Frontend.Services
                         HeaderSubtitle = " — Update Available",
                         Message = LocalizationService.Format("Version {0} of PreySense is available.", latestTag),
                         ConfirmText = "Download",
-                        CancelText = "Later",
+                        CancelText = LocalizationService.Translate("Skip this version"),
                         ShowCancelButton = true
                     };
 
-                    return dialog.ShowDialog() == true;
+                    return dialog.ShowDialog();
                 });
 
-                if (!openDownload)
+                if (openDownload == false)
+                    settings.Update(cfg => cfg.General.SkippedUpdateVersion = latest.ToString());
+                if (openDownload != true)
                     return;
 
                 Process.Start(new ProcessStartInfo { FileName = releaseUrl, UseShellExecute = true });

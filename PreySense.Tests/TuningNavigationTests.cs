@@ -27,13 +27,14 @@ public class TuningNavigationTests
         Assert.AreEqual("Separator", section.ElementsBeforeSelf().Last().Name.LocalName);
         Assert.IsFalse(section.Descendants().Any(e => (string?)e.Attribute("Text") == "Tuning"));
         Assert.AreEqual("Separator", section.ElementsAfterSelf().First().Name.LocalName);
-        foreach (string id in new[] { "BtnNavGames", "BtnNavMode" })
-        {
-            var button = main.Descendants().Single(e => e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId" && a.Value == id));
-            Assert.IsNull(button.Attribute("Visibility"));
-            Assert.AreEqual("1", (string?)button.Parent!.Attribute("Rows"));
-            Assert.IsNull(button.Parent!.Attribute("Columns"), "Footer must size itself from visible buttons.");
-        }
+        var gamesButton = main.Descendants().Single(e => e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId" && a.Value == "BtnNavGames"));
+        Assert.AreEqual("{Binding IsGameModeEnabled, Converter={StaticResource BoolToVis}}", (string?)gamesButton.Attribute("Visibility"));
+        Assert.AreEqual("1", (string?)gamesButton.Parent!.Attribute("Rows"));
+        Assert.AreEqual("{Binding FooterBottomRowColumns}", (string?)gamesButton.Parent!.Attribute("Columns"));
+
+        var modeButton = main.Descendants().Single(e => e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId" && a.Value == "BtnNavMode"));
+        Assert.IsNull(modeButton.Attribute("Visibility"));
+        Assert.AreEqual("1", (string?)modeButton.Parent!.Attribute("Rows"));
         var quit = main.Descendants().Single(e => e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.AutomationId" && a.Value == "BtnNavQuit"));
         Assert.IsNull(quit.Attribute("Visibility"));
     }

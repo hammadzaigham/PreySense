@@ -16,14 +16,6 @@
                         <Setter Property="VerticalAlignment" Value="Center" />
                         <Setter Property="Text" Value="{Binding ValueText, ElementName=RootSliderRow}" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding ValueText, ElementName=RootSliderRow}" Value="">
-                                <Setter Property="Text" Value="{Binding BadgeText, ElementName=RootSliderRow}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ValueText, ElementName=RootSliderRow}" Value="{x:Null}">
-                                <Setter Property="Text" Value="{Binding BadgeText, ElementName=RootSliderRow}" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                            </DataTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
                             </Trigger>

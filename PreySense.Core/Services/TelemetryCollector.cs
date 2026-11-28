@@ -15,7 +15,7 @@ public interface ITelemetrySources
     CpuClockSnapshot ReadCpuClockSnapshot(TelemetryMetrics requested)
     {
         var clocks = (requested & TelemetryMetrics.CpuClock) != 0 ? ReadCpuClocks() : default;
-        var active = ReadCpuActiveEffectiveClocks();
+        var active = (requested & TelemetryMetrics.CpuEffectiveClock) != 0 ? ReadCpuActiveEffectiveClocks() : default;
         return new(clocks.Performance, clocks.Efficiency, active.ActiveMhz, active.EffectiveMhz);
     }
     (int? Pl1Watts, int? Pl2Watts) ReadCpuPowerLimits() => default;

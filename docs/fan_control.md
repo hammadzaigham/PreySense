@@ -30,7 +30,7 @@ Version 1.4.0 resent identical Custom requests after its five-second suppression
 
 ## Storage
 
-Per-mode settings remain under Fans.{Quiet|Eco|Balanced|Performance|Turbo} in preysense.json. ControlMode is Auto (0), Max (1), or Custom (2); stages retain CpuTempC, GpuTempC, CpuDutyPercent and GpuDutyPercent for compatibility. The legacy DutyPercent names mean requested percentage. Fans.ControlDelaySeconds and per-mode RampUpSeconds remain readable for compatibility but are ignored by the follower; fixed 3°C cooldown hysteresis replaces the retired time delay. Reset supplies the selected app preset; saved curves take priority. Only the current schema is loaded, with no v1 migration.
+Per-mode settings remain under Fans.{Quiet|Eco|Balanced|Performance|Turbo} in preysense.json. ControlMode is Auto (0), Max (1), or Custom (2); stages retain CpuTempC, GpuTempC, CpuDutyPercent and GpuDutyPercent for compatibility. The legacy DutyPercent names mean requested percentage. Fixed 3°C cooldown hysteresis is used by the custom fan follower. Reset supplies the selected app preset; saved curves take priority. Only the current schema is loaded, with no v1 migration.
 
 Successful Max-mode RPM measurement saves per-fan maxima and marks them measured. Subsequent estimates use those measured maxima as their interpolation endpoints; before a successful measurement, estimates use bundled CPU6800/GPU6400. The baseline remains the bundled curve, so this is still approximate. Earlier measurements without the explicit measured marker require measuring again.
 

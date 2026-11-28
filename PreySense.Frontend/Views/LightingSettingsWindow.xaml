@@ -5,39 +5,6 @@
         Title="PreySense • Lighting Settings" Width="500" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize"
         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="{StaticResource AppFontFamily}">
-    <Window.Resources>
-        <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter"/>
-        <!-- Compact Hex TextBox Style -->
-        <Style x:Key="HexTextBoxStyle" TargetType="{x:Type TextBox}">
-            <Setter Property="Background" Value="{DynamicResource ButtonMainBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderSecondBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
-            <Setter Property="Padding" Value="4,2"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type TextBox}">
-                        <Border x:Name="border"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3">
-                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BorderMainBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
     <Border Style="{DynamicResource AppWindowShellStyle}">
         <Grid>
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -47,23 +14,24 @@
                     <StackPanel>
                         <Grid Margin="0,0,0,2">
                             <TextBlock Text="Brightness" Style="{DynamicResource SettingLabelStyle}"/>
-                            <TextBlock Text="{Binding ModeLightingBrightness, StringFormat='{}{0}%'}" Style="{DynamicResource SettingValueStyle}"/>
+                            <TextBlock Text="{Binding Value, ElementName=SliderModeBrightness, StringFormat='{}{0:0}%'}" Style="{DynamicResource SettingValueStyle}"/>
                         </Grid>
-                        <Slider Minimum="0" Maximum="100" SmallChange="1" LargeChange="5" TickFrequency="1"
+                        <Slider x:Name="SliderModeBrightness" Minimum="0" Maximum="100" SmallChange="1" LargeChange="5" TickFrequency="1"
                                 IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" Margin="0,0,0,8"
                                 Value="{Binding ModeLightingBrightness, Mode=TwoWay, Delay=150}"/>
 <StackPanel Margin="0,2,0,6">
                                 <controls:ColorSwatchPicker ItemsSource="{Binding KeyboardModeColorEditors}"
                                     SelectedItem="{Binding SelectedKeyboardModeColor, Mode=TwoWay}" Margin="0,0,0,8"/>
                                 <StackPanel HorizontalAlignment="Center">
-                                    <controls:ColorWheelControl Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
+                                    <controls:ColorWheelControl x:Name="ModeColorWheel" Width="140" Height="140" HorizontalAlignment="Center" Margin="0,4,0,10"
                                         IsEnabled="{Binding HasSelectedKeyboardModeColor}"
+                                        DraftColorChanged="ModeColorWheel_DraftColorChanged"
                                         SelectedColor="{Binding SelectedKeyboardModeColor.ColorHex, Converter={StaticResource DeviceHexColorConverter}, Mode=TwoWay}"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                         <TextBlock Text="Color:" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <Border Width="22" Height="22" CornerRadius="3" BorderBrush="{DynamicResource BorderMainBrush}" BorderThickness="1"
-                                                Background="{Binding SelectedKeyboardModeColor.ColorHex, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding SelectedKeyboardModeColor.ColorHex, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
+                                                Background="{Binding DraftHex, ElementName=ModeColorWheel, FallbackValue='#00AEC7'}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TextModeHexColor" Text="{Binding SelectedKeyboardModeColor.ColorHex, UpdateSourceTrigger=LostFocus}" Width="80" Height="26"
                                                  Style="{StaticResource HexTextBoxStyle}" MaxLength="7"
                                                  FontFamily="Consolas, Segoe UI" FontSize="{DynamicResource FontSizeBody}" FontWeight="SemiBold"
                                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"

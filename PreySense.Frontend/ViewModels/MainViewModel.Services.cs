@@ -8,13 +8,6 @@ namespace PreySense.Frontend.ViewModels
 {
     public partial class MainViewModel
     {
-        // Acer OEM Services Debloater
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(IsAcerServicesEnabled))]
-        private bool _isAcerServicesDebloated = false;
-        [ObservableProperty] private string _debloaterStatusText = "Acer OEM Services: Active";
-        public bool IsAcerServicesEnabled => !IsAcerServicesDebloated;
-
         // Battery Care Limit
         [ObservableProperty] private bool _isBatteryLimitEnabled = true;
         [ObservableProperty] private int _batteryLimitPercent = 80;
@@ -54,38 +47,6 @@ namespace PreySense.Frontend.ViewModels
             {
                 _startupPreferenceReads--;
                 OnPropertyChanged(nameof(CanChangeRunOnStartup));
-            }
-        }
-
-        [RelayCommand]
-        public async Task ToggleAcerServicesDebloaterAsync()
-        {
-            IsBusy = true;
-            DiagnosticMessage = IsAcerServicesDebloated ? "Restoring Acer Services..." : "Debloating Acer OEM Services...";
-            try
-            {
-                if (IsAcerServicesDebloated)
-                {
-                    await Task.Run(() => PreySense.Core.Services.AcerServiceDebloater.EnableAndStartAll());
-                    IsAcerServicesDebloated = false;
-                    DebloaterStatusText = "Acer OEM Services: Active";
-                    DiagnosticMessage = "Acer Services Restored";
-                }
-                else
-                {
-                    await Task.Run(() => PreySense.Core.Services.AcerServiceDebloater.StopAndDisableAll());
-                    IsAcerServicesDebloated = true;
-                    DebloaterStatusText = "Acer OEM Services: Stopped & Disabled (~400MB Saved)";
-                    DiagnosticMessage = "Acer Services Debloated";
-                }
-            }
-            catch (Exception ex)
-            {
-                DiagnosticMessage = $"Error: {ex.Message}";
-            }
-            finally
-            {
-                IsBusy = false;
             }
         }
 

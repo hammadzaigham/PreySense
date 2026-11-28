@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -11,6 +12,7 @@ using PreySense.Rgb;
 namespace PreySense.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class ColorSwatchPickerTests
 {
     private static void OnSta(Action test)
@@ -33,6 +35,26 @@ public class ColorSwatchPickerTests
         }
     }
 
+    private static LightingLedEditor[] CreateEditors(int count, string prefix = "LED") =>
+        Enumerable.Range(0, count).Select(i => new LightingLedEditor(new LightingLedInfo(i, $"{prefix} {i + 1}"), "#FFFFFF")).ToArray();
+
+    private static ColorSwatchPicker CreateLaidOutPicker(System.Collections.IEnumerable? itemsSource = null, double width = 500)
+    {
+        var picker = new ColorSwatchPicker { ItemsSource = itemsSource, SelectedIndex = 0 };
+        picker.Resources["AccentBrush"] = Brushes.Magenta;
+        picker.Resources["WindowBgBrush"] = Brushes.Black;
+        picker.Resources["BorderMainBrush"] = Brushes.Gray;
+        MeasureAndArrange(picker, width);
+        return picker;
+    }
+
+    private static void MeasureAndArrange(ColorSwatchPicker picker, double width = 500)
+    {
+        picker.Measure(new Size(width, double.PositiveInfinity));
+        picker.Arrange(new Rect(0, 0, width, picker.DesiredSize.Height));
+        picker.UpdateLayout();
+    }
+
     private sealed class SelectionModel : ObservableObject
     {
         private object? _item;
@@ -44,7 +66,7 @@ public class ColorSwatchPickerTests
     [TestMethod]
     public void ItemAndIndexSelectionStaySynchronizedInBothDirections() => OnSta(() =>
     {
-        var editors = Enumerable.Range(0, 8).Select(i => new LightingLedEditor(new LightingLedInfo(i, $"LED {i + 1}"), "#FFFFFF")).ToArray();
+        var editors = CreateEditors(8);
         var picker = new ColorSwatchPicker { ItemsSource = editors };
         var list = (ListBox)picker.FindName("Swatches");
         var model = new SelectionModel { Item = editors[0], Index = 0 };
@@ -70,16 +92,11 @@ public class ColorSwatchPickerTests
     [TestMethod]
     public void SwatchesWrapAfterFiveAndKeepAnEqualOutsideSelectionGap() => OnSta(() =>
     {
-        var editors = Enumerable.Range(0, 8).Select(i => new LightingLedEditor(new LightingLedInfo(i, $"LED {i + 1}"), "#FFFFFF")).ToArray();
-        var picker = new ColorSwatchPicker { ItemsSource = editors, SelectedIndex = 0 };
-        var accent = Brushes.Magenta;
-        picker.Resources["AccentBrush"] = accent;
-        picker.Resources["WindowBgBrush"] = Brushes.Black;
-        picker.Resources["BorderMainBrush"] = Brushes.Gray;
-        picker.Measure(new Size(500, double.PositiveInfinity));
-        picker.Arrange(new Rect(0, 0, 500, picker.DesiredSize.Height));
-        picker.UpdateLayout();
+        var editors = CreateEditors(9);
+        var picker = CreateLaidOutPicker(editors);
+        var accent = (Brush)picker.Resources["AccentBrush"];
         var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(5, picker.Columns);
         Assert.AreEqual(5, grid.Columns);
         Assert.AreEqual(0, grid.Rows);
         var list = (ListBox)picker.FindName("Swatches");
@@ -99,5 +116,140 @@ public class ColorSwatchPickerTests
         var label = Descendants<TextBlock>(fill).Single();
         Assert.AreEqual("LED 1", label.Text);
         Assert.AreEqual((Color)ColorConverter.ConvertFromString(editors[0].ForegroundHex), ((SolidColorBrush)label.Foreground).Color);
+    });
+
+    [TestMethod]
+    [DataRow(6, 3)]
+    [DataRow(7, 4)]
+    [DataRow(8, 4)]
+    [DataRow(9, 5)]
+    [DataRow(10, 5)]
+    [DataRow(12, 4)]
+    public void MultiRowSwatchesDivideSpaceEvenlyAcrossRows(int itemCount, int expectedColumns) => OnSta(() =>
+    {
+        var picker = CreateLaidOutPicker(CreateEditors(itemCount));
+        var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(expectedColumns, picker.Columns);
+        Assert.AreEqual(expectedColumns, grid.Columns);
+    });
+
+    [TestMethod]
+    [DataRow(3, 3)]
+    [DataRow(4, 4)]
+    public void SmallRowsSizeColumnsToItemCountWithoutTrailingGap(int itemCount, int expectedColumns) => OnSta(() =>
+    {
+        var editors = CreateEditors(itemCount, "Zone");
+        var picker = CreateLaidOutPicker(editors, width: 480);
+        var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(expectedColumns, picker.Columns);
+        Assert.AreEqual(expectedColumns, grid.Columns);
+        Assert.AreEqual(0, grid.Rows);
+        var list = (ListBox)picker.FindName("Swatches");
+        var first = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+        var last = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(itemCount - 1);
+        Assert.AreEqual(first.TranslatePoint(new Point(), picker).Y, last.TranslatePoint(new Point(), picker).Y, 0.01);
+        Assert.AreEqual(480d / expectedColumns - 4d, first.ActualWidth, 0.01);
+        Assert.AreEqual(480d - 2d, last.TranslatePoint(new Point(last.ActualWidth, 0), picker).X, 0.01);
+    });
+
+    [TestMethod]
+    public void ReplacingItemsSourceUpdatesColumns() => OnSta(() =>
+    {
+        var picker = CreateLaidOutPicker(CreateEditors(4, "Zone"));
+        var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+
+        picker.ItemsSource = CreateEditors(2);
+        MeasureAndArrange(picker);
+        Assert.AreEqual(2, picker.Columns);
+        Assert.AreEqual(2, grid.Columns);
+
+        picker.ItemsSource = CreateEditors(8);
+        MeasureAndArrange(picker);
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+
+        picker.ItemsSource = CreateEditors(9);
+        MeasureAndArrange(picker);
+        Assert.AreEqual(5, picker.Columns);
+        Assert.AreEqual(5, grid.Columns);
+
+        picker.ItemsSource = null;
+        MeasureAndArrange(picker);
+        Assert.AreEqual(1, picker.Columns);
+        Assert.AreEqual(1, grid.Columns);
+    });
+
+    [TestMethod]
+    public void ObservableCollectionMutationsUpdateColumnsAndIgnoreDetachedSources() => OnSta(() =>
+    {
+        var collection = new ObservableCollection<LightingLedEditor>(CreateEditors(2));
+        var picker = CreateLaidOutPicker(collection);
+        var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(2, picker.Columns);
+        Assert.AreEqual(2, grid.Columns);
+
+        collection.Add(new LightingLedEditor(new LightingLedInfo(2, "LED 3"), "#FFFFFF"));
+        MeasureAndArrange(picker);
+        Assert.AreEqual(3, picker.Columns);
+        Assert.AreEqual(3, grid.Columns);
+
+        collection.Add(new LightingLedEditor(new LightingLedInfo(3, "LED 4"), "#FFFFFF"));
+        MeasureAndArrange(picker);
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+
+        for (int i = 4; i < 8; i++)
+            collection.Add(new LightingLedEditor(new LightingLedInfo(i, $"LED {i + 1}"), "#FFFFFF"));
+        MeasureAndArrange(picker);
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+
+        collection.RemoveAt(0);
+        collection.RemoveAt(0);
+        collection.RemoveAt(0);
+        collection.RemoveAt(0);
+        collection.RemoveAt(0);
+        MeasureAndArrange(picker);
+        Assert.AreEqual(3, picker.Columns);
+        Assert.AreEqual(3, grid.Columns);
+
+        collection.Clear();
+        MeasureAndArrange(picker);
+        Assert.AreEqual(1, picker.Columns);
+        Assert.AreEqual(1, grid.Columns);
+
+        var replacement = new ObservableCollection<LightingLedEditor>(CreateEditors(4));
+        picker.ItemsSource = replacement;
+        MeasureAndArrange(picker);
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+
+        // Mutating the previously bound collection must not affect the current column count.
+        collection.Add(new LightingLedEditor(new LightingLedInfo(0, "Stale 1"), "#FFFFFF"));
+        collection.Add(new LightingLedEditor(new LightingLedInfo(1, "Stale 2"), "#FFFFFF"));
+        MeasureAndArrange(picker);
+        Assert.AreEqual(4, picker.Columns);
+        Assert.AreEqual(4, grid.Columns);
+    });
+
+    [TestMethod]
+    public void MaxColumnsCapsAndCoercesColumnCount() => OnSta(() =>
+    {
+        var picker = CreateLaidOutPicker(CreateEditors(9));
+        var grid = Descendants<UniformGrid>(picker).Single();
+        Assert.AreEqual(5, picker.Columns);
+
+        picker.MaxColumns = 3;
+        MeasureAndArrange(picker);
+        Assert.AreEqual(3, picker.Columns);
+        Assert.AreEqual(3, grid.Columns);
+
+        picker.MaxColumns = 0;
+        MeasureAndArrange(picker);
+        Assert.AreEqual(1, picker.MaxColumns);
+        Assert.AreEqual(1, picker.Columns);
+        Assert.AreEqual(1, grid.Columns);
     });
 }

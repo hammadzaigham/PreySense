@@ -8,6 +8,7 @@ namespace PreySense.Frontend.Controls
         public SettingSliderRow()
         {
             InitializeComponent();
+            Services.SliderDebounce.AddDraftValueChangedHandler(InnerSlider, InnerSlider_DraftValueChanged);
         }
 
         public static readonly DependencyProperty TitleProperty =
@@ -21,19 +22,6 @@ namespace PreySense.Frontend.Controls
         {
             get => (string)GetValue(TitleProperty);
             set => SetValue(TitleProperty, value);
-        }
-
-        public static readonly DependencyProperty BadgeTextProperty =
-            DependencyProperty.Register(
-                nameof(BadgeText),
-                typeof(string),
-                typeof(SettingSliderRow),
-                new PropertyMetadata(string.Empty));
-
-        public string BadgeText
-        {
-            get => (string)GetValue(BadgeTextProperty);
-            set => SetValue(BadgeTextProperty, value);
         }
 
         public static readonly DependencyProperty ValueTextProperty =
@@ -149,6 +137,13 @@ namespace PreySense.Frontend.Controls
         }
 
         public event RoutedPropertyChangedEventHandler<double>? ValueChanged;
+
+        private void InnerSlider_DraftValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            var binding = System.Windows.Data.BindingOperations.GetBinding(this, ValueProperty);
+            if (binding?.Mode != System.Windows.Data.BindingMode.TwoWay && Math.Abs(Value - e.NewValue) > 0.0001)
+                SetCurrentValue(ValueProperty, e.NewValue);
+        }
 
         private void InnerSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {

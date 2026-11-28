@@ -97,6 +97,4 @@ public static class NvapiThermal
             return (hotspot, memory);
         }
     }
-    public static float? GetHotspot(IntPtr? handle = null) => ReadTemperatures(handle, true, false).HotspotC;
-    public static float? GetMemoryTemperature(IntPtr? handle = null) => ReadTemperatures(handle, false, true).MemoryC;
 }

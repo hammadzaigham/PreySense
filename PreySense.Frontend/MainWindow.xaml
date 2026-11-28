@@ -176,7 +176,7 @@
                   </Style>
                 </FrameworkElement.Style>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <Path Data="{x:Static local:ModeIconData.HybridGpuGeometry}"
+                  <Path Data="{x:Static local:ModeIconData.OptimusGpuGeometry}"
                         Stroke="{DynamicResource IconForegroundBrush}"
                         StrokeThickness="1.8"
                         StrokeStartLineCap="Round"
@@ -187,7 +187,7 @@
                         Height="20"
                         Stretch="Uniform"
                         Margin="0,0,0,2" />
-                  <TextBlock Text="Hybrid" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
+                  <TextBlock Text="Optimus" FontSize="{DynamicResource FontSizeTile}" HorizontalAlignment="Center" TextAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button Height="62" Margin="3" CommandParameter="2" Command="{Binding SetGpuMuxModeCommand}" Visibility="{Binding ShowDdsGpuTiles, Converter={StaticResource BoolToVis}}">
@@ -300,8 +300,10 @@
             </StackPanel>
           </Button>
         </UniformGrid>
-        <UniformGrid Grid.Row="2" Rows="1" HorizontalAlignment="Stretch">
-          <Button AutomationProperties.AutomationId="BtnNavGames" Style="{StaticResource WindowFooterButtonStyle}" Click="GamesButton_Click">
+        <UniformGrid Grid.Row="2" Rows="1" Columns="{Binding FooterBottomRowColumns}" HorizontalAlignment="Stretch">
+          <Button AutomationProperties.AutomationId="BtnNavGames"
+                  Visibility="{Binding IsGameModeEnabled, Converter={StaticResource BoolToVis}}"
+                  Style="{StaticResource WindowFooterButtonStyle}" Click="GamesButton_Click">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
               <controls:ThemedIcon Source="pack://application:,,,/Resources/icons8-game-controller-48.png" Width="14" Height="14" Margin="0,0,5,0" VerticalAlignment="Center" />
               <TextBlock Text="Games" FontSize="{DynamicResource FontSizeBody}" VerticalAlignment="Center" />

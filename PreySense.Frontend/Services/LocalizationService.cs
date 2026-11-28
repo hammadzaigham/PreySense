@@ -16,7 +16,6 @@ public static class LocalizationService
     private static readonly ConditionalWeakTable<DependencyObject, Dictionary<DependencyProperty, string>> Originals = new();
 
     public static string CurrentLanguage { get; private set; } = "en-US";
-    public static bool IsChinese => CurrentLanguage.Equals("zh-CN", StringComparison.OrdinalIgnoreCase);
     public static int LanguageIndex => Math.Max(0, Array.IndexOf(UiText.Languages, CurrentLanguage));
 
     public static string Normalize(string? language)

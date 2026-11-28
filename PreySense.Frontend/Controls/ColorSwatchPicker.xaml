@@ -1,6 +1,7 @@
 <UserControl x:Class="PreySense.Frontend.Controls.ColorSwatchPicker"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:PreySense.Frontend.Controls"
              x:Name="RootPicker">
     <ListBox x:Name="Swatches"
              ItemsSource="{Binding ItemsSource, ElementName=RootPicker}"
@@ -17,7 +18,7 @@
         </ListBox.Template>
         <ListBox.ItemsPanel>
             <ItemsPanelTemplate>
-                <UniformGrid Columns="5"/>
+                <UniformGrid Columns="{Binding Columns, RelativeSource={RelativeSource AncestorType={x:Type local:ColorSwatchPicker}}}"/>
             </ItemsPanelTemplate>
         </ListBox.ItemsPanel>
         <ListBox.ItemContainerStyle>

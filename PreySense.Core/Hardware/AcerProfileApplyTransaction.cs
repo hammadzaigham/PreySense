@@ -104,7 +104,9 @@ public sealed class AcerProfileApplyTransaction(IPhysicalMemoryByteAccess memory
             targetPossiblyActive = true;
             if (!Switch(selected))
                 throw new InvalidOperationException("Could not switch back to the selected Acer mode.");
-            Pause(500);
+            // Keep the caller's mode-switch gate held until the final EC transition
+            // settles, even if the next profile was queued before this one activated.
+            Pause(AcerOperatingModeTiming.TransitionMilliseconds);
             bool modeSettled = WaitForMode(selected)
                 || !modes.TryGetAcerPowerMode(out byte after)
                 || after == selected;

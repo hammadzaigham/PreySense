@@ -33,6 +33,7 @@ namespace PreySense.Core.Services
     {
         // Power source state (live AC/battery transitions use Acer APGeEvent via TurboKeyWatcher)
         PowerSourceKind GetPowerSource();
+        (PowerSourceKind Source, int? BatteryPercent) GetPowerStatus() => (GetPowerSource(), null);
 
         // Power Profiles
         byte CurrentPowerMode { get; }
@@ -73,6 +74,7 @@ namespace PreySense.Core.Services
         void SetRgbHardwareEffect(int mode, byte r, byte g, byte b, byte brightness, byte speed, byte direction);
         void SetRgbBrightness(byte brightness);
         int? GetKeyboardBrightness();
+        int? TryGetLightingDeviceBrightness(string deviceId) => null;
 
         // Cover / Top Logo Backlight
         bool IsCoverLightingAvailable => false;

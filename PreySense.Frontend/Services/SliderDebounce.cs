@@ -2,6 +2,9 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 
 namespace PreySense.Frontend.Services;
@@ -10,19 +13,26 @@ namespace PreySense.Frontend.Services;
 public static class SliderDebounce
 {
     public const int DelayMilliseconds = 150;
+    public static readonly RoutedEvent DraftValueChangedEvent = EventManager.RegisterRoutedEvent(
+        "DraftValueChanged", RoutingStrategy.Bubble, typeof(RoutedPropertyChangedEventHandler<double>), typeof(SliderDebounce));
+    public static void AddDraftValueChangedHandler(DependencyObject target, RoutedPropertyChangedEventHandler<double> handler)
+        => (target as UIElement)?.AddHandler(DraftValueChangedEvent, handler);
+    public static void RemoveDraftValueChangedHandler(DependencyObject target, RoutedPropertyChangedEventHandler<double> handler)
+        => (target as UIElement)?.RemoveHandler(DraftValueChangedEvent, handler);
     public static readonly DependencyProperty EnabledProperty = DependencyProperty.RegisterAttached(
         "Enabled", typeof(bool), typeof(SliderDebounce), new PropertyMetadata(false, EnabledChanged));
     public static void SetEnabled(DependencyObject target, bool value) => target.SetValue(EnabledProperty, value);
     public static bool GetEnabled(DependencyObject target) => (bool)target.GetValue(EnabledProperty);
     private static readonly ConditionalWeakTable<Slider, Pending> States = new();
     [ThreadStatic] private static HashSet<Pending>? _pending;
+    internal static Func<Slider, bool> IsDragCaptureActive { get; set; } = static s => s.IsMouseCaptureWithin;
 
     static SliderDebounce()
     {
         EventManager.RegisterClassHandler(typeof(Slider), RangeBase.ValueChangedEvent,
             new RoutedPropertyChangedEventHandler<double>(Changed), true);
         EventManager.RegisterClassHandler(typeof(ButtonBase), ButtonBase.ClickEvent,
-            new RoutedEventHandler((_, _) => FlushPending()), true);
+            new RoutedEventHandler(OnButtonClick), true);
     }
 
     private static void EnabledChanged(DependencyObject target, DependencyPropertyChangedEventArgs e)
@@ -31,6 +41,8 @@ public static class SliderDebounce
         if ((bool)e.NewValue)
         {
             slider.PreviewMouseLeftButtonUp += Released;
+            slider.LostMouseCapture += Released;
+            slider.PreviewKeyUp += KeyReleased;
             slider.LostKeyboardFocus += Released;
             slider.Unloaded += Released;
         }
@@ -38,12 +50,41 @@ public static class SliderDebounce
         {
             Flush(slider);
             slider.PreviewMouseLeftButtonUp -= Released;
+            slider.LostMouseCapture -= Released;
+            slider.PreviewKeyUp -= KeyReleased;
             slider.LostKeyboardFocus -= Released;
             slider.Unloaded -= Released;
         }
     }
 
     private static void Released(object sender, RoutedEventArgs e) => Flush((Slider)sender);
+
+    private static void KeyReleased(object sender, KeyEventArgs e)
+    {
+        if (IsSliderNavigationKey(e.Key))
+            Flush((Slider)sender);
+    }
+
+    private static bool IsSliderNavigationKey(Key key) => key is
+        Key.Left or Key.Right or Key.Up or Key.Down or
+        Key.PageUp or Key.PageDown or Key.Home or Key.End;
+
+    private static void OnButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source && IsInsideSlider(source)) return;
+        FlushPending();
+    }
+
+    private static bool IsInsideSlider(DependencyObject? source)
+    {
+        for (var current = source; current != null;)
+        {
+            if (current is Slider) return true;
+            current = (current is Visual or Visual3D ? VisualTreeHelper.GetParent(current) : null)
+                ?? LogicalTreeHelper.GetParent(current);
+        }
+        return false;
+    }
     private static void Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         var slider = (Slider)sender;
@@ -56,6 +97,7 @@ public static class SliderDebounce
             return;
         }
         e.Handled = true;
+        slider.RaiseEvent(new RoutedPropertyChangedEventArgs<double>(e.OldValue, e.NewValue, DraftValueChangedEvent));
         state.Queue(e.OldValue, e.NewValue);
     }
 
@@ -64,7 +106,6 @@ public static class SliderDebounce
     internal static void Flush(Slider slider)
     {
         if (States.TryGetValue(slider, out var state)) state.Flush();
-        slider.GetBindingExpression(RangeBase.ValueProperty)?.UpdateSource();
     }
     private static void FlushPending()
     {
@@ -91,7 +132,9 @@ public static class SliderDebounce
             _newValue = newValue;
             _hasValue = true;
             (_pending ??= []).Add(this);
-            _timer.Stop(); _timer.Start();
+            _timer.Stop();
+            if (!IsDragCaptureActive(_slider))
+                _timer.Start();
         }
         public void Cancel()
         {

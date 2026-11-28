@@ -17,6 +17,10 @@ namespace PreySense
     public sealed class HidModeKeyWatcher : IDisposable
     {
         public const string AcerEcHardwareId = "1025174B";
+        public const ushort ChiconyVendorId = 0x04F2;
+        public const ushort ChiconySpecialKeyUsagePage = 0x0088;
+        private static readonly ushort[] ChiconyProductIds = { 0x0117, 0x011A, 0x0119 };
+        private const int HidpStatusSuccess = 0x00110000;
         private const uint GenericRead = 0x80000000;
         private const uint GenericWrite = 0x40000000;
         private const uint FileShareReadWrite = 3;
@@ -47,13 +51,21 @@ namespace PreySense
             _onBrightnessDelta = onBrightnessDelta;
             var token = _cts.Token;
             int readers = 0;
-            foreach (string path in EnumerateAcerEcHidPaths())
+            foreach (string path in EnumerateWatchedHidPaths())
             {
                 readers++;
                 _ = Task.Run(() => ReadLoopAsync(path, token));
             }
             if (readers == 0)
-                AppLogger.Log("TurboKey: no 1025174B HID collections found for the chassis Mode key.");
+                AppLogger.Log("TurboKey: no 1025174B or Chicony 0x0088 HID collections found for the chassis Mode key.");
+        }
+
+        private static IEnumerable<string> EnumerateWatchedHidPaths()
+        {
+            foreach (string path in EnumerateAcerEcHidPaths())
+                yield return path;
+            foreach (string path in EnumerateChiconySpecialKeyHidPaths())
+                yield return path;
         }
 
         internal static IEnumerable<string> EnumerateAcerEcHidPaths()
@@ -84,8 +96,57 @@ namespace PreySense
                 || path.EndsWith(@"\mou", StringComparison.OrdinalIgnoreCase);
         }
 
-        public static bool IsModeKeyReport(byte[] buffer, int length) =>
-            ClassifyReport(buffer, length) == HotkeyKind.Mode;
+        internal static IEnumerable<string> EnumerateChiconySpecialKeyHidPaths()
+        {
+            foreach (string path in EnekRgbClient.EnumerateAllHidPaths())
+            {
+                if (!IsChiconySpecialKeyPath(path))
+                    continue;
+                if (TryGetHidCaps(path, out var caps) && IsChiconySpecialKeyCaps(caps.UsagePage, caps.InputReportByteLength))
+                    yield return path;
+            }
+        }
+
+        public static bool IsChiconySpecialKeyPath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || IsWindowsExclusiveHidPath(path))
+                return false;
+            if (path.IndexOf($"VID_{ChiconyVendorId:X4}", StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+            foreach (ushort pid in ChiconyProductIds)
+            {
+                if (path.IndexOf($"PID_{pid:X4}", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        public static bool IsChiconySpecialKeyCaps(ushort usagePage, ushort inputReportByteLength) =>
+            usagePage == ChiconySpecialKeyUsagePage && inputReportByteLength >= 3;
+
+        private static bool TryGetHidCaps(string path, out HidCaps caps)
+        {
+            caps = default;
+            try
+            {
+                using SafeFileHandle handle = CreateFile(
+                    path, 0, FileShareReadWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
+                if (handle.IsInvalid || !HidD_GetPreparsedData(handle, out IntPtr preparsed))
+                    return false;
+                try
+                {
+                    return HidP_GetCaps(preparsed, out caps) == HidpStatusSuccess;
+                }
+                finally
+                {
+                    HidD_FreePreparsedData(preparsed);
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         public static HotkeyKind ClassifyReport(byte[] buffer, int length)
         {
@@ -123,6 +184,9 @@ namespace PreySense
                     return HotkeyKind.BrightnessUp;
             }
 
+            // PHN16-71 Chicony 0x0088 special-key collection: PREDATOR key sends 04 81 FF
+            if (vendorKey && payload == 0x81)
+                return HotkeyKind.Mode;
             // PHN16-73 / PHN16S: report ID 0x04, payload 0x85 0xFF
             if (id == 0x04 && payload == 0x85)
                 return HotkeyKind.Mode;
@@ -262,9 +326,11 @@ namespace PreySense
         private static string ShortCollection(string path)
         {
             int col = path.IndexOf("COL", StringComparison.OrdinalIgnoreCase);
-            if (col < 0 || col + 5 > path.Length)
-                return "1025174B";
-            return path.Substring(col, 5);
+            if (col >= 0 && col + 5 <= path.Length)
+                return path.Substring(col, 5);
+            return path.IndexOf($"VID_{ChiconyVendorId:X4}", StringComparison.OrdinalIgnoreCase) >= 0
+                ? $"{ChiconyVendorId:X4}"
+                : AcerEcHardwareId;
         }
 
         private static string ToHex(byte[] buffer, int length)
@@ -283,10 +349,31 @@ namespace PreySense
 
         private static char GetHex(int nibble) => (char)(nibble < 10 ? '0' + nibble : 'A' + (nibble - 10));
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct HidCaps
+        {
+            public ushort Usage, UsagePage, InputReportByteLength, OutputReportByteLength, FeatureReportByteLength;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)] public ushort[] Reserved;
+            public ushort NumberLinkCollectionNodes, NumberInputButtonCaps, NumberInputValueCaps, NumberInputDataIndices;
+            public ushort NumberOutputButtonCaps, NumberOutputValueCaps, NumberOutputDataIndices;
+            public ushort NumberFeatureButtonCaps, NumberFeatureValueCaps, NumberFeatureDataIndices;
+        }
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern SafeFileHandle CreateFile(
             string lpFileName, uint dwDesiredAccess, uint dwShareMode,
             IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
+        [DllImport("hid.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool HidD_GetPreparsedData(SafeFileHandle handle, out IntPtr data);
+
+        [DllImport("hid.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool HidD_FreePreparsedData(IntPtr data);
+
+        [DllImport("hid.dll")]
+        private static extern int HidP_GetCaps(IntPtr data, out HidCaps caps);
 
         public void Dispose()
         {

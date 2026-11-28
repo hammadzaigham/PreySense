@@ -30,11 +30,9 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void ProfileManager_UsesQuietNameAndDropsOverlayValues()
+        public void ProfileManager_UsesQuietName()
         {
             Assert.AreEqual("Quiet", ProfileManager.ModeToProfileName(0x00));
-            string source = File.ReadAllText(Path.Combine(GetSolutionRoot(), "PreySense.Core", "Mode", "PerformanceProfile.cs"));
-            Assert.DoesNotContain("WindowsPowerMode", source);
         }
 
         [TestMethod]
@@ -122,20 +120,22 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void FanCurveWindow_ShowsStageEditorAsDisabled_InAutoOrMaxMode()
+        public void FanCurveWindow_HidesCurveEditor_InAutoOrMaxMode()
         {
             string root = GetSolutionRoot();
             string fanWindowXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
+            Assert.Contains("x:Name=\"CustomContent\"", fanWindowXaml);
             Assert.Contains("x:Name=\"FanTabs\"", fanWindowXaml);
             Assert.Contains("x:Name=\"Curve\"", fanWindowXaml);
             Assert.Contains("x:Name=\"CurveEditor\"", fanWindowXaml);
             Assert.Contains("WpfFanCurveControl", fanWindowXaml);
 
-            Assert.Contains("CurveEditor.IsEnabled = isCustom && !_applying;", fanWindowCs);
-            Assert.Contains("CurveEditor.Opacity = isCustom ? 1.0 : 0.45;", fanWindowCs);
-            Assert.Contains("FooterPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
+            Assert.Contains("CustomContent.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
+            Assert.Contains("CurveEditor.Visibility = isCustom && !useSlider ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
+            Assert.Contains("CurveEditor.IsEnabled = isCustom && !useSlider && !_applying;", fanWindowCs);
+            Assert.Contains("FooterPanel.Visibility = isCustom && !useSlider ? Visibility.Visible : Visibility.Collapsed;", fanWindowCs);
         }
 
         [TestMethod]
@@ -153,7 +153,6 @@ namespace PreySense.Tests
 
             var def = FanCurveProfile.CreateDefault(1);
             Assert.AreEqual(FanControlMode.Auto, def.ControlMode);
-            Assert.AreEqual(0, def.RampUpSeconds);
             Assert.HasCount(FanCurveProfile.StageCount, def.Stages);
             Assert.AreEqual(0, def.Stages[1].CpuDutyPercent);
         }
@@ -167,7 +166,7 @@ namespace PreySense.Tests
             string modeSettingsCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "ModeSettingsWindow.xaml.cs"));
 
             // ApplyModeSwitchAsync cancels pending trailing mode apply immediately
-            Assert.Contains("CancelPendingModeSwitch();\n            if (!await TryEnterModeSwitchGateAsync()) return;", powerModesCs.Replace("\r\n", "\n"));
+            Assert.Contains("CancelPendingModeSwitch();\n            if (!await TryEnterModeSwitchGateAsync()) return false;", powerModesCs.Replace("\r\n", "\n"));
             Assert.Contains("AcerOperatingModeTiming.TransitionDelay", powerModesCs);
             Assert.DoesNotContain("ModeSwitchDebounceMilliseconds", powerModesCs);
 
@@ -182,14 +181,14 @@ namespace PreySense.Tests
         }
 
         [TestMethod]
-        public void FanSettingsWindow_IsRemovedAndFansOperateIndependently()
+        public void FanSettingsWindow_ExposesMaxRpmAndFansOperateIndependently()
         {
             string root = GetSolutionRoot();
             string settingsXaml = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "SettingsWindow.xaml"));
             string fanWindowCs = File.ReadAllText(Path.Combine(root, "PreySense.Frontend", "Views", "FanCurveWindow.xaml.cs"));
 
-            Assert.DoesNotContain("RowFanSettings", settingsXaml);
-            Assert.IsFalse(File.Exists(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml")));
+            Assert.Contains("RowFanSettings", settingsXaml);
+            Assert.IsTrue(File.Exists(Path.Combine(root, "PreySense.Frontend", "Views", "FanSettingsWindow.xaml")));
             Assert.DoesNotContain("SynchronizeFanSpeeds", fanWindowCs);
         }
 

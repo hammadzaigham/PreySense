@@ -11,7 +11,8 @@ public enum TelemetryDemand
     MainWindow = 1 << 0,
     Overlay = 1 << 1,
     FanController = 1 << 2,
-    FanWindow = 1 << 3
+    FanWindow = 1 << 3,
+    StreamingControl = 1 << 4
 }
 
 public readonly record struct FrameTelemetry(double? FramesPerSecond, double? FrameTimeMilliseconds, int? ProcessId);
@@ -242,6 +243,11 @@ public static class TelemetryCoordinator
                 var demand = (TelemetryDemand)_demandMask;
                 var metrics = _overlayActive ? TelemetryMetrics.FrameRate : TelemetryMetrics.None;
                 if (demand.HasFlag(TelemetryDemand.MainWindow)) metrics |= MainWindowMetrics;
+                if (demand.HasFlag(TelemetryDemand.StreamingControl))
+                    metrics |= TelemetryMetrics.Temperatures | TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm
+                        | TelemetryMetrics.CpuPower | TelemetryMetrics.GpuPower
+                        | TelemetryMetrics.GpuPowerLimit | TelemetryMetrics.CpuUsage | TelemetryMetrics.GpuUsage
+                        | TelemetryMetrics.CpuClock | TelemetryMetrics.GpuActiveClock;
                 if (demand.HasFlag(TelemetryDemand.Overlay)) metrics |= _overlayMetrics;
                 if (demand.HasFlag(TelemetryDemand.FanWindow))
                     metrics |= TelemetryMetrics.Temperatures | TelemetryMetrics.CpuFanRpm | TelemetryMetrics.GpuFanRpm;
@@ -314,7 +320,7 @@ public static class TelemetryCoordinator
     }
 
     public static bool HasActiveDemand => Volatile.Read(ref _demandMask) != 0 || _overlayActive;
-    public static bool HasUiDemand => _overlayActive || (Volatile.Read(ref _demandMask) & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay | TelemetryDemand.FanWindow)) != 0;
+    public static bool HasUiDemand => _overlayActive || (Volatile.Read(ref _demandMask) & (int)(TelemetryDemand.MainWindow | TelemetryDemand.Overlay | TelemetryDemand.FanWindow | TelemetryDemand.StreamingControl)) != 0;
     public static bool HasFanOnlyDemand => HasActiveDemand && !HasUiDemand;
     public static TelemetryDemand ActiveDemand => (TelemetryDemand)Volatile.Read(ref _demandMask);
 

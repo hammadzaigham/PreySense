@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        xmlns:services="clr-namespace:PreySense.Frontend.Services"
         Title="PreySense • Games" Width="500" SizeToContent="Height" MaxHeight="850"
         WindowStartupLocation="CenterOwner" Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="{StaticResource AppFontFamily}" ResizeMode="NoResize">
@@ -15,15 +16,13 @@
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Game Profiles" Style="{DynamicResource SettingLabelStyle}"/>
                             <Button Grid.Column="1" Height="28" VerticalAlignment="Center" Content="Add" Command="{Binding AddGameProfileCommand}"
                                     Style="{StaticResource WindowFooterButtonStyle}"/>
                             <Button Grid.Column="2" Height="28" VerticalAlignment="Center" Content="Remove" Command="{Binding RemoveSelectedGameProfileCommand}"
                                     IsEnabled="{Binding HasSelectedGameProfile}" Style="{StaticResource WindowFooterButtonStyle}"/>
-                            <controls:RectangularSwitch Grid.Column="3" VerticalAlignment="Center"
-                                IsChecked="{Binding IsGameModeEnabled, Mode=TwoWay}"/>
                         </Grid>
                     </Border>
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
@@ -106,60 +105,66 @@
                                     ItemsSource="{Binding GameModeNames}" SelectedItem="{Binding SelectedGameModeName, Mode=TwoWay}"/>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
-                                <controls:SettingSwitchRow x:Name="GameCpuBoost" Title="CPU Boost Tuning"
-                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-automation-32.png"
-                                    IsChecked="{Binding SelectedGameProfile.ApplyCpuBoost, Mode=TwoWay}"/>
-                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuBoost}">
-                                    <controls:SettingDropdownRow Title="CPU Boost" DropdownMinWidth="220"
-                                        ItemsSource="{Binding GameCpuBoostNames}"
-                                        SelectedIndex="{Binding SelectedGameProfile.CpuBoostMode, TargetNullValue=1, Mode=TwoWay}"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableCpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
-                                <controls:SettingSwitchRow x:Name="GameCpuLimits" Title="CPU Power Limits"
-                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-processor-32.png"
-                                    IsChecked="{Binding SelectedGameProfile.ApplyCpuLimits, Mode=TwoWay}"/>
-                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuLimits}">
-                                    <controls:SettingValueRow x:Name="GamePl1" Title="Sustained Long Power [PL1]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
-                                        Value="{Binding SelectedGameProfile.CpuPl1Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <controls:SettingValueRow x:Name="GamePl2" Title="Burst Peak Power [PL2]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
-                                        Value="{Binding SelectedGameProfile.CpuPl2Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
-                                        <Grid Margin="0,4,0,0">
-                                            <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
-                                            <TextBlock x:Name="GameTauLabel" Style="{DynamicResource SettingValueStyle}"/>
-                                        </Grid>
-                                        <Slider x:Name="GameTauSlider" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
-                                            Margin="0,4,0,0" ValueChanged="GameTau_ValueChanged"/>
+                        <StackPanel Visibility="{Binding EnableCpuBoostTuningControl, Converter={StaticResource BoolToVis}}">
+                            <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                                <StackPanel>
+                                    <controls:SettingSwitchRow x:Name="GameCpuBoost" Title="CPU Boost Tuning"
+                                        Icon="pack://application:,,,/PreySense;component/Resources/icons8-automation-32.png"
+                                        IsChecked="{Binding SelectedGameProfile.ApplyCpuBoost, Mode=TwoWay}"/>
+                                    <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuBoost}">
+                                        <controls:SettingDropdownRow Title="CPU Boost" DropdownMinWidth="220"
+                                            ItemsSource="{Binding GameCpuBoostNames}"
+                                            SelectedIndex="{Binding SelectedGameProfile.CpuBoostMode, TargetNullValue=1, Mode=TwoWay}"/>
                                     </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}" Visibility="{Binding EnableGpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
-                                <controls:SettingSwitchRow x:Name="GameGpuLimits" Title="GPU Power Limits"
-                                    Icon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
-                                    IsChecked="{Binding SelectedGameProfile.ApplyGpuLimits, Mode=TwoWay}"/>
-                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameGpuLimits}">
-                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
-                                        <Grid><TextBlock Text="Delta" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDeltaLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
-                                        <Slider x:Name="GameDeltaSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
-                                    </StackPanel>
-                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
-                                        <Grid><TextBlock Text="Dynamic Boost" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDynamicBoostLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
-                                        <Slider x:Name="GameDynamicBoostSlider" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
-                                    </StackPanel>
-                                    <StackPanel Margin="{StaticResource StandardRowMargin}">
-                                        <Grid><TextBlock Text="Platform Power Limit Offset" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GamePlatformLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
-                                        <Slider x:Name="GamePlatformSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Visibility="{Binding EnableCpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
+                            <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                                <StackPanel>
+                                    <controls:SettingSwitchRow x:Name="GameCpuLimits" Title="CPU Power Limits"
+                                        Icon="pack://application:,,,/PreySense;component/Resources/icons8-processor-32.png"
+                                        IsChecked="{Binding SelectedGameProfile.ApplyCpuLimits, Mode=TwoWay}"/>
+                                    <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameCpuLimits}">
+                                        <controls:SettingValueRow x:Name="GamePl1" Title="Sustained Long Power [PL1]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
+                                            Value="{Binding SelectedGameProfile.CpuPl1Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <controls:SettingValueRow x:Name="GamePl2" Title="Burst Peak Power [PL2]" AllowEmpty="True" Unit="W" Minimum="5" Maximum="300"
+                                            Value="{Binding SelectedGameProfile.CpuPl2Watts, Mode=TwoWay, TargetNullValue=NaN, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                            <Grid Margin="0,4,0,0">
+                                                <TextBlock Text="Turbo Time Limit [Tau]" Style="{DynamicResource SettingLabelStyle}"/>
+                                                <TextBlock x:Name="GameTauLabel" Style="{DynamicResource SettingValueStyle}"/>
+                                            </Grid>
+                                            <Slider x:Name="GameTauSlider" Minimum="0" Maximum="11" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                Margin="0,4,0,0" services:SliderDebounce.DraftValueChanged="GameTau_ValueChanged" ValueChanged="GameTau_ValueChanged"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Visibility="{Binding EnableGpuPowerLimitControl, Converter={StaticResource BoolToVis}}">
+                            <Border Style="{StaticResource OriginalSectionPanelStyle}" Margin="{StaticResource StandardSectionMargin}">
+                                <StackPanel>
+                                    <controls:SettingSwitchRow x:Name="GameGpuLimits" Title="GPU Power Limits"
+                                        Icon="pack://application:,,,/PreySense;component/Resources/icons8-video-card-32.png"
+                                        IsChecked="{Binding SelectedGameProfile.ApplyGpuLimits, Mode=TwoWay}"/>
+                                    <StackPanel IsEnabled="{Binding IsChecked, ElementName=GameGpuLimits}">
+                                        <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                            <Grid><TextBlock Text="Delta" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDeltaLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                            <Slider x:Name="GameDeltaSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" services:SliderDebounce.DraftValueChanged="GameGpuOffsets_ValueChanged" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                            <Grid><TextBlock Text="Dynamic Boost" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GameDynamicBoostLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                            <Slider x:Name="GameDynamicBoostSlider" Minimum="0" Maximum="25" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" services:SliderDebounce.DraftValueChanged="GameGpuOffsets_ValueChanged" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="{StaticResource StandardRowMargin}">
+                                            <Grid><TextBlock Text="Platform Power Limit Offset" Style="{DynamicResource SettingLabelStyle}"/><TextBlock x:Name="GamePlatformLabel" Style="{DynamicResource SettingValueStyle}"/></Grid>
+                                            <Slider x:Name="GamePlatformSlider" Minimum="0" Maximum="255" SmallChange="5" LargeChange="5" TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,4,0,0" services:SliderDebounce.DraftValueChanged="GameGpuOffsets_ValueChanged" ValueChanged="GameGpuOffsets_ValueChanged"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                     <TextBlock Text="{Binding GameModeStatus}" TextWrapping="Wrap" Margin="4,4">
                         <TextBlock.Style>

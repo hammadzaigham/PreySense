@@ -27,6 +27,7 @@ PowerShell helpers that launch PreySense on the interactive desktop (`WinSta0\De
 | Advanced / Tuning | `BtnNavMode` | Mode CPU/GPU limits |
 | Settings | `BtnSettings` | Platform settings |
 | Fans | `BtnNavFans` | Fan curve editor |
+| Games | `BtnNavGames` | Per-game profiles |
 
 ## Scripts
 

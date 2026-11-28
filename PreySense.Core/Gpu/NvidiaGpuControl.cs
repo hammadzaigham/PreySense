@@ -27,7 +27,6 @@ namespace PreySense.Gpu
 
         public void RefreshDevice() => Volatile.Write(ref _internalGpu, GetInternalDiscreteGpu());
         public bool IsValid => Volatile.Read(ref _internalGpu) != null;
-        public bool IsNvidia => IsValid;
         public string FullName => Volatile.Read(ref _internalGpu)?.FullName ?? "NVIDIA GPU";
 
         private static bool verboseLog = false;
@@ -58,20 +57,6 @@ namespace PreySense.Gpu
                 if (verboseLog) AppLogger.Log($"GPU: {ex.Message}");
                 return ex.Message == "NVAPI_GPU_NOT_POWERED" ? GpuState.Asleep : GpuState.Off;
             }
-        }
-
-        /// <summary>
-        /// True when something other than this process is using the discrete GPU.
-        /// A powered-off or idle GPU is left in D3/RTD3: NVML is released and not opened.
-        /// </summary>
-        public bool IsDiscreteGpuInUse()
-        {
-            bool inUse = GetGpuState(out var perfState) == GpuState.Active
-                && (!IsIdlePerformanceState(perfState) || HasUserGpuClient());
-            if (!inUse)
-                NvmlHelper.Shutdown();
-
-            return inUse;
         }
 
         private static bool IsIdlePerformanceState(PerformanceStateId state)
@@ -105,18 +90,6 @@ namespace PreySense.Gpu
             {
                 return false;
             }
-        }
-
-        public int? ReadCurrentTemperature(bool log = false)
-        {
-            if (PreySense.Helpers.DeviceHelper.GetDisplayDevicePowerState("VEN_10DE") != 1) return null;
-            if (GetGpuState(out var perfState) != GpuState.Active) return null;
-            if (IsIdlePerformanceState(perfState) && !HasUserGpuClient())
-            {
-                NvmlHelper.Shutdown();
-                return null;
-            }
-            return ReadAwakeTemperature(log);
         }
 
         private int? ReadAwakeTemperature(bool log = false)

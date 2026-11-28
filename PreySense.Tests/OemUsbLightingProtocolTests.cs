@@ -9,11 +9,19 @@ public class OemUsbLightingProtocolTests
     [TestMethod]
     public void AcerAndDarfonUseReservedByteThenRgbInOriginalKeyOrder()
     {
-        foreach (var (family, pid) in new[] { (OemUsbKeyboardFamily.Acer, (ushort)0x0117), (OemUsbKeyboardFamily.Darfon, (ushort)0xba51) })
+        // Per-key output applies the floored gamma 2.2 LED curve; 0x12 (18) maps to 0 while higher channels remain non-zero.
+        var c0 = Color.FromArgb(0x12, 0x34, 0x56);
+        var c1 = Color.FromArgb(0xab, 0xcd, 0xef);
+        byte[] expectedPrefix =
+        [
+            0, OemUsbLightingProtocol.ApplyLedGamma(c0.R), OemUsbLightingProtocol.ApplyLedGamma(c0.G), OemUsbLightingProtocol.ApplyLedGamma(c0.B),
+            0, OemUsbLightingProtocol.ApplyLedGamma(c1.R), OemUsbLightingProtocol.ApplyLedGamma(c1.G), OemUsbLightingProtocol.ApplyLedGamma(c1.B)
+        ];
+        foreach (var (family, pid) in new[] { (OemUsbKeyboardFamily.Acer, (ushort)0x0117), (OemUsbKeyboardFamily.Acer, (ushort)0x011a), (OemUsbKeyboardFamily.Acer, (ushort)0x0119), (OemUsbKeyboardFamily.Darfon, (ushort)0xba51) })
         {
-            var frame = OemUsbLightingProtocol.BuildStaticFrame(family, pid, [Color.FromArgb(0x12, 0x34, 0x56), Color.FromArgb(0xab, 0xcd, 0xef)]);
+            var frame = OemUsbLightingProtocol.BuildStaticFrame(family, pid, [c0, c1]);
             Assert.HasCount(512, frame);
-            CollectionAssert.AreEqual(new byte[] { 0, 0x12, 0x34, 0x56, 0, 0xab, 0xcd, 0xef }, frame[..8]);
+            CollectionAssert.AreEqual(expectedPrefix, frame[..8]);
             Assert.IsTrue(frame.Skip(8).All(b => b == 0));
         }
     }
@@ -25,12 +33,16 @@ public class OemUsbLightingProtocolTests
         Assert.AreEqual(new OemUsbKey(0, "Left Control", 5), keys.Single(k => k.Index == 0));
         Assert.AreEqual(new OemUsbKey(5, "Escape", 0), keys.Single(k => k.Index == 5));
         var colors = new Color[6];
-        colors[0] = Color.FromArgb(1, 2, 3);
-        colors[5] = Color.FromArgb(4, 5, 6);
+        colors[0] = Color.FromArgb(64, 128, 255);
+        colors[5] = Color.FromArgb(80, 160, 220);
         var frame = OemUsbLightingProtocol.BuildStaticFrame(OemUsbKeyboardFamily.Sunrex, 0x666a, colors);
         Assert.HasCount(504, frame);
-        CollectionAssert.AreEqual(new byte[] { 0, 4, 5, 6 }, frame[..4]);
-        CollectionAssert.AreEqual(new byte[] { 0, 1, 2, 3 }, frame[20..24]);
+        CollectionAssert.AreEqual(
+            new byte[] { 0, OemUsbLightingProtocol.ApplyLedGamma(80), OemUsbLightingProtocol.ApplyLedGamma(160), OemUsbLightingProtocol.ApplyLedGamma(220) },
+            frame[..4]);
+        CollectionAssert.AreEqual(
+            new byte[] { 0, OemUsbLightingProtocol.ApplyLedGamma(64), OemUsbLightingProtocol.ApplyLedGamma(128), OemUsbLightingProtocol.ApplyLedGamma(255) },
+            frame[20..24]);
     }
 
     [TestMethod]
@@ -45,10 +57,46 @@ public class OemUsbLightingProtocolTests
         Assert.AreEqual(15, transfer.BeforeBodyDelayMs);
         Assert.AreEqual(2, transfer.BetweenWritesDelayMs);
         Assert.AreEqual(15, transfer.BeforeCommitDelayMs);
-        var acer = OemUsbLightingProtocol.BuildTransfer(OemUsbKeyboardFamily.Acer, 0x0117, [], 0);
-        Assert.IsTrue(acer.BodyWriteReports.All(r => r.Length == 65));
-        Assert.AreEqual((byte)0xb4, acer.CommitFeatureReport[^1]);
-        Assert.AreEqual(20, acer.BeforeBodyDelayMs);
+        foreach (var pid in new ushort[] { 0x0117, 0x011a, 0x0119 })
+        {
+            var acer = OemUsbLightingProtocol.BuildTransfer(OemUsbKeyboardFamily.Acer, pid, [], 0);
+            Assert.IsTrue(acer.BodyWriteReports.All(r => r.Length == 65));
+            Assert.AreEqual((byte)0xb4, acer.CommitFeatureReport[^1]);
+            Assert.AreEqual(0, acer.BeforeBodyDelayMs);
+            Assert.AreEqual(0, acer.BetweenWritesDelayMs);
+            Assert.AreEqual(0, acer.BeforeCommitDelayMs);
+        }
+    }
+
+    [TestMethod]
+    public void ChiconyPids011AAnd0119SharePh1671LayoutAndModes()
+    {
+        var baseKeys = OemUsbLightingProtocol.GetKeys(OemUsbKeyboardFamily.Acer, 0x0117);
+        var baseModes = OemUsbLightingProtocol.GetSupportedModes(OemUsbKeyboardFamily.Acer, 0x0117);
+        foreach (var pid in new ushort[] { 0x011a, 0x0119 })
+        {
+            Assert.IsTrue(OemUsbLightingProtocol.IsKnownProduct(OemUsbKeyboardFamily.Acer, pid));
+            CollectionAssert.AreEqual(baseKeys.ToArray(), OemUsbLightingProtocol.GetKeys(OemUsbKeyboardFamily.Acer, pid).ToArray());
+            CollectionAssert.AreEqual(baseModes.ToArray(), OemUsbLightingProtocol.GetSupportedModes(OemUsbKeyboardFamily.Acer, pid).ToArray());
+        }
+    }
+
+    [TestMethod]
+    public void GammaCurveSuppressesLowValuesAndPreservesEndpointsAndMonotonicity()
+    {
+        Assert.AreEqual((byte)0, OemUsbLightingProtocol.ApplyLedGamma(0));
+        Assert.AreEqual((byte)255, OemUsbLightingProtocol.ApplyLedGamma(255));
+        for (var i = 1; i <= 20; i++)
+            Assert.AreEqual((byte)0, OemUsbLightingProtocol.ApplyLedGamma((byte)i), $"Expected 0 at {i}");
+        Assert.IsGreaterThanOrEqualTo((byte)1, OemUsbLightingProtocol.ApplyLedGamma(21));
+        Assert.IsTrue(OemUsbLightingProtocol.ApplyLedGamma(128) is >= 50 and <= 60);
+        for (var i = 1; i < 256; i++)
+            Assert.IsGreaterThanOrEqualTo(OemUsbLightingProtocol.ApplyLedGamma((byte)(i - 1)), OemUsbLightingProtocol.ApplyLedGamma((byte)i), $"Monotonicity failed at {i}");
+
+        var frame = OemUsbLightingProtocol.BuildStaticFrame(OemUsbKeyboardFamily.Acer, 0x0117, [Color.FromArgb(10, 128, 255)]);
+        Assert.AreEqual((byte)0, frame[1]);
+        Assert.AreEqual(OemUsbLightingProtocol.ApplyLedGamma(128), frame[2]);
+        Assert.AreEqual((byte)255, frame[3]);
     }
 
     [TestMethod]

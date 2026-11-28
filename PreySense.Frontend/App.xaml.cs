@@ -17,6 +17,7 @@ namespace PreySense.Frontend
         private static volatile bool _exiting;
         private static bool _ownsSingleInstanceMutex;
         private bool _startupCompleted;
+        private Services.StreamingControlServer? _streamingControl;
 
         public App()
         {
@@ -139,7 +140,9 @@ namespace PreySense.Frontend
             var mainWindow = new MainWindow();
             MainWindow = mainWindow;
             // Hidden launches must initialize without waiting for WPF Loaded.
-            ((ViewModels.MainViewModel)mainWindow.DataContext).NotifyApplicationReady();
+            var viewModel = (ViewModels.MainViewModel)mainWindow.DataContext;
+            viewModel.NotifyApplicationReady();
+            _streamingControl = new(Dispatcher, viewModel);
             Services.OverlayBridge.StartIfNeeded();
 
             _ = Services.UpdateCheckService.CheckForUpdatesAsync();
@@ -161,6 +164,7 @@ namespace PreySense.Frontend
         protected override void OnExit(ExitEventArgs e)
         {
             _exiting = true;
+            _streamingControl?.Dispose();
             try { _showAppEvent?.Set(); } catch (ObjectDisposedException) { }
             try
             {

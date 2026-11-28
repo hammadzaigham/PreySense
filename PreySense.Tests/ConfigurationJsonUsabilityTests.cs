@@ -59,7 +59,7 @@ public class ConfigurationJsonUsabilityTests
                 "Quiet":{"CpuPl1Watts":45,"CpuPl2Watts":65,"CpuTurboTimeLimitSeconds":56}}}}
             """);
         var service = new ConfigurationService(_path);
-        service.Update(config => config.General.LightTheme = true);
+        service.Update(config => config.General.Theme = ApplicationTheme.Light);
         string text = File.ReadAllText(_path);
         Assert.Contains("\n  \"SchemaVersion\": 2", text);
         using var saved = JsonDocument.Parse(text);

@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
+        xmlns:services="clr-namespace:PreySense.Frontend.Services"
         mc:Ignorable="d"
         Title="PreySense • Settings"
         Width="480"
@@ -55,14 +56,9 @@
                                 <ComboBoxItem Content="Glass"/>
                             </controls:SettingDropdownRow>
 
-                            <controls:SettingSwitchRow Title="Acer Services"
-                                                      IsChecked="{Binding IsAcerServicesEnabled, Mode=OneWay}"
-                                                      Command="{Binding ToggleAcerServicesDebloaterCommand}"
-                                                      OnText="Enabled"
-                                                      OffText="Disabled"
-                                                      SwitchWidth="120"/>
+                            <Separator Margin="0,8,0,12"/>
 
-                            <controls:SettingSwitchRow Title="Battery Limit"
+                            <controls:SettingSwitchRow Title="Battery Charge Limit"
                                                       IsChecked="{Binding IsBatteryLimitEnabled, Mode=OneWay}"
                                                       OnText="80%"
                                                       OffText="100%"
@@ -77,10 +73,8 @@
                                                        Minimum="0" Maximum="30" SmallChange="10" LargeChange="10"
                                                        TickFrequency="10" IsSnapToTickEnabled="True"
                                                        Value="{Binding UsbChargingCutoffPercent, Mode=OneWay}"
+                                                       services:SliderDebounce.DraftValueChanged="UsbCharging_DraftValueChanged"
                                                        ValueChanged="UsbCharging_ValueChanged"
-                                                       PreviewMouseLeftButtonUp="UsbCharging_MouseReleased"
-                                                       LostMouseCapture="UsbCharging_MouseCaptureLost"
-                                                       PreviewKeyUp="UsbCharging_KeyReleased"
                                                        IsEnabled="{Binding CanChangeUsbCharging}"
                                                        Margin="0,4,0,0"/>
                             <TextBlock Text="{Binding UsbChargingStatus}" TextWrapping="Wrap" Margin="0,2,0,4"
@@ -103,9 +97,12 @@
                     <Border x:Name="TuningSection" Style="{StaticResource OriginalSectionPanelStyle}" CornerRadius="4" Margin="{StaticResource StandardSectionMargin}">
                         <StackPanel>
                             <controls:SettingActionRow x:Name="RowTuningSettings" Title="Tuning Settings" ActionText="Open"
+                                IsEnabled="{Binding IsHardwareTuningEnabled}"
                                 Click="BtnOpenTuningSettings_Click"/>
                             <controls:SettingActionRow x:Name="RowLightingModeSettings" Title="Lighting Settings" ActionText="Open"
                                 Click="BtnOpenLightingModeSettings_Click"/>
+                            <controls:SettingActionRow x:Name="RowFanSettings" Title="Fan Settings" ActionText="Open"
+                                Click="BtnOpenFanSettings_Click"/>
                         </StackPanel>
                     </Border>
 
@@ -114,7 +111,7 @@
                     <Border Style="{StaticResource OriginalSectionPanelStyle}" CornerRadius="4" Margin="{StaticResource StandardSectionMargin}">
                         <StackPanel>
                             <Grid Style="{StaticResource OriginalSectionTitlePanelStyle}">
-                                <TextBlock Text="Power Profiles" Style="{StaticResource OriginalSectionTitleStyle}"/>
+                                <TextBlock Text="Performance Mode" Style="{StaticResource OriginalSectionTitleStyle}"/>
                             </Grid>
                             <controls:SettingDropdownRow Title="On Battery"
                                                          ItemsSource="{Binding SourceProfileNames}"

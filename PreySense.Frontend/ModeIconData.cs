@@ -10,7 +10,7 @@ public static class ModeIconData
     public const string Balanced = "M3 5H14V7H3ZM18 3H20V9H18ZM3 11H8V13H3ZM12 9H14V15H12ZM3 17H16V19H3ZM20 15H22V21H20Z";
     public const string Performance = "M13 2L3 14H11L10 22L21 9H13L13 2Z";
     public const string Turbo = "M13 2C14 7 20 9 20 15C20 20 16 22 12 22C7 22 4 19 4 15C4 11 7 8 10 5C10 8 11 10 13 11C15 9 15 6 13 2ZM12 13C10 15 9 16 9 18C9 20 10 21 12 21C14 21 16 20 16 18C16 16 14 14 12 13Z";
-    public const string HybridGpu = "M3 4H21V17H3ZM1 20H23M8 9H17M14 6L17 9L14 12M16 13H7M10 10L7 13L10 16";
+    public const string OptimusGpu = "M3 4H21V17H3ZM1 20H23M8 9H17M14 6L17 9L14 12M16 13H7M10 10L7 13L10 16";
 
     private static readonly Dictionary<string, Geometry> Cache = new();
 
@@ -19,7 +19,7 @@ public static class ModeIconData
     public static Geometry BalancedGeometry => GetOrParse(Balanced);
     public static Geometry PerformanceGeometry => GetOrParse(Performance);
     public static Geometry TurboGeometry => GetOrParse(Turbo);
-    public static Geometry HybridGpuGeometry => GetOrParse(HybridGpu);
+    public static Geometry OptimusGpuGeometry => GetOrParse(OptimusGpu);
 
     private static Geometry GetOrParse(string path)
     {

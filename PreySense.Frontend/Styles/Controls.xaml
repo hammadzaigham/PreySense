@@ -3,11 +3,41 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="clr-namespace:PreySense.Frontend.Controls"
                     xmlns:services="clr-namespace:PreySense.Frontend.Services">
-  <DropShadowEffect x:Key="PopupShadowEffect" Color="{DynamicResource ShadowColor}" BlurRadius="12" ShadowDepth="3" Opacity="0.5" />
   <Thickness x:Key="StandardRowMargin">0,4,0,4</Thickness>
   <Thickness x:Key="StandardSectionMargin">0,0,0,8</Thickness>
   <BooleanToVisibilityConverter x:Key="BoolToVis" />
   <services:TranslateConverter x:Key="TranslateConverter" />
+  <controls:HexRgbColorConverter x:Key="DeviceHexColorConverter" />
+
+  <Style x:Key="HexTextBoxStyle" TargetType="{x:Type TextBox}">
+    <Setter Property="Background" Value="{DynamicResource ButtonMainBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSecondBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Padding" Value="4,2" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type TextBox}">
+          <Border x:Name="border"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="3">
+            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BorderMainBrush}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
 
   <Style TargetType="{x:Type controls:ThemedIcon}">
     <Setter Property="Foreground" Value="{DynamicResource IconForegroundBrush}" />
@@ -28,24 +58,6 @@
     <!-- Transparent so the shell CornerRadius is not covered by a square fill. -->
     <Setter Property="Background" Value="Transparent" />
   </Style>
-  <Style x:Key="WarningBannerStyle" TargetType="{x:Type Border}">
-    <Setter Property="Background" Value="{DynamicResource WarningSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Padding" Value="10,8" />
-  </Style>
-  <Style x:Key="WarningBannerSubtleStyle" TargetType="{x:Type Border}" BasedOn="{StaticResource WarningBannerStyle}">
-    <Setter Property="Background" Value="{DynamicResource WarningSurfaceSubtleBrush}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-  </Style>
-  <Style x:Key="SuccessBannerStyle" TargetType="{x:Type Border}">
-    <Setter Property="Background" Value="{DynamicResource SuccessSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Padding" Value="10,8" />
-  </Style>
   <Style TargetType="{x:Type Separator}">
     <Setter Property="Height" Value="1" />
     <Setter Property="Margin" Value="0,8" />
@@ -54,50 +66,6 @@
       <Setter.Value>
         <ControlTemplate TargetType="{x:Type Separator}">
           <Border Height="1" Background="{TemplateBinding Background}" SnapsToDevicePixels="True" />
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
-
-  <!-- High-Contrast Dark Theme TabControl & TabItem Styles (Issue #60) -->
-  <Style TargetType="{x:Type TabControl}">
-    <Setter Property="Background" Value="#141414"/>
-    <Setter Property="BorderBrush" Value="#2A2A2A"/>
-    <Setter Property="BorderThickness" Value="0"/>
-    <Setter Property="Padding" Value="0"/>
-  </Style>
-
-  <Style TargetType="{x:Type TabItem}">
-    <Setter Property="Background" Value="#141414"/>
-    <Setter Property="Foreground" Value="#A0A0A0"/>
-    <Setter Property="BorderBrush" Value="#2A2A2A"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
-    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
-    <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="Cursor" Value="Hand"/>
-    <Setter Property="Height" Value="36"/>
-    <Setter Property="Margin" Value="2,0"/>
-    <Setter Property="Padding" Value="12,6"/>
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="{x:Type TabItem}">
-          <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" ContentSource="Header"/>
-          </Border>
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="border" Property="Background" Value="#1C1C1C"/>
-              <Setter TargetName="border" Property="BorderBrush" Value="#3A3A3A"/>
-              <Setter Property="Foreground" Value="#F0F0F0"/>
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-              <Setter TargetName="border" Property="Background" Value="#1A1A1A"/>
-              <Setter TargetName="border" Property="BorderBrush" Value="#00E5FF"/>
-              <Setter TargetName="border" Property="BorderThickness" Value="2"/>
-              <Setter Property="Foreground" Value="#00E5FF"/>
-            </Trigger>
-          </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
     </Setter>
@@ -180,10 +148,6 @@
       </Setter.Value>
     </Setter>
   </Style>
-  <Style x:Key="OriginalRButtonTileActiveStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource OriginalRButtonTileStyle}">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
-  </Style>
   <Style x:Key="OriginalRButtonActionStyle" TargetType="{x:Type Button}">
     <Setter Property="Background" Value="{DynamicResource ButtonRaisedBgBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -219,10 +183,6 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
-  </Style>
-  <Style x:Key="OriginalRButtonActionActiveStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource OriginalRButtonActionStyle}">
-    <Setter Property="BorderBrush" Value="{DynamicResource ControlSelectedBorderBrush}" />
-    <Setter Property="BorderThickness" Value="{DynamicResource SelectedControlBorderThickness}" />
   </Style>
   <Style x:Key="WindowFooterPanelStyle" TargetType="{x:Type UniformGrid}">
     <Setter Property="Margin" Value="{StaticResource WindowFooterMargin}" />
@@ -526,77 +486,6 @@
               <Setter TargetName="PART_LeftText" Property="FontWeight" Value="Normal" />
             </Trigger>
             <!-- When Unchecked (False / Off / "O") -->
-            <Trigger Property="IsChecked" Value="False">
-              <Setter TargetName="PART_Left" Property="Background" Value="{DynamicResource ButtonSecondBrush}" />
-              <Setter TargetName="PART_LeftText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-              <Setter TargetName="PART_LeftText" Property="FontWeight" Value="Bold" />
-              <Setter TargetName="PART_Right" Property="Background" Value="Transparent" />
-              <Setter TargetName="PART_RightText" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-              <Setter TargetName="PART_RightText" Property="FontWeight" Value="Normal" />
-            </Trigger>
-            <Trigger Property="UIElement.IsMouseOver" Value="True">
-              <Setter TargetName="PART_Outer" Property="BorderBrush" Value="{DynamicResource BorderMainBrush}" />
-              <Setter TargetName="PART_Outer" Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
-            </Trigger>
-            <Trigger Property="IsEnabled" Value="False">
-              <Setter TargetName="PART_Outer" Property="Opacity" Value="0.45" />
-              <Setter Property="Cursor" Value="Arrow" />
-            </Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
-
-  <!-- Default Rectangular Switch Style for all CheckBoxes -->
-  <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-    <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
-    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="{x:Type CheckBox}">
-          <Grid VerticalAlignment="Center">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Optional Content / Label on Left -->
-            <ContentPresenter Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" RecognizesAccessKey="True" />
-
-            <!-- Rectangular Switch [ O | I ] on Right -->
-            <Border Name="PART_Outer" Grid.Column="1" Height="28" Width="56" Background="{DynamicResource ButtonMainBrush}" BorderBrush="{DynamicResource BorderSecondBrush}" BorderThickness="1" CornerRadius="14" SnapsToDevicePixels="True">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="28" />
-                  <ColumnDefinition Width="28" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Left Segment (Off / â—‹) -->
-                <Border Name="PART_Left" Grid.Column="0" Width="22" Height="22" Margin="3" CornerRadius="11" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Name="PART_LeftText" Text="â—‹" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
-                </Border>
-
-                <!-- Right Segment (On / â”‚) -->
-                <Border Name="PART_Right" Grid.Column="1" Width="22" Height="22" Margin="3" CornerRadius="11" Background="Transparent" SnapsToDevicePixels="True" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Name="PART_RightText" Text="â”‚" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,3" FontSize="{DynamicResource FontSizeControl}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
-                </Border>
-              </Grid>
-            </Border>
-          </Grid>
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="PART_Right" Property="Background" Value="{DynamicResource ControlActiveBrush}" />
-              <Setter TargetName="PART_RightText" Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
-              <Setter TargetName="PART_RightText" Property="FontWeight" Value="Bold" />
-              <Setter TargetName="PART_Left" Property="Background" Value="Transparent" />
-              <Setter TargetName="PART_LeftText" Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-              <Setter TargetName="PART_LeftText" Property="FontWeight" Value="Normal" />
-            </Trigger>
             <Trigger Property="IsChecked" Value="False">
               <Setter TargetName="PART_Left" Property="Background" Value="{DynamicResource ButtonSecondBrush}" />
               <Setter TargetName="PART_LeftText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />

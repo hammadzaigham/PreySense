@@ -198,24 +198,33 @@ namespace PreySense.Frontend.Views
 
         private void LoadGpuClockRows(MainViewModel vm)
         {
-            var state = vm.GpuClockTuningState;
-            SwitchGpuOverclocking.IsChecked = Draft.ApplyGpuClockOffsets;
-            bool available = HasSteppedClockRanges(state);
-            SwitchGpuOverclocking.IsEnabled = available || Draft.ApplyGpuClockOffsets;
-            if (available)
+            bool wasUpdating = _isUpdatingUi;
+            _isUpdatingUi = true;
+            try
             {
-                var core = state!.Core.ForStep(PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
-                var memory = state.Memory.ForStep(PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
-                RowGpuCoreClock.Minimum = Math.Max(0, core.MinimumMhz);
-                RowGpuCoreClock.Maximum = Math.Min(PreySense.Gpu.GpuClockTuningState.MaximumCoreOffsetMhz, core.MaximumMhz);
-                RowGpuMemoryClock.Minimum = memory.MinimumMhz;
-                RowGpuMemoryClock.Maximum = memory.MaximumMhz;
-                RowGpuCoreClock.Value = state.Core.Snap(Draft.GpuCoreClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
-                RowGpuMemoryClock.Value = state.Memory.Snap(Draft.GpuMemoryClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+                var state = vm.GpuClockTuningState;
+                SwitchGpuOverclocking.IsChecked = Draft.ApplyGpuClockOffsets;
+                bool available = HasSteppedClockRanges(state);
+                SwitchGpuOverclocking.IsEnabled = available || Draft.ApplyGpuClockOffsets;
+                if (available)
+                {
+                    var core = state!.Core.ForStep(PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+                    var memory = state.Memory.ForStep(PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+                    RowGpuCoreClock.Minimum = Math.Max(0, core.MinimumMhz);
+                    RowGpuCoreClock.Maximum = Math.Min(PreySense.Gpu.GpuClockTuningState.MaximumCoreOffsetMhz, core.MaximumMhz);
+                    RowGpuMemoryClock.Minimum = memory.MinimumMhz;
+                    RowGpuMemoryClock.Maximum = memory.MaximumMhz;
+                    RowGpuCoreClock.Value = state.Core.Snap(Draft.GpuCoreClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.CoreStepMhz);
+                    RowGpuMemoryClock.Value = state.Memory.Snap(Draft.GpuMemoryClockOffsetMhz ?? 0, PreySense.Gpu.GpuClockTuningState.MemoryStepMhz);
+                }
+                RowGpuCoreClock.ValueText = available ? $"{RowGpuCoreClock.Value:+0;-0;0} MHz" : "—";
+                RowGpuMemoryClock.ValueText = available ? $"{RowGpuMemoryClock.Value:+0;-0;0} MHz" : "—";
+                GpuOverclockingPanel.IsEnabled = available && Draft.ApplyGpuClockOffsets;
             }
-            RowGpuCoreClock.ValueText = available ? $"{RowGpuCoreClock.Value:+0;-0;0} MHz" : "—";
-            RowGpuMemoryClock.ValueText = available ? $"{RowGpuMemoryClock.Value:+0;-0;0} MHz" : "—";
-            GpuOverclockingPanel.IsEnabled = available && Draft.ApplyGpuClockOffsets;
+            finally
+            {
+                _isUpdatingUi = wasUpdating;
+            }
         }
 
         private void GpuOverclockingToggle_Changed(object sender, RoutedEventArgs e)

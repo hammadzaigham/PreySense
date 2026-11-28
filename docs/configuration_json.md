@@ -18,22 +18,17 @@ Identical saves leave the file untouched. Before skipping a write, the service c
 
 | Section | Purpose |
 | --- | --- |
-| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`, `tr-TR`), theme, Acer-service preference and tuning enable flag. |
+| `General` | Language (`en-US`, `zh-CN`, `hi-IN`, `es-ES`, `fr-FR`, `tr-TR`), theme, Acer-service preference, tuning enable flag, and `SkippedUpdateVersion`. |
 | `Display` | Automatic refresh-rate preference, cached LCD overdrive support, and last verified overdrive state. Set `LcdOverdriveSupported` to `null` to detect support again on startup. |
 | `Battery` | Charge-limit and USB power-off charging preferences. |
 | `Session` | Desired power modes for the session, AC and battery, plus GPU-mode preference. Mode codes: 0 Quiet, 1 Balanced, 4 Performance, 5 Turbo, 6 Eco. |
 | `Tuning` | Optional global controls, per-mode user profiles and separately captured factory defaults. |
-| `Fans` | Per-mode Auto/Max/Custom fan control and stage values, shared control delay, and fan maximum RPM. |
+| `Fans` | Per-mode Auto/Max/Custom fan control and stage values, and fan maximum RPM. |
 | `Lighting` | Keyboard and cover effects, colors, brightness, speed and timeout preferences. |
 | `Overlay` | Visibility, FPS, scale, opacity, position and selected metric slots. |
+| `Games` | Opt-in game detection (`Enabled`) and per-executable mode/tuning `Profiles`. |
 
 A preference is a desired setting, not confirmation of a live hardware reading. The application verifies hardware operations separately.
-
-## Fan control delay
-
-`Fans.ControlDelaySeconds` is the single delay shared by every performance mode and both fans. It defaults to `0` seconds and accepts integers from `0` to `5`. The Fan Settings window saves this setting immediately. With synchronization off, each fan starts the same configured delay when its own temperature crosses a curve threshold. With synchronization on, the coupled transition uses that delay. Auto and Max remain firmware-controlled modes and do not use the custom curve delay.
-
-Old per-mode `RampUpSeconds` values remain readable for file compatibility but do not control runtime behavior. Editing or saving a curve does not overwrite the shared delay; no per-mode delay is migrated into it.
 
 ## Fan maximum RPM
 
@@ -52,7 +47,7 @@ Close PreySense before editing these values in `preysense.json`, then restart it
 
 `Battery.UsbPowerOffChargingCutoffPercent` defaults to `0` (disabled). Choose `10`, `20` or `30` to keep the supported charging USB port powered while the laptop is shut down, until the laptop battery reaches that percentage. This can charge a phone or accessory without running the laptop, but uses laptop battery power. It does not change how the laptop battery itself charges. Firmware and a compatible USB charging port are required.
 
-The Settings slider uses 0 for Disabled and 10/20/30% for the cutoff. It applies the setting through Acer APGE WMI and verifies firmware readback before saving it. The saved preference is reapplied on startup/resume; unsupported or unconfirmed operations report N/A rather than claiming success. The dropdown displays the saved preference, not a live hardware reading. Apply or readback failures also show an inline `USB charging: N/A.` message. A successful verified write clears that message. The disabled flag is accepted only within recognized firmware response payloads; unknown packets remain unavailable.
+The Settings slider uses 0 for Disabled and 10/20/30% for the cutoff. It applies the setting through Acer APGE WMI and verifies firmware readback before saving it. The saved preference is reapplied on startup/resume; unsupported or unconfirmed operations report unavailable (`—`) rather than claiming success. The slider displays the saved preference, not a live hardware reading. Apply or readback failures show an inline `USB charging: —.` message. A successful verified write clears that message. The disabled flag is accepted only within recognized firmware response payloads; unknown packets remain unavailable.
 
 ## Tuning values
 
@@ -67,9 +62,9 @@ The five user profiles are `Quiet`, `Eco`, `Balanced`, `Performance` and `Turbo`
 | `CpuBoostMode` | Windows PERFBOOSTMODE, 0–6. |
 | `CpuBoost` | Retained legacy on/off field within supported-version profiles; `CpuBoostMode` takes priority. |
 | `ApplyGpuLimits` | Whether this profile's GPU offsets should be applied. |
-| `GpuPowerOffsetWatts` | Acer GPU base-power offset (CT), 0–100 W in steps of 5. |
+| `GpuPowerOffsetWatts` | Acer GPU base-power offset (CT), 0–255 W in steps of 5. |
 | `GpuDynamicBoostWatts` | Separate Dynamic Boost offset, 0–25 W in steps of 5. |
-| `PlatformPowerOffsetWatts` | Separate Acer platform-power offset (CP), 0–100 W in steps of 5. |
+| `PlatformPowerOffsetWatts` | Separate Acer platform-power offset (CP), 0–255 W in steps of 5. |
 | `GpuNominalPowerWatts` | Arithmetic reference from the verified GPU baseline plus GPU offsets. **Not measured draw or an enforced power-limit reading.** Null when the baseline is unavailable. |
 
 `FactoryDefaults` is a separate map of driver-read mode records. Missing records are captured by the app's calibration path; they do not populate saved user profiles. CPU-only capture can be complete without GPU ERM4 fields; GPU tuning requires the GPU fields. `FactoryStaticCpuPl1Watts` and `FactoryStaticCpuPl2Watts` store global MSR limits used by the existing tuning policy. `GpuBasePowerWatts` is verified baseline metadata, not a live board-power sample.

@@ -34,57 +34,66 @@ namespace PreySense.Frontend.Views
 
         private void SyncFromViewModel(MainViewModel vm)
         {
-            // Tab Selection
-            if (TabLightingTarget != null)
-            {
-                TabLightingTarget.SelectedIndex = vm.IsCoverTabSelected ? 1 : 0;
-            }
-
-            // Initialize Keyboard Color Wheel & Hex Input
-            _isUpdatingColorWheel = true;
-            _isUpdatingHexText = true;
+            bool wasLoaded = _isLoaded;
+            _isLoaded = false;
             try
             {
-                var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
-                ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
-                if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
+                // Tab Selection
+                if (TabLightingTarget != null)
+                {
+                    TabLightingTarget.SelectedIndex = vm.IsCoverTabSelected ? 1 : 0;
+                }
+
+                // Initialize Keyboard Color Wheel & Hex Input
+                _isUpdatingColorWheel = true;
+                _isUpdatingHexText = true;
+                try
+                {
+                    var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.SelectedHexColor);
+                    ColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
+                    if (TextHexColorInput != null) TextHexColorInput.Text = vm.SelectedHexColor;
+                }
+                catch { }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingColorWheel = false;
+                }
+
+                // Cover Mode ComboBox Selection
+                switch (vm.CoverLightingMode)
+                {
+                    case 4: ComboCoverMode.SelectedIndex = 0; break; // Mode
+                    case 2: ComboCoverMode.SelectedIndex = 2; break; // Breathing
+                    case 3: ComboCoverMode.SelectedIndex = 3; break; // Neon
+                    default: ComboCoverMode.SelectedIndex = 1; break; // Static
+                }
+
+                UpdateCoverModePanels(vm.CoverLightingMode);
+
+                // Initialize Cover Color Wheel & Hex Input
+                _isUpdatingCoverColorWheel = true;
+                _isUpdatingHexText = true;
+                try
+                {
+                    var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
+                    CoverColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
+                    if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
+                }
+                catch { }
+                finally
+                {
+                    _isUpdatingHexText = false;
+                    _isUpdatingCoverColorWheel = false;
+                }
+
+                SyncCoverPresetSelection(vm);
+                RestoreLightingModeUi(vm);
             }
-            catch { }
             finally
             {
-                _isUpdatingHexText = false;
-                _isUpdatingColorWheel = false;
+                _isLoaded = wasLoaded;
             }
-
-            // Cover Mode ComboBox Selection
-            switch (vm.CoverLightingMode)
-            {
-                case 4: ComboCoverMode.SelectedIndex = 0; break; // Mode
-                case 2: ComboCoverMode.SelectedIndex = 2; break; // Breathing
-                case 3: ComboCoverMode.SelectedIndex = 3; break; // Neon
-                default: ComboCoverMode.SelectedIndex = 1; break; // Static
-            }
-
-            UpdateCoverModePanels(vm.CoverLightingMode);
-
-            // Initialize Cover Color Wheel & Hex Input
-            _isUpdatingCoverColorWheel = true;
-            _isUpdatingHexText = true;
-            try
-            {
-                var drawingColor = System.Drawing.ColorTranslator.FromHtml(vm.CoverHexColor);
-                CoverColorWheel.SelectedColor = System.Windows.Media.Color.FromRgb(drawingColor.R, drawingColor.G, drawingColor.B);
-                if (TextCoverHexColorInput != null) TextCoverHexColorInput.Text = vm.CoverHexColor;
-            }
-            catch { }
-            finally
-            {
-                _isUpdatingHexText = false;
-                _isUpdatingCoverColorWheel = false;
-            }
-
-            SyncCoverPresetSelection(vm);
-            RestoreLightingModeUi(vm);
         }
 
         private async void KeyboardWindow_Loaded(object sender, RoutedEventArgs e)
@@ -128,54 +137,63 @@ namespace PreySense.Frontend.Views
             bool isHardwareDyn = tag.StartsWith("HW:", StringComparison.Ordinal) && tag != "HW:0" && !isMode;
 
             int modeIndex = isMode ? 0 : (isSoftwareEffect ? 3 : (isHardwareDyn ? 2 : 1));
-            if (ComboLightingMode != null)
-                ComboLightingMode.SelectedIndex = modeIndex;
-
-            if (PanelStaticControls != null)
-                PanelStaticControls.Visibility = modeIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
-            if (PanelDynamicControls != null)
-                PanelDynamicControls.Visibility = modeIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
-            if (PanelSoftwareControls != null)
-                PanelSoftwareControls.Visibility = modeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
-
-            // Always sync static presets so "Custom" (or the active preset) is selected
-            SyncStaticPresetSelection(vm);
-
-            // Sync dynamic hardware selection
-            if (ComboDynamicSelect != null)
+            bool wasLoaded = _isLoaded;
+            _isLoaded = false;
+            try
             {
-                int defaultDynIndex = 0;
-                for (int i = 0; i < ComboDynamicSelect.Items.Count; i++)
-                {
-                    if (ComboDynamicSelect.Items[i] is ComboBoxItem item &&
-                        item.Tag is string itemTag &&
-                        string.Equals(itemTag, tag, StringComparison.Ordinal))
-                    {
-                        defaultDynIndex = i;
-                        break;
-                    }
-                }
-                ComboDynamicSelect.SelectedIndex = defaultDynIndex;
-            }
+                if (ComboLightingMode != null)
+                    ComboLightingMode.SelectedIndex = modeIndex;
 
-            // Sync software effect selection
-            if (ComboSoftwareSelect != null)
+                if (PanelStaticControls != null)
+                    PanelStaticControls.Visibility = modeIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+                if (PanelDynamicControls != null)
+                    PanelDynamicControls.Visibility = modeIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+                if (PanelSoftwareControls != null)
+                    PanelSoftwareControls.Visibility = modeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+
+                // Always sync static presets so "Custom" (or the active preset) is selected
+                SyncStaticPresetSelection(vm);
+
+                // Sync dynamic hardware selection
+                if (ComboDynamicSelect != null)
+                {
+                    int defaultDynIndex = 0;
+                    for (int i = 0; i < ComboDynamicSelect.Items.Count; i++)
+                    {
+                        if (ComboDynamicSelect.Items[i] is ComboBoxItem item &&
+                            item.Tag is string itemTag &&
+                            string.Equals(itemTag, tag, StringComparison.Ordinal))
+                        {
+                            defaultDynIndex = i;
+                            break;
+                        }
+                    }
+                    ComboDynamicSelect.SelectedIndex = defaultDynIndex;
+                }
+
+                // Sync software effect selection
+                if (ComboSoftwareSelect != null)
+                {
+                    int defaultAnimIndex = 0;
+                    for (int i = 0; i < ComboSoftwareSelect.Items.Count; i++)
+                    {
+                        if (ComboSoftwareSelect.Items[i] is ComboBoxItem item &&
+                            item.Tag is string itemTag &&
+                            string.Equals(itemTag, tag, StringComparison.Ordinal))
+                        {
+                            defaultAnimIndex = i;
+                            break;
+                        }
+                    }
+                    ComboSoftwareSelect.SelectedIndex = defaultAnimIndex;
+                }
+
+                _pendingLightingEffectTag = tag;
+            }
+            finally
             {
-                int defaultAnimIndex = 0;
-                for (int i = 0; i < ComboSoftwareSelect.Items.Count; i++)
-                {
-                    if (ComboSoftwareSelect.Items[i] is ComboBoxItem item &&
-                        item.Tag is string itemTag &&
-                        string.Equals(itemTag, tag, StringComparison.Ordinal))
-                    {
-                        defaultAnimIndex = i;
-                        break;
-                    }
-                }
-                ComboSoftwareSelect.SelectedIndex = defaultAnimIndex;
+                _isLoaded = wasLoaded;
             }
-
-            _pendingLightingEffectTag = tag;
         }
 
         private void SyncStaticPresetSelection(MainViewModel vm)
@@ -212,6 +230,13 @@ namespace PreySense.Frontend.Views
                     _isLoaded = wasLoaded;
                 }
             }
+        }
+
+        private void CoverColorWheel_DraftColorChanged(object? sender, System.Windows.Media.Color color)
+        {
+            _isUpdatingHexText = true;
+            TextCoverHexColorInput.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            _isUpdatingHexText = false;
         }
 
         private void CoverColorWheel_ColorChanged(object? sender, System.Windows.Media.Color color)
@@ -278,8 +303,8 @@ namespace PreySense.Frontend.Views
         {
             if (ComboCoverPresets == null) return;
 
-            // Default logo theme is Predator (index 1 after Custom).
-            int targetIndex = 1;
+            // Default to "Custom" (index 0) when CoverHexColor matches no preset.
+            int targetIndex = 0;
             string hex = (vm.CoverHexColor ?? string.Empty).Trim();
             for (int i = 1; i < ComboCoverPresets.Items.Count; i++)
             {
@@ -317,7 +342,18 @@ namespace PreySense.Frontend.Views
             }
 
             if (ComboCoverPresets.SelectedIndex != targetIndex)
-                ComboCoverPresets.SelectedIndex = targetIndex;
+            {
+                bool wasLoaded = _isLoaded;
+                _isLoaded = false;
+                try
+                {
+                    ComboCoverPresets.SelectedIndex = targetIndex;
+                }
+                finally
+                {
+                    _isLoaded = wasLoaded;
+                }
+            }
         }
 
         private void ComboCoverPresets_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -501,6 +537,23 @@ namespace PreySense.Frontend.Views
                 if (DataContext is MainViewModel vm)
                     vm.SetLightingEffect(tag);
             }
+        }
+
+        private void ColorWheel_DraftColorChanged(object? sender, System.Windows.Media.Color color)
+        {
+            _isUpdatingHexText = true;
+            TextHexColorInput.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            _isUpdatingHexText = false;
+        }
+
+        private void DeviceColorWheel_DraftColorChanged(object? sender, System.Windows.Media.Color color)
+        {
+            TextDeviceHexColorInput.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        }
+
+        private void IndividualLightingColorWheel_DraftColorChanged(object? sender, System.Windows.Media.Color color)
+        {
+            TextIndividualHexColorInput.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
         }
 
         private void ColorWheel_ColorChanged(object? sender, System.Windows.Media.Color color)

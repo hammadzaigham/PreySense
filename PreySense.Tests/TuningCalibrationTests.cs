@@ -219,7 +219,7 @@ public class TuningCalibrationTests
     [TestMethod]
     public void MissingTuningValues_RoundTripAsNull()
     {
-        _store.Update(cfg => cfg.General.LightTheme = true);
+        _store.Update(cfg => cfg.General.Theme = ApplicationTheme.Light);
         var tuning = new ConfigurationService(_store.ConfigPath).GetCurrent().Tuning;
         foreach (var profile in new[] { tuning.Eco, tuning.Quiet, tuning.Balanced, tuning.Performance, tuning.Turbo })
         {

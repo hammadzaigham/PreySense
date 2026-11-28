@@ -68,9 +68,7 @@
   <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
   <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
   <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
-  <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
   <SolidColorBrush x:Key="TransparentBrush" Color="{StaticResource TransparentColor}" />
-  <SolidColorBrush x:Key="ShadowBrush" Color="{StaticResource ShadowColor}" />
   <SolidColorBrush x:Key="TextOnAccentBrush" Color="{StaticResource TextOnAccentColor}" />
   <SolidColorBrush x:Key="ControlTrackBrush" Color="{StaticResource ControlTrackColor}" />
   <SolidColorBrush x:Key="DisabledControlBrush" Color="{StaticResource DisabledControlColor}" />
@@ -86,12 +84,9 @@
   <SolidColorBrush x:Key="ToastSurfaceBrush" Color="{StaticResource ToastSurfaceColor}" />
   <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
   <SolidColorBrush x:Key="DangerPressedBrush" Color="{StaticResource DangerPressedColor}" />
-  <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
-  <SolidColorBrush x:Key="WarningBorderBrush" Color="{StaticResource WarningBorderColor}" />
   <SolidColorBrush x:Key="WarningSurfaceBrush" Color="{StaticResource WarningSurfaceColor}" />
   <SolidColorBrush x:Key="WarningSurfaceSubtleBrush" Color="{StaticResource WarningSurfaceSubtleColor}" />
   <SolidColorBrush x:Key="WarningTextBrush" Color="{StaticResource WarningTextColor}" />
-  <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
   <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="{StaticResource SuccessSurfaceColor}" />
   <SolidColorBrush x:Key="SuccessTextBrush" Color="{StaticResource SuccessTextColor}" />
   <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSecondColor}" />
@@ -101,7 +96,6 @@
   <SolidColorBrush x:Key="ModeBalancedBrush" Color="{StaticResource PredatorSenseBalancedColor}" />
   <SolidColorBrush x:Key="ModePerformanceBrush" Color="{StaticResource PredatorSensePerformanceColor}" />
   <SolidColorBrush x:Key="ModeTurboBrush" Color="{StaticResource PredatorSenseTurboColor}" />
-  <SolidColorBrush x:Key="ModeCustomBrush" Color="{StaticResource ModeCustomColor}" />
   <SolidColorBrush x:Key="PerformanceModeActiveBrush" Color="{StaticResource ButtonMainColor}" />
   <SolidColorBrush x:Key="SelectedTileGradientBrush" Color="{StaticResource ButtonMainColor}" />
   <LinearGradientBrush x:Key="ButtonRaisedBorderBrush" StartPoint="0,0" EndPoint="0,1">
@@ -116,5 +110,4 @@
     <GradientStop Color="#2A2A2A" Offset="1.0" />
   </LinearGradientBrush>
   <Color x:Key="PlaceholderTextColor">#8F8F8F</Color>
-  <SolidColorBrush x:Key="PlaceholderTextBrush" Color="{StaticResource PlaceholderTextColor}" />
 </ResourceDictionary>

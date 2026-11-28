@@ -70,12 +70,6 @@ namespace PreySense.Frontend.Views
             set => CancelButton.Content = value;
         }
 
-        public bool ConfirmEnabled
-        {
-            get => ConfirmButton.IsEnabled;
-            set => ConfirmButton.IsEnabled = value;
-        }
-
         public bool ShowCancelButton
         {
             get => CancelButton.Visibility == Visibility.Visible;

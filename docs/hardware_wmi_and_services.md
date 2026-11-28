@@ -102,17 +102,11 @@ Chassis Mode/Turbo is not a WMI *set*. PreySense listens on:
 
 ---
 
-## OEM services PreySense can stop
+## OEM services
 
-Settings **Acer Services** toggles:
+PreySense does not need Acer/PredatorSense OEM services (`AASSvc`, `ASMSvc`, `AcerHardwareService`, `AcerSysHardwareService`, `AcerLightingService`, `AcerServiceSvc`, `AcerCentralService`, `PredatorSenseService`, `AICO_svc`, `AICO2_svc`, etc.).
 
-- `AcerSysHardwareService`
-- `AcerHardwareService`
-- `AcerLightingService`
-- `AcerServiceSvc`
-- `ASMSvc`
-
-PreySense does not need them. Disable also kills leftover Acer/Predator Sense processes so they cannot respawn the services.
+To stop and disable them (and kill leftover OEM background processes so they do not respawn), run [`docs/scripts/Disable Acer Services.ps1`](scripts/Disable%20Acer%20Services.ps1) as Administrator. To restore and start them later, run [`docs/scripts/Enable Acer Services.ps1`](scripts/Enable%20Acer%20Services.ps1) as Administrator.
 
 PredatorSense itself, if left running, will fight over mode and fans. Turn it off.
 

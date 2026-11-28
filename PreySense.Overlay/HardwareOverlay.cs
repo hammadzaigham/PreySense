@@ -115,7 +115,7 @@ namespace PreySense.Overlay
         private bool _fgDesktop;
         private bool _wasOwnWindow;
         private bool _keepOverlayAfterUiHide;
-        private const int MinGameFps = 6;
+        private readonly object _telemetryLock = new();
         private string[] _columnCpu = [];
         private readonly List<(string Metric, bool Gpu)> _graphMetrics = new();
         private string[] _columnGpu = [];
@@ -163,10 +163,7 @@ namespace PreySense.Overlay
             {
                 Interlocked.Exchange(ref _repaintQueued, 0);
                 if (_active && IsShowing && !IsDisposed)
-                {
-                    SyncDynamicWidthBeforePaint();
                     Invalidate();
-                }
                 return;
             }
             if (m.Msg == OverlayTickMessage)
@@ -347,21 +344,26 @@ namespace PreySense.Overlay
 
         private void OnTelemetrySnapshot(PreySense.Core.Services.TelemetrySnapshot snapshot)
         {
-            if (IsDisposed || !_active || !IsShowing || snapshot.IsFanOnly ||
-                (_selectedMetrics == PreySense.Core.Services.TelemetryMetrics.None && !_showFps)) return;
+            if (IsDisposed || !_active || !IsShowing || snapshot.IsFanOnly) return;
 
-            if (_showFps) UpdateCurrentFps(snapshot.FramesPerSecond ?? double.NaN);
-            if (_selectedMetrics != PreySense.Core.Services.TelemetryMetrics.None) HardwareControl.ApplySnapshot(snapshot);
-
-            if (_graphMetrics.Count > 0)
+            lock (_telemetryLock)
             {
-                foreach (var (metric, gpu) in _graphMetrics)
+                if (IsDisposed || !_active || !IsShowing ||
+                    (_selectedMetrics == PreySense.Core.Services.TelemetryMetrics.None && !_showFps)) return;
+
+                if (_showFps) UpdateCurrentFps(snapshot.FramesPerSecond ?? double.NaN);
+                if (_selectedMetrics != PreySense.Core.Services.TelemetryMetrics.None) HardwareControl.ApplySnapshot(snapshot);
+
+                if (_graphMetrics.Count > 0)
                 {
-                    var history = HistoryFor(metric, gpu);
-                    if (!ReferenceEquals(history, EmptyHistory))
-                        history[_historyHead] = TelemetryGraphValue.Read(snapshot, metric, gpu);
+                    foreach (var (metric, gpu) in _graphMetrics)
+                    {
+                        var history = HistoryFor(metric, gpu);
+                        if (!ReferenceEquals(history, EmptyHistory))
+                            history[_historyHead] = TelemetryGraphValue.Read(snapshot, metric, gpu);
+                    }
+                    _historyHead = (_historyHead + 1) % HistoryLength;
                 }
-                _historyHead = (_historyHead + 1) % HistoryLength;
             }
 
             RequestRepaint();
@@ -375,13 +377,18 @@ namespace PreySense.Overlay
                     Interlocked.Exchange(ref _repaintQueued, 0);
                 return;
             }
-            SyncDynamicWidthBeforePaint();
             Invalidate();
+        }
+
+        protected override void BeforeUpdateLayeredWindow()
+        {
+            SyncDynamicWidthBeforePaint();
         }
 
         private void SyncDynamicWidthBeforePaint()
         {
-            Size targetSize = CalculateOverlaySize(_scalePercent);
+            Size targetSize;
+            lock (_telemetryLock) targetSize = CalculateOverlaySize(_scalePercent);
             if (Size == targetSize) return;
             if (Handle != IntPtr.Zero)
             {
@@ -456,138 +463,141 @@ namespace PreySense.Overlay
 
         protected override void PerformPaint(PaintEventArgs e)
         {
-            float sc = GetScale();
-
-            int padX = S(sc, BasePadX);
-            int padY = S(sc, BasePadY);
-            int lineH = S(sc, BaseLineHeight);
-            int lineGap = S(sc, BaseLineSpacing);
-            int fpsColW = S(sc, BaseFpsColWidth);
-            int innerPadX = S(sc, BaseInnerPadX);
-            int innerPadY = S(sc, BaseInnerPadY);
-            int innerH = lineH * 2 + lineGap;
-            int totalH = padY * 2 + innerH;
-            int labelColW = S(sc, 18);
-            int colGap = 0;
-
-            bool showFps = ShouldShowFps();
-            int cursor = padX + innerPadX;
-            if (showFps)
-                cursor += fpsColW + colGap;
-
-            int leftX = cursor;
-            cursor += labelColW + colGap;
-
-            // Compute dynamic columns positions to determine form size beforehand
-            int columnsStartX = cursor;
-            for (int i = 1; i <= _columnCpu.Length; i++)
+            lock (_telemetryLock)
             {
-                int colW = ColumnWidth(i - 1, sc);
-                if (colW <= 0) continue;
+                float sc = GetScale();
 
-                if (colW > 0)
+                int padX = S(sc, BasePadX);
+                int padY = S(sc, BasePadY);
+                int lineH = S(sc, BaseLineHeight);
+                int lineGap = S(sc, BaseLineSpacing);
+                int fpsColW = S(sc, BaseFpsColWidth);
+                int innerPadX = S(sc, BaseInnerPadX);
+                int innerPadY = S(sc, BaseInnerPadY);
+                int innerH = lineH * 2 + lineGap;
+                int totalH = padY * 2 + innerH;
+                int labelColW = S(sc, 18);
+                int colGap = 0;
+
+                bool showFps = ShouldShowFps();
+                int cursor = padX + innerPadX;
+                if (showFps)
+                    cursor += fpsColW + colGap;
+
+                int leftX = cursor;
+                cursor += labelColW + colGap;
+
+                // Compute dynamic columns positions to determine form size beforehand
+                int columnsStartX = cursor;
+                for (int i = 1; i <= _columnCpu.Length; i++)
                 {
-                    cursor += colW + colGap;
-                    bool hasGraph = _columnGraphs[i - 1];
-                    if (hasGraph)
+                    int colW = ColumnWidth(i - 1, sc);
+                    if (colW <= 0) continue;
+
+                    if (colW > 0)
                     {
-                        cursor += S(sc, 6) + S(sc, 72) + colGap;
+                        cursor += colW + colGap;
+                        bool hasGraph = _columnGraphs[i - 1];
+                        if (hasGraph)
+                        {
+                            cursor += S(sc, 6) + S(sc, 72) + colGap;
+                        }
                     }
                 }
-            }
 
-            int width = cursor + RightInset(sc);
+                int width = cursor + RightInset(sc);
 
-            if (Size.Width != width || Size.Height != totalH)
-                _size = new Size(width, totalH);
+                if (Size.Width != width || Size.Height != totalH)
+                    _size = new Size(width, totalH);
 
-            int radius = Math.Min(S(sc, _cornerRadius), Math.Min(width, totalH) / 2);
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            // ClearType assumes an opaque backdrop and corrupts glyph alpha on a layered window.
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                int radius = Math.Min(S(sc, _cornerRadius), Math.Min(width, totalH) / 2);
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                // ClearType assumes an opaque backdrop and corrupts glyph alpha on a layered window.
+                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-            SolidBrush fillBrush = _dragModeActive && _bgAlpha < DragMinAlpha ? _dragBgBrush : _bgBrush;
+                SolidBrush fillBrush = _dragModeActive && _bgAlpha < DragMinAlpha ? _dragBgBrush : _bgBrush;
 
-            if (radius > 0)
-            {
-                g.FillRoundedRectangle(fillBrush, Bound, radius);
-                _clipPath.Reset();
-                int diameter = Math.Max(1, radius * 2);
-                Rectangle bounds = Bound;
-                _clipPath.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
-                _clipPath.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
-                _clipPath.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-                _clipPath.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-                _clipPath.CloseAllFigures();
-                g.SetClip(_clipPath);
-                // Keep the clip for all text and graphs: layered-window corner pixels stay transparent.
-            }
-            else
-            {
-                g.FillRectangle(fillBrush, Bound);
-            }
-
-            if (_showBackgroundShading)
-            {
-                g.FillRectangle(_topGlowBrush, Bound.X + 1, Bound.Y + 1, Bound.Width - 2, Math.Max(1, Bound.Height / 3));
-                g.FillRectangle(_bottomGlowBrush, Bound.X + 1, Bound.Bottom - Math.Max(2, Bound.Height / 4), Bound.Width - 2, Math.Max(2, Bound.Height / 4));
-            }
-
-            if (sc != _lastScale)
-            {
-                _lastScale = sc;
-                _font?.Dispose();     _font     = new Font("Bahnschrift SemiBold", BaseFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
-                _rpmFont?.Dispose();  _rpmFont  = new Font("Bahnschrift", BaseRpmFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
-                _unitFont?.Dispose(); _unitFont = new Font("Bahnschrift SemiBold", (BaseFontSize - 1f) * sc, FontStyle.Regular, GraphicsUnit.Pixel);
-                _fpsBold?.Dispose();  _fpsBold  = new Font("Bahnschrift", innerH / 1.15f, FontStyle.Bold, GraphicsUnit.Pixel);
-            }
-
-            var font    = _font!;
-            var rpmFont = _rpmFont!;
-            var unitFont = _unitFont!;
-            var fpsBold = _fpsBold!;
-            var sf = StringFormat.GenericTypographic;
-
-            float charW = g.MeasureString("XX", font).Width - g.MeasureString("X", font).Width;
-
-            int topY = padY + innerPadY + 2;
-            int textY = topY + (int)Math.Round(sc);
-            int graphH = Math.Max(1, textY + lineH + lineGap + (int)Math.Round(8f * sc) - topY);
-
-            // FPS
-            if (showFps)
-            {
-                string fpsStr = _currentFps >= 0 ? _currentFps.ToString() : "—";
-                float fpsX = padX + innerPadX - S(sc, 4);
-                float fpsW = g.MeasureString(fpsStr, fpsBold).Width;
-                g.DrawString(fpsStr, fpsBold, _gpuBrush, new PointF(fpsX + (fpsColW - fpsW) / 2f, topY));
-            }
-
-            // Headers are always visible.
-            g.DrawString("CPU", font, _cpuBrush, new PointF(leftX, textY), sf);
-            g.DrawString("GPU", font, _gpuBrush, new PointF(leftX, textY + lineH + lineGap), sf);
-
-            // Columns
-            int colCursor = columnsStartX;
-
-            for (int i = 1; i <= _columnCpu.Length; i++)
-            {
-                int colW = ColumnWidth(i - 1, sc);
-                if (colW <= 0) continue;
-
-                string cpuMetric = _columnCpu[i - 1];
-                string gpuMetric = _columnGpu[i - 1];
-                DrawMetricColumn(g, font, _unitFont!, rpmFont, sc, cpuMetric, gpuMetric, colCursor, colW, textY, lineH, lineGap);
-                colCursor += colW + colGap;
-
-                if (_columnGraphs[i - 1])
+                if (radius > 0)
                 {
-                    int graphGap = S(sc, 6);
-                    int graphW = S(sc, 72);
-                    OverlayChartRenderer.DrawHistoryChart(g, colCursor + graphGap, topY + 1, graphW, graphH, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
-                    colCursor += graphGap + graphW + colGap;
+                    g.FillRoundedRectangle(fillBrush, Bound, radius);
+                    _clipPath.Reset();
+                    int diameter = Math.Max(1, radius * 2);
+                    Rectangle bounds = Bound;
+                    _clipPath.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+                    _clipPath.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+                    _clipPath.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+                    _clipPath.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+                    _clipPath.CloseAllFigures();
+                    g.SetClip(_clipPath);
+                    // Keep the clip for all text and graphs: layered-window corner pixels stay transparent.
+                }
+                else
+                {
+                    g.FillRectangle(fillBrush, Bound);
+                }
+
+                if (_showBackgroundShading)
+                {
+                    g.FillRectangle(_topGlowBrush, Bound.X + 1, Bound.Y + 1, Bound.Width - 2, Math.Max(1, Bound.Height / 3));
+                    g.FillRectangle(_bottomGlowBrush, Bound.X + 1, Bound.Bottom - Math.Max(2, Bound.Height / 4), Bound.Width - 2, Math.Max(2, Bound.Height / 4));
+                }
+
+                if (sc != _lastScale)
+                {
+                    _lastScale = sc;
+                    _font?.Dispose();     _font     = new Font("Bahnschrift SemiBold", BaseFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
+                    _rpmFont?.Dispose();  _rpmFont  = new Font("Bahnschrift", BaseRpmFontSize * sc, FontStyle.Regular, GraphicsUnit.Pixel);
+                    _unitFont?.Dispose(); _unitFont = new Font("Bahnschrift SemiBold", (BaseFontSize - 1f) * sc, FontStyle.Regular, GraphicsUnit.Pixel);
+                    _fpsBold?.Dispose();  _fpsBold  = new Font("Bahnschrift", innerH / 1.15f, FontStyle.Bold, GraphicsUnit.Pixel);
+                }
+
+                var font    = _font!;
+                var rpmFont = _rpmFont!;
+                var unitFont = _unitFont!;
+                var fpsBold = _fpsBold!;
+                var sf = StringFormat.GenericTypographic;
+
+                float charW = g.MeasureString("XX", font).Width - g.MeasureString("X", font).Width;
+
+                int topY = padY + innerPadY + 2;
+                int textY = topY + (int)Math.Round(sc);
+                int graphH = Math.Max(1, textY + lineH + lineGap + (int)Math.Round(8f * sc) - topY);
+
+                // FPS
+                if (showFps)
+                {
+                    string fpsStr = _currentFps >= 0 ? _currentFps.ToString() : "—";
+                    float fpsX = padX + innerPadX - S(sc, 4);
+                    float fpsW = g.MeasureString(fpsStr, fpsBold).Width;
+                    g.DrawString(fpsStr, fpsBold, _gpuBrush, new PointF(fpsX + (fpsColW - fpsW) / 2f, topY));
+                }
+
+                // Headers are always visible.
+                g.DrawString("CPU", font, _cpuBrush, new PointF(leftX, textY), sf);
+                g.DrawString("GPU", font, _gpuBrush, new PointF(leftX, textY + lineH + lineGap), sf);
+
+                // Columns
+                int colCursor = columnsStartX;
+
+                for (int i = 1; i <= _columnCpu.Length; i++)
+                {
+                    int colW = ColumnWidth(i - 1, sc);
+                    if (colW <= 0) continue;
+
+                    string cpuMetric = _columnCpu[i - 1];
+                    string gpuMetric = _columnGpu[i - 1];
+                    DrawMetricColumn(g, font, _unitFont!, rpmFont, sc, cpuMetric, gpuMetric, colCursor, colW, textY, lineH, lineGap);
+                    colCursor += colW + colGap;
+
+                    if (_columnGraphs[i - 1])
+                    {
+                        int graphGap = S(sc, 6);
+                        int graphW = S(sc, 72);
+                        OverlayChartRenderer.DrawHistoryChart(g, colCursor + graphGap, topY + 1, graphW, graphH, HistoryFor(cpuMetric, false), HistoryFor(gpuMetric, true), _historyHead, HistoryLength, _basePts, _gpuPts, _cpuPts, _graphGpuBrush, _graphGpuPen, _graphCpuBrush, _graphCpuPen, drawCpu: cpuMetric != "None", drawGpu: gpuMetric != "None");
+                        colCursor += graphGap + graphW + colGap;
+                    }
                 }
             }
         }
@@ -615,28 +625,34 @@ namespace PreySense.Overlay
 
         private bool ShouldShowFps()
         {
-            if (!_showFps) return false;
-            if (_currentFps > 0)
+            lock (_telemetryLock)
             {
-                long positiveSince = _fpsPositiveSinceTick;
-                return positiveSince != 0 && Environment.TickCount64 - positiveSince >= FpsPositiveShowDelayMs;
+                if (!_showFps) return false;
+                if (_currentFps > 0)
+                {
+                    long positiveSince = _fpsPositiveSinceTick;
+                    return positiveSince != 0 && Environment.TickCount64 - positiveSince >= FpsPositiveShowDelayMs;
+                }
+                if (_currentFps < 0) return false;
+                long zeroSince = _fpsZeroSinceTick;
+                bool linger = zeroSince != 0 &&
+                              Environment.TickCount64 - zeroSince < FpsShowDelayMs &&
+                              _fpsWasVisible;
+                if (!linger)
+                    _fpsWasVisible = false;
+                return linger;
             }
-            if (_currentFps < 0) return false;
-            long zeroSince = _fpsZeroSinceTick;
-            bool linger = zeroSince != 0 &&
-                          Environment.TickCount64 - zeroSince < FpsShowDelayMs &&
-                          _fpsWasVisible;
-            if (!linger)
-                _fpsWasVisible = false;
-            return linger;
         }
 
         private void ResetFpsDisplayState()
         {
-            _currentFps = -1;
-            _fpsZeroSinceTick = 0;
-            _fpsPositiveSinceTick = 0;
-            _fpsWasVisible = false;
+            lock (_telemetryLock)
+            {
+                _currentFps = -1;
+                _fpsZeroSinceTick = 0;
+                _fpsPositiveSinceTick = 0;
+                _fpsWasVisible = false;
+            }
         }
 
         private static void DrawMemGb(Graphics g, Font font, Font unitFont, int x, int colW, int y, int? usedMb, SolidBrush brush)
@@ -810,18 +826,21 @@ namespace PreySense.Overlay
 
         private void ClearGraphHistory()
         {
-            _historyHead = 0;
-            _graphMetrics.Clear();
-            foreach (float[] history in new[]
+            lock (_telemetryLock)
             {
-                _cpuUsageHistory, _gpuUsageHistory, _cpuTempHistory, _gpuTempHistory,
-                _gpuActiveClockHistory, _cpuActiveClockHistory, _cpuEffectiveClockHistory,
-                _cpuPowerHistory, _gpuPowerHistory, _ramHistory, _vramHistory,
-                _cpuFanHistory, _gpuFanHistory, _gpuVoltageHistory, _cpuVoltageHistory,
-                _ramSpeedHistory, _vramSpeedHistory, _gpuHotspotHistory, _gpuMemoryTempHistory,
-                _cpuPowerLimitHistory, _gpuPowerLimitHistory
-            })
-                Array.Fill(history, float.NaN);
+                _historyHead = 0;
+                _graphMetrics.Clear();
+                foreach (float[] history in new[]
+                {
+                    _cpuUsageHistory, _gpuUsageHistory, _cpuTempHistory, _gpuTempHistory,
+                    _gpuActiveClockHistory, _cpuActiveClockHistory, _cpuEffectiveClockHistory,
+                    _cpuPowerHistory, _gpuPowerHistory, _ramHistory, _vramHistory,
+                    _cpuFanHistory, _gpuFanHistory, _gpuVoltageHistory, _cpuVoltageHistory,
+                    _ramSpeedHistory, _vramSpeedHistory, _gpuHotspotHistory, _gpuMemoryTempHistory,
+                    _cpuPowerLimitHistory, _gpuPowerLimitHistory
+                })
+                    Array.Fill(history, float.NaN);
+            }
         }
 
         private void PositionAtTopLeft()
@@ -872,7 +891,7 @@ namespace PreySense.Overlay
         {
             if (Handle == nint.Zero) return;
             int style = NativeMethods.GetWindowLong(Handle, NativeMethods.GWL_EXSTYLE);
-            style = transparent ? (style | NativeMethods.WS_EX_TRANSPARENT_FLAG) : (style & ~NativeMethods.WS_EX_TRANSPARENT_FLAG);
+            style = transparent ? (style | NativeMethods.WS_EX_TRANSPARENT) : (style & ~NativeMethods.WS_EX_TRANSPARENT);
             NativeMethods.SetWindowLong(Handle, NativeMethods.GWL_EXSTYLE, style);
         }
 

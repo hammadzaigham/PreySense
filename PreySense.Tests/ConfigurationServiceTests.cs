@@ -60,7 +60,7 @@ namespace PreySense.Tests
             Assert.IsNotNull(config);
             Assert.AreEqual(PreySenseConfig.CurrentSchemaVersion, config.SchemaVersion);
             Assert.AreEqual("en-US", config.General.Language);
-            Assert.IsFalse(config.General.LightTheme);
+            Assert.IsNull(config.General.Theme);
             Assert.IsNull(config.Tuning.Quiet.CpuPl1Watts);
             Assert.IsNull(config.Tuning.Quiet.CpuPl2Watts);
             Assert.IsNull(config.Tuning.Turbo.CpuPl1Watts);
@@ -77,11 +77,10 @@ namespace PreySense.Tests
             var config = service.GetCurrent();
 
             config.General.Language = "fr-FR";
-            config.General.LightTheme = true;
+            config.General.Theme = ApplicationTheme.Light;
             config.Tuning.Balanced.CpuPl1Watts = 60;
             config.Tuning.Balanced.CpuPl2Watts = 85;
             config.Tuning.GpuBasePowerWatts = 115;
-            config.General.AcerServicesDebloated = true;
             config.Overlay.ScalePercent = 125;
             config.Overlay.PositionHorizontal = "Right";
 
@@ -94,11 +93,10 @@ namespace PreySense.Tests
             var loaded = roundTripService.GetCurrent();
 
             Assert.AreEqual("fr-FR", loaded.General.Language);
-            Assert.IsTrue(loaded.General.LightTheme);
+            Assert.AreEqual(ApplicationTheme.Light, loaded.General.Theme);
             Assert.AreEqual(60, loaded.Tuning.Balanced.CpuPl1Watts);
             Assert.AreEqual(85, loaded.Tuning.Balanced.CpuPl2Watts);
             Assert.AreEqual(115, loaded.Tuning.GpuBasePowerWatts);
-            Assert.IsTrue(loaded.General.AcerServicesDebloated);
             Assert.AreEqual(125, loaded.Overlay.ScalePercent);
             Assert.AreEqual("Right", loaded.Overlay.PositionHorizontal);
         }

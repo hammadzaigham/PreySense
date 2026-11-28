@@ -9,7 +9,7 @@ namespace PreySense.Rgb;
 /// <summary>Owns detected OEM lighting transports. Discovery reads capabilities, never colors.</summary>
 public sealed class OemLightingController : IDisposable
 {
-    private sealed record Device(LightingDeviceInfo Info, Action<DeviceLightingConfig> Apply);
+    private sealed record Device(LightingDeviceInfo Info, Action<DeviceLightingConfig> Apply, Func<int?>? ReadBrightness = null);
     private readonly object _gate = new();
     private readonly Dictionary<string, Device> _devices = new(StringComparer.Ordinal);
     private readonly List<IDisposable> _transports = new();
@@ -60,10 +60,13 @@ public sealed class OemLightingController : IDisposable
                 {
                     if (settings.Mode != -1 && settings.Mode != ModeKeyLighting.FollowOperatingMode)
                     {
-                        var mode = usb.GetSupportedModes().Single(m => m.Id == settings.Mode);
+                        var mode = usb.GetSupportedModes().FirstOrDefault(m => m.Id == settings.Mode)
+                            ?? throw new InvalidOperationException("The selected hardware effect is unavailable.");
                         byte speed = (byte)ResolveAnimationSpeed(settings, mode.SpeedMin, mode.SpeedMax);
+                        int direction = info.Modes.FirstOrDefault(m => m.Value == settings.Mode)?.ResolveDirection(settings.Direction)
+                            ?? mode.DefaultDirection;
                         if (!usb.TryApplyMode(mode.Id, ColorTranslator.FromHtml(settings.ColorHex), (byte)settings.Brightness, speed,
-                            direction: (byte)info.Modes.Single(m => m.Value == settings.Mode).ResolveDirection(settings.Direction),
+                            direction: (byte)direction,
                             randomColors: settings.RandomColors))
                             throw new IOException(usb.LastError ?? "USB hardware effect failed.");
                         return;
@@ -72,7 +75,7 @@ public sealed class OemLightingController : IDisposable
                     foreach (var led in leds) colors[led.Index] = ColorFor(settings, led.Index);
                     if (!usb.ApplyColors(colors, checked((byte)settings.Brightness)))
                         throw new IOException(usb.LastError ?? "USB lighting update failed.");
-                }));
+                }, () => usb.TryReadBrightness(out int b) ? b : null));
             }
         }
         catch (Exception ex) { AppLogger.Log($"USB lighting discovery: {ex.Message}"); }
@@ -137,16 +140,7 @@ public sealed class OemLightingController : IDisposable
                 if (ec.IsKeyboard && _devices.Values.Any(d => d.Info.Kind == "Keyboard")) continue;
                 var leds = Enumerable.Range(0, ec.LedCount)
                     .Select(i => new LightingLedInfo(i, ec.IsKeyboard ? $"Zone {i + 1}" : $"LED {i + 1}")).ToArray();
-                var modes = new List<LightingModeInfo>();
-                modes.Add(new(ModeKeyLighting.FollowOperatingMode, "Mode"));
-                if (ec.LedCount > 1)
-                    modes.Add(new(-1, "Custom colors"));
-                if (ec.IsKeyboard)
-                {
-                    string[] names = ["Static", "Breathing", "Neon", "Wave", "Ripple", "Zoom", "Snake", "Disco"];
-                    modes.AddRange(names.Select((name, value) => new LightingModeInfo(value, name, value != 0,
-                        DirectionFlags: value == 3 ? 0x0eu : value == 4 ? 2u : 0)));
-                }
+                var modes = BuildEcModes(ec.IsKeyboard, ec.LedCount);
                 var info = new LightingDeviceInfo(ec.Id, ec.Name, ec.IsKeyboard ? "Keyboard" : "Light bar", leds,
                     modes, ec.IsKeyboard
                         ? $"Keyboard with {ec.LedCount} independent color zones"
@@ -162,13 +156,16 @@ public sealed class OemLightingController : IDisposable
                     else
                     {
                         var color = ColorTranslator.FromHtml(settings.ColorHex);
-                        ec.ApplyMode(checked((byte)settings.Mode), (byte)ResolveAnimationSpeed(settings, 1, 9),
+                        var modeInfo = info.Modes.Single(m => m.Value == settings.Mode);
+                        ec.ApplyMode(checked((byte)settings.Mode),
+                            (byte)ResolveAnimationSpeed(settings, modeInfo.SpeedMinimum, modeInfo.SpeedMaximum),
                             checked((byte)settings.Brightness),
-                            info.Modes.Single(m => m.Value == settings.Mode) is { SupportsDirection: true } directional
-                                ? AcerHidLightingProtocol.NativeDirection(directional.ResolveDirection(settings.Direction)) : (byte)1,
+                            modeInfo is { SupportsDirection: true } directional
+                                ? AcerHidLightingProtocol.NativeDirection(directional.ResolveDirection(settings.Direction))
+                                : (byte)1,
                             color.R, color.G, color.B);
                     }
-                }));
+                }, () => ec.TryReadBrightness(out int b) ? b : null));
             }
         }
         catch (Exception ex) { AppLogger.Log($"EC lighting discovery: {ex.Message}"); }
@@ -246,6 +243,18 @@ public sealed class OemLightingController : IDisposable
         }
     }
 
+    public int? TryGetDeviceBrightness(string deviceId)
+    {
+        Discover();
+        Device? device;
+        lock (_gate)
+        {
+            if (!_devices.TryGetValue(deviceId, out device))
+                return null;
+        }
+        return device.ReadBrightness?.Invoke();
+    }
+
     public bool ApplyKeyboardFallback(Color[] colors, byte brightness)
     {
         Discover();
@@ -271,6 +280,26 @@ public sealed class OemLightingController : IDisposable
             keyboard.ApplyMode((byte)mode, (byte)Math.Clamp((int)speed, 1, 9), brightness, direction, color.R, color.G, color.B);
             return true;
         }
+    }
+
+    internal static IReadOnlyList<LightingModeInfo> BuildEcModes(bool isKeyboard, int ledCount)
+    {
+        var modes = new List<LightingModeInfo> { new(ModeKeyLighting.FollowOperatingMode, "Mode") };
+        if (ledCount > 1)
+            modes.Add(new(-1, "Custom colors"));
+        if (isKeyboard)
+        {
+            string[] names = ["Static", "Breathing", "Neon", "Wave", "Ripple", "Zoom", "Snake", "Disco"];
+            modes.AddRange(names.Select((name, value) => new LightingModeInfo(value, name, value != 0,
+                DirectionFlags: value == 3 ? 0x0eu : value == 4 ? 2u : 0)));
+        }
+        else
+        {
+            string[] names = ["Breathing", "Neon", "Rainbow", "Wave", "Ripple", "Scanner", "Strobe"];
+            modes.AddRange(names.Select((name, index) => new LightingModeInfo(
+                index + 1, name, SupportsSpeed: true, SpeedMinimum: 0, SpeedMaximum: 10, DefaultDirection: 1)));
+        }
+        return modes;
     }
 
     private static int ResolveAnimationSpeed(DeviceLightingConfig settings, int minimum, int maximum)

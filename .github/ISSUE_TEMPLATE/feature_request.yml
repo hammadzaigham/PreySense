@@ -1,0 +1,44 @@
+name: Feature Request
+description: Suggest a new feature or improvement for PreySense
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make PreySense better? Describe the use case and what you would like to see.
+
+  - type: textarea
+    id: problem_use_case
+    attributes:
+      label: Problem / Use Case
+      description: What problem are you trying to solve, or what workflow would this improve?
+      placeholder: "When I am ..., I want to ... so that ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_feature
+    attributes:
+      label: Proposed Feature
+      description: Describe how the feature should work from a user perspective.
+    validations:
+      required: true
+
+  - type: input
+    id: hardware_context
+    attributes:
+      label: Laptop Model / Hardware Context (if applicable)
+      description: Include your Predator model or relevant hardware details if this relates to specific sensors, keys, lighting, or power/fan controls.
+      placeholder: "e.g. PHN16S-71, 4-zone RGB keyboard, RTX 4070"
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or Additional Context
+      description: Any workarounds, screenshots, or references to other tools.
+    validations:
+      required: false

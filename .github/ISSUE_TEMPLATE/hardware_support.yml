@@ -1,0 +1,64 @@
+name: Hardware Support Request
+description: Request support for an Acer Predator model, EC/WMI/HID lighting device, or fan/power limit calibration
+title: "[Hardware]: "
+labels:
+  - hardware-support
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to request support or calibration for an Acer Predator laptop model, EC/WMI interface, HID lighting device, or fan/power limits.
+
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: Support Category
+      options:
+        - New Acer Predator Laptop Model
+        - HID / RGB Lighting Device (Per-key, 4-zone, Light Bar, Logo, Mode Key)
+        - EC / WMI Performance Modes or Fan Control
+        - CPU / GPU Power Limit Calibration (PreySenseDriver)
+        - Other Hardware / Sensor
+    validations:
+      required: true
+
+  - type: input
+    id: laptop_model
+    attributes:
+      label: Laptop Model & Specs
+      description: Exact model number, CPU, and GPU.
+      placeholder: "e.g. PHN16-73 | Core Ultra 9 275HX | RTX 5070 Ti"
+    validations:
+      required: true
+
+  - type: input
+    id: preysense_version
+    attributes:
+      label: PreySense Version Tested
+      placeholder: "e.g. v3.1.3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: device_ids
+    attributes:
+      label: Hardware / Device Details
+      description: |
+        For lighting devices, include USB VID/PID (from Device Manager -> Hardware Ids, e.g. `HID\VID_04F2&PID_...`).
+        For power/fan/WMI issues, note which features work today and which fail or report incorrect limits.
+      placeholder: |
+        - Working: ...
+        - Not working / missing: ...
+        - USB VID/PID (if lighting): ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs_and_config
+    attributes:
+      label: Logs & Configuration
+      description: |
+        Paste relevant excerpts from `%AppData%\PreySense\preysense.json` or `debug.log` (e.g. detected lighting devices, factory calibration, or WMI/EC errors).
+      render: text
+    validations:
+      required: false

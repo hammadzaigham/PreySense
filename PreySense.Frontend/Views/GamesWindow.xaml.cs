@@ -18,7 +18,7 @@ public partial class GamesWindow : Window
             game.Enabled = toggle.IsChecked == true;
             if (ReferenceEquals(vm.SelectedGameProfile, game)) vm.SelectedGameEnabled = game.Enabled;
             if (IsLoaded && !_updatingEditor)
-                vm.SaveSelectedGameProfile();
+                SaveSelectedProfileWithPendingInputs();
         }
     }
 
@@ -61,7 +61,6 @@ public partial class GamesWindow : Window
             var game = _viewModel?.SelectedGameProfile;
             if (game is not null && _viewModel is not null)
             {
-                game.CpuBoostMode ??= _viewModel.CpuBoostModeForMode(game.PowerMode);
                 if (!game.HasGpuOffsets && game.GpuPowerWatts is int watts
                     && _viewModel.TryResolveGpuTarget(game.PowerMode, watts, out var offsets, out _))
                 {
@@ -70,8 +69,6 @@ public partial class GamesWindow : Window
                     game.PlatformPowerOffsetWatts = offsets.PlatformOffsetWatts;
                 }
             }
-            GamePl1.Value = game?.CpuPl1Watts is int pl1 ? pl1 : double.NaN;
-            GamePl2.Value = game?.CpuPl2Watts is int pl2 ? pl2 : double.NaN;
             GameTauSlider.Maximum = CpuPowerLimitConfiguration.TauSliderMaximum;
             GameTauSlider.Value = CpuPowerLimitConfiguration.TauStepIndex(game?.TauSeconds ?? 0);
             GameDeltaSlider.Value = game?.GpuDeltaWatts ?? 0;
@@ -110,14 +107,20 @@ public partial class GamesWindow : Window
         game.GpuPowerWatts = null;
     }
 
-    private void SaveGame_Click(object sender, RoutedEventArgs e)
+    private void SaveSelectedProfileWithPendingInputs()
     {
-        GamePl1.CommitText(); GamePl2.CommitText();
+        GamePl1.CommitText();
+        GamePl2.CommitText();
         if (_viewModel?.SelectedGameProfile is { } game)
         {
             game.CpuPl1Watts = double.IsFinite(GamePl1.Value) ? (int)Math.Round(GamePl1.Value) : null;
             game.CpuPl2Watts = double.IsFinite(GamePl2.Value) ? (int)Math.Round(GamePl2.Value) : null;
         }
         _viewModel?.SaveSelectedGameProfile();
+    }
+
+    private void SaveGame_Click(object sender, RoutedEventArgs e)
+    {
+        SaveSelectedProfileWithPendingInputs();
     }
 }

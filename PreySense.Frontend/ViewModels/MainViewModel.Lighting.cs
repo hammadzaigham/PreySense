@@ -179,6 +179,13 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnCoverHexColorChanged(string value)
         {
+            string normalized = NormalizeHex(value);
+            if (!string.Equals(value, normalized, StringComparison.Ordinal))
+            {
+                CoverHexColor = normalized;
+                return;
+            }
+
             ScheduleCoverLightingCommit();
         }
 
@@ -223,10 +230,17 @@ namespace PreySense.Frontend.ViewModels
 
         partial void OnSelectedHexColorChanged(string value)
         {
+            string normalized = NormalizeHex(value);
+            if (!string.Equals(value, normalized, StringComparison.Ordinal))
+            {
+                SelectedHexColor = normalized;
+                return;
+            }
+
             if (_isSyncingZoneColor || _isLoadingLighting)
                 return;
 
-            RememberZoneColor(value, allZones: IsRgbSyncZonesEnabled);
+            RememberZoneColor(normalized, allZones: IsRgbSyncZonesEnabled);
             ScheduleKeyboardLightingCommit();
         }
 
@@ -485,19 +499,19 @@ namespace PreySense.Frontend.ViewModels
                     z4 = ColorTranslator.FromHtml("#AAAAFF");
                     displayName = "Deep Space Preset";
                     break;
-                case "inferno":
-                    z1 = ColorTranslator.FromHtml("#FF0000");
-                    z2 = ColorTranslator.FromHtml("#FF4400");
-                    z3 = ColorTranslator.FromHtml("#FF8800");
-                    z4 = ColorTranslator.FromHtml("#FFFF00");
-                    displayName = "Inferno Preset";
-                    break;
                 case "cyberstorm":
                     z1 = ColorTranslator.FromHtml("#00FF88");
                     z2 = ColorTranslator.FromHtml("#00CCFF");
                     z3 = ColorTranslator.FromHtml("#FF00FF");
                     z4 = ColorTranslator.FromHtml("#FFFF00");
                     displayName = "Cyber Storm Preset";
+                    break;
+                case "royal":
+                    z1 = ColorTranslator.FromHtml("#FFAA00");
+                    z2 = ColorTranslator.FromHtml("#FFD000");
+                    z3 = ColorTranslator.FromHtml("#FFE040");
+                    z4 = ColorTranslator.FromHtml("#FF9900");
+                    displayName = "Royal Preset";
                     break;
                 default:
                     colors = Array.Empty<Color>();
@@ -960,10 +974,10 @@ namespace PreySense.Frontend.ViewModels
 
         private static string ToRgbHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 
-        private static string NormalizeHex(string? hex)
+        private static Color ParseColorOrDefault(string? hex)
         {
             if (string.IsNullOrWhiteSpace(hex))
-                return "#00AEC7";
+                return Color.FromArgb(0x00, 0xAE, 0xC7);
 
             string value = hex.Trim();
             if (value.Length == 6 && !value.StartsWith('#'))
@@ -971,13 +985,15 @@ namespace PreySense.Frontend.ViewModels
 
             try
             {
-                return ToRgbHex(ColorTranslator.FromHtml(value));
+                return ColorTranslator.FromHtml(value);
             }
             catch
             {
-                return "#00AEC7";
+                return Color.FromArgb(0x00, 0xAE, 0xC7);
             }
         }
+
+        private static string NormalizeHex(string? hex) => ToRgbHex(ParseColorOrDefault(hex));
 
         internal static string ContrastForegroundHex(string hex)
         {
@@ -1032,7 +1048,7 @@ namespace PreySense.Frontend.ViewModels
             "Mode" or "Custom" or "None" or "Predator" or "Cyberpunk" or "FireIce" or "Matrix" or "Stealth" or
             "Sunset" or "Ocean" or "Ember" or "Vaporwave" or
             "Sakura" or "Rainbow" or "Toxic" or "Midnight" or "Dracula" or
-            "NeonHaze" or "DeepSpace" or "Inferno" or "CyberStorm";
+            "NeonHaze" or "DeepSpace" or "CyberStorm" or "Royal";
 
         private static string GetEffectDisplayName(string effectTag, string preset)
         {
